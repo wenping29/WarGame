@@ -86,4 +86,111 @@ public sealed class HexGrid
     }
 
     public bool Contains(Hex h) => h.Q >= 0 && h.Q < Width && h.R >= 0 && h.R < Height;
+
+    /// <summary>BFS distance field from source hexes. Returns dict of hex → distance (unreachable = -1).</summary>
+    public Dictionary<Hex, int> DistanceField(IEnumerable<Hex> sources, Func<Hex, Hex, bool>? passable = null)
+    {
+        var dist = new Dictionary<Hex, int>();
+        var queue = new Queue<Hex>();
+
+        foreach (var src in sources)
+        {
+            if (Contains(src))
+            {
+                dist[src] = 0;
+                queue.Enqueue(src);
+            }
+        }
+
+        while (queue.Count > 0)
+        {
+            var cur = queue.Dequeue();
+            var curDist = dist[cur];
+
+            foreach (var neighbor in cur.Neighbors())
+            {
+                if (!Contains(neighbor) || dist.ContainsKey(neighbor))
+                    continue;
+
+                // Check passability if predicate provided
+                if (passable != null && !passable(cur, neighbor))
+                    continue;
+
+                dist[neighbor] = curDist + 1;
+                queue.Enqueue(neighbor);
+            }
+        }
+
+        // Mark unreachable cells as -1
+        foreach (var h in AllCells())
+        {
+            if (!dist.ContainsKey(h))
+                dist[h] = -1;
+        }
+
+        return dist;
+    }
+
+    /// <summary>A* pathfinding with custom cost function. Returns path or empty list if unreachable.</summary>
+    public List<Hex> Pathfind(Hex start, Hex goal, Func<Hex, double>? heuristic = null, Func<Hex, Hex, double>? cost = null)
+    {
+        if (!Contains(start) || !Contains(goal))
+            return new List<Hex>();
+
+        // Default heuristic: hex distance
+        heuristic ??= h => h.DistanceTo(goal);
+        
+        // Default cost: uniform 1.0 per step
+        cost ??= (_, _) => 1.0;
+
+        var openSet = new SortedSet<(double F, int TieBreak, Hex H)>();
+        var cameFrom = new Dictionary<Hex, Hex>();
+        var gScore = new Dictionary<Hex, double> { [start] = 0 };
+        var tieBreaker = 0;
+
+        openSet.Add((heuristic(start), tieBreaker++, start));
+
+        while (openSet.Count > 0)
+        {
+            var current = openSet.Min.H;
+            openSet.Remove(openSet.Min);
+
+            if (current.Equals(goal))
+            {
+                // Reconstruct path
+                var path = new List<Hex> { goal };
+                var node = goal;
+                while (cameFrom.ContainsKey(node))
+                {
+                    node = cameFrom[node];
+                    path.Insert(0, node);
+                }
+                return path;
+            }
+
+            foreach (var neighbor in current.Neighbors())
+            {
+                if (!Contains(neighbor))
+                    continue;
+
+                var tentativeG = gScore[current] + cost(current, neighbor);
+
+                if (!gScore.ContainsKey(neighbor) || tentativeG < gScore[neighbor])
+                {
+                    cameFrom[neighbor] = current;
+                    gScore[neighbor] = tentativeG;
+                    var fScore = tentativeG + heuristic(neighbor);
+                    
+                    // Remove old entry if exists
+                    var oldEntry = openSet.FirstOrDefault(e => e.H.Equals(neighbor));
+                    if (!oldEntry.Equals(default((double, int, Hex))))
+                        openSet.Remove(oldEntry);
+                    
+                    openSet.Add((fScore, tieBreaker++, neighbor));
+                }
+            }
+        }
+
+        return new List<Hex>(); // No path found
+    }
 }

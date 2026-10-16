@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("HexFront.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3b8c95923a0fc6af5d88c3788cd7bd1a99b3e26c")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+180a430fae95bbe4a284e6a0a902732f01df8c7e")]
 [assembly: System.Reflection.AssemblyProductAttribute("HexFront.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("HexFront.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
