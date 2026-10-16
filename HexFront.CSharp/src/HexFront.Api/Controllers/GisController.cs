@@ -365,6 +365,7 @@ public class GisController : ControllerBase
         }
 
         // Build command line arguments
+        var outPath = Path.Combine(_gisDir, $"{spec.Name}.json");
         var args = new List<string>
         {
             scriptPath,
@@ -374,7 +375,7 @@ public class GisController : ControllerBase
             spec.Bbox[2].ToString("F6"),
             spec.Bbox[3].ToString("F6"),
             "--cell-km", spec.CellKm.ToString("F2"),
-            "--out", Path.Combine(_gisDir, $"{spec.Name}.json").Replace('\\', '/'),
+            "--out", outPath,  // Use absolute path
             "--dem", spec.Dem,
             "--landuse", spec.Landuse,
             "--roads", spec.Roads ? "on" : "off",
@@ -478,10 +479,15 @@ public class GisController : ControllerBase
         }
 
         var json = System.IO.File.ReadAllText(pkgPath);
-        var package = JsonSerializer.Deserialize<HexPackage>(json);
-        if (package == null)
+        var options = new JsonSerializerOptions
         {
-            throw new InvalidOperationException("无法解析生成的数据包 JSON");
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        };
+        var package = JsonSerializer.Deserialize<HexPackage>(json, options);
+        if (package == null || package.Hexes.Count == 0)
+        {
+            throw new InvalidOperationException($"无法解析生成的数据包 JSON（{package?.Hexes.Count ?? 0} 个格）");
         }
 
         job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] Python 生成完成: {package.Meta.Width}×{package.Meta.Height} 格");

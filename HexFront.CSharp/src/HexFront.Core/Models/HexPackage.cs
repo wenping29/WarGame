@@ -51,7 +51,7 @@ public sealed class PackageMeta
     public List<double> CenterLonLat { get; init; } = new();
     public List<double> Bbox { get; init; } = new(); // [west, south, east, north] in WGS84
     public string GeneratedAt { get; init; } = "";
-    public Dictionary<string, string> Layers { get; init; } = new();
+    public Dictionary<string, object> Layers { get; init; } = new(); // Can be string or nested object
     public Dictionary<string, object> Stats { get; init; } = new();
     public List<string> Notes { get; init; } = new();
     public int Fails { get; init; }
