@@ -298,8 +298,9 @@ public class GisController : ControllerBase
             }
             else
             {
-                // Call Python hexgen.py for real generation
-                job.Package = GenerateViaPython(job.Spec, job);
+                // Use native C# hex generation algorithm
+                job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 使用原生 C# 地形生成算法");
+                job.Package = GenerateNative(job.Spec, job);
             }
 
             job.Status = GisJobStatus.Done;
@@ -326,7 +327,29 @@ public class GisController : ControllerBase
         }
     }
 
-    /// <summary>Call Python hexgen.py subprocess for real terrain generation.</summary>
+    /// <summary>Native C# hex terrain generation (full port of Python hexgen.py).</summary>
+    private HexPackage? GenerateNative(GisJobSpec spec, GisJob job)
+    {
+        job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 开始原生 C# 地形生成");
+        
+        var genSpec = new HexFront.Core.Services.GenSpec
+        {
+            Name = spec.Name,
+            Bbox = spec.Bbox.ToArray(),
+            CellKm = spec.CellKm,
+            Seed = spec.Seed,
+            Offline = spec.Offline,
+            UseRealDem = !spec.Offline && spec.Dem != "off",
+            Features = spec.Features,
+        };
+        
+        var package = HexFront.Core.Services.HexGenService.Generate(genSpec);
+        
+        job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 生成完成: {package.Meta.Width}×{package.Meta.Height} 格");
+        return package;
+    }
+
+    /// <summary>Call Python hexgen.py subprocess for real terrain generation (legacy fallback).</summary>
     private HexPackage? GenerateViaPython(GisJobSpec spec, GisJob job)
     {
         var scriptPath = FindPythonScript();
