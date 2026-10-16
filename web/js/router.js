@@ -4,11 +4,12 @@ import { api } from './api.js';
 export const router = {
   current: null, // {name, params}
   parse() {
-    const h = location.hash.replace(/^#/, '') || '/lobby';
+    const h = location.hash.replace(/^#/, '') || '/home';
     const parts = h.split('/').filter(Boolean);
     if (parts[0] === 'room' && parts.length >= 3) return { name: 'room', params: { code: parts[1].toUpperCase(), role: parts[2].toLowerCase() } };
     if (parts[0] === 'new') return { name: 'new', params: {} };
-    return { name: 'lobby', params: {} };
+    if (parts[0] === 'lobby') return { name: 'lobby', params: {} };
+    return { name: 'home', params: {} };
   },
   go(hash) {
     if (location.hash === hash) window.dispatchEvent(new HashChangeEvent('hashchange'));

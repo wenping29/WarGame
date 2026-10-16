@@ -1,4 +1,5 @@
 // SPA 引导：按哈希路由挂载视图，负责上一视图控制器销毁（关 socket）。
+import { renderHome } from './views/home.js';
 import { renderLobby } from './views/lobby.js';
 import { renderWizard } from './views/wizard.js';
 import { renderSide } from './views/side.js';
@@ -12,9 +13,8 @@ const conn = document.getElementById('conn');
 let destroy = null;
 
 function setActiveNav(name) {
-  document.querySelectorAll('#nav a').forEach((a) => {
-    a.classList.toggle('on', (a.getAttribute('href') === '#/new' && name === 'new') || (a.getAttribute('href') === '#/lobby' && name === 'lobby'));
-  });
+  const cur = '#' + (name === 'home' ? '/' : '/' + name);
+  document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('on', a.getAttribute('href') === cur));
 }
 
 async function dispatch() {
@@ -28,6 +28,7 @@ async function dispatch() {
   try {
     if (r.name === 'new') destroy = await renderWizard(app);
     else if (r.name === 'room') destroy = await mountRoom(r.params.code, r.params.role);
+    else if (r.name === 'home') destroy = await renderHome(app);
     else destroy = await renderLobby(app);
   } catch (e) {
     console.error(e);

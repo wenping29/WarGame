@@ -13,7 +13,7 @@ export async function renderLobby(root) {
   // 顶部一键区
   page.appendChild(el('div', { class: 'hero' }, [
     el('button', {
-      class: 'btn btn-primary', onclick: () => quickStart(page),
+      class: 'btn btn-primary', onclick: () => quickStart(),
     }, '一键开局（默认剧本）'),
     el('a', { class: 'btn', href: '#/new' }, '创建副本向导'),
     el('span', { class: 'muted small' }, '默认剧本 ' + (meta.scenarios[0]?.name || '') + ' · 免覆盖直接进导演部'),
@@ -93,7 +93,7 @@ function roomList(rooms, codeInput) {
   ]));
 }
 
-function saveList(saves) {
+export function saveList(saves) {
   if (!saves.length) return el('div', { class: 'muted small' }, '暂无存档');
   return el('div', { class: 'room-list' }, el('table', {}, [
     el('tr', {}, [el('th', {}, '副本'), el('th', {}, '名称'), el('th', {}, '剧本'), el('th', {}, '最后回合'), el('th', {}, '操作')]),
@@ -135,8 +135,8 @@ function joinRoom(rooms, code, role, name) {
   router.go(router.link(code, role));
 }
 
-// 一键开局：默认剧本、无覆盖、直接进导演部
-async function quickStart(root) {
+// 一键开局：默认剧本、无覆盖、直接进导演部（首页与大厅共用）
+export async function quickStart() {
   const meta = await getMeta();
   const s = meta.scenarios[0];
   if (!s) return toast('没有可用剧本', 'err');

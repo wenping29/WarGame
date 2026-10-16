@@ -61,6 +61,16 @@ label>span{color:var(--dim)}
 .scroll{overflow:auto}
 .spacer{flex:1}
 
+/* 首页：三入口。用上边距而非 justify-content 居中——存档列表展开后内容超高时不会被裁掉顶部 */
+.page.home-page{padding:12vh 18px 18px; display:flex; flex-direction:column; align-items:center; gap:18px}
+.home{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px; width:min(760px,100%)}
+.home-tile{display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left;
+  padding:24px 20px; background:var(--panel); border:1px solid var(--line); border-radius:8px; color:var(--fg)}
+.home-tile:hover{border-color:var(--accent); background:var(--panel2)}
+.home-tile b{font-size:17px; color:#eef3f7}
+.home-tile .hint{font-size:12px; color:var(--dim); line-height:1.5}
+.home-list{width:min(760px,100%)}
+
 /* 大厅 */
 .page{padding:18px; height:100%; overflow:auto}
 .grid-3{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px}
