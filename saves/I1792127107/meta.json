@@ -1,0 +1,11 @@
+{
+  "instance": "I1792127107",
+  "scenario": "rhine_corridor",
+  "scenario_name": "莱茵河走廊 1945",
+  "name": "天地图三终端复查",
+  "seed": 1792127107,
+  "created_at": "2026-10-16T13:05:07.602917",
+  "last_turn": 0,
+  "max_turns": 14,
+  "overrides": {}
+}

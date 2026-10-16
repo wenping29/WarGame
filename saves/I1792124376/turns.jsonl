@@ -1,0 +1,2 @@
+{"turn":1,"at":"2026-10-16T12:22:42.641412","resolved_by":"auto","red":[],"blue":[],"rejected":[],"fp_before":"03c8edaf","fp_after":"387eb862"}
+{"turn":2,"at":"2026-10-16T12:23:27.812240","resolved_by":"auto","red":[{"op":"rest","unit":"R1","path":null,"target":null,"zone":null,"mission":"none"}],"blue":[],"rejected":[],"fp_before":"387eb862","fp_after":"a8db018f"}

@@ -1,0 +1,141 @@
+# ================================
+# HanJianNet · 项目根目录 .gitignore
+# 四个子项目共享规则；各子项目专属规则写在各子目录自己的 .gitignore
+# ================================
+
+# ---- 操作系统 ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+
+
+# ---- Node.js ----
+node_modules/
+deploy/dist/
+
+
+# ---- 构建输出 ----
+webapi/[Bb]in/
+webapi/[Oo]bj/
+webapi/hanjian.db-shm
+webapi/hanjian.db-wal
+
+## .NET 编译输出
+ 
+webapi/uploads/
+
+## .NET 隐藏文件夹
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## 发布输出
+webapi/[Pp]ublish/
+webapi/dist/
+
+## 本地配置密钥
+webapi/appsettings.Development.json
+webapi/appsettings.Local.json
+webapi/*.pfx
+data/dem/tiles_z7/
+data/dem/*.tif
+data/dem/*.tif.ovr
+data/gis/*.lpk
+
+## 日志
+webapi/*.log
+webapi/logs/
+webapi/uploads/
+## 覆盖测试报告
+webapi/coverage/
+webapi/logs/
+
+## Rider
+webapi/.idea/
+webapi/*.iml
+
+## Windows系统
+webapi/Thumbs.db
+webapi/.DS_Store
+
+# ---- 编辑器 / IDE ----
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vcxproj.user
+*.swp
+*.swo
+*~
+.history
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# ---- 日志与临时文件 ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tmp
+*.bak
+*.old
+*.cache
+
+# ---- 环境变量与本地配置 ----
+
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.local.json
+appsettings.Local.json
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+!appsettings.Production.json
+
+
+# ---- 证书与密钥 ----
+*.pem
+*.key
+*.crt
+*.pfx
+*.cer
+
+# ---- 压缩与备份 ----
+*.7z
+*.zip
+*.rar
+*.tar
+*.gz
+*.tgz
+*.bak
+
+# ---- 数据库文件（开发 SQLite 按需排除，若要保留种子请注释下面两行） ----
+# *.db
+# *.sqlite
+# *.sqlite3

@@ -1,0 +1,6 @@
+name: hexfront_web
+description: HEXFRONT-WEB 兵棋引擎与服务端：零第三方依赖，确定性内核 + 迷雾 + 房间。
+version: 0.1.0
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+# 刻意零依赖：引擎与服务端只用 dart:core / dart:io / dart:async / dart:convert。

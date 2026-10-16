@@ -1,0 +1,11 @@
+{
+  "instance": "I1792122907",
+  "scenario": "rhine_corridor",
+  "scenario_name": "莱茵河走廊 1945",
+  "name": "莱茵河走廊 1945",
+  "seed": 1792122907,
+  "created_at": "2026-10-16T11:55:07.756905",
+  "last_turn": 0,
+  "max_turns": 14,
+  "overrides": {}
+}
