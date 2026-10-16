@@ -4,6 +4,7 @@ import { getMeta } from '../router.js';
 import { RoomSocket } from '../ws.js';
 import { MapView, attachBasemapControl } from '../map.js';
 
+const CLS_LABEL = { foot: '徒步', motor: '轮式', mech: '装甲', air: '航空', structure: '固定设施' };
 export async function renderDirector(root, code, connEl) {
   clear(root);
   const meta = await getMeta();
@@ -15,7 +16,7 @@ export async function renderDirector(root, code, connEl) {
   let newWeather = '';
   let jumpTurn = 1;
 
-  const layout = el('div', { class: 'terminal', style: 'grid-template-columns:minmax(240px,300px) minmax(420px,1fr) minmax(260px,320px)' }, [
+  const layout = el('div', { class: 'terminal', style: 'grid-template-columns:minmax(280px,340px) minmax(420px,1fr) minmax(260px,320px)' }, [
     el('div', { class: 'col' }, [panel('全局兵力', 'unitList', 'grow')]),
     el('div', { class: 'col' }, [
       el('div', { class: 'mapwrap' }, [
@@ -54,13 +55,66 @@ export async function renderDirector(root, code, connEl) {
     const box = root.querySelector('#unitList');
     const list = view?.units || [];
     const red = list.filter((u) => u.side === 'red'), blue = list.filter((u) => u.side === 'blue');
+    const cfMax = Math.max(0.001, ...list.map(cfIndex));
+    const rows = (arr) => arr
+      .map((u) => ({ u, cf: cfIndex(u) }))
+      .sort((a, b) => b.cf - a.cf)
+      .map(({ u, cf }) => unitRow(u, cf, cfMax));
     box.replaceChildren(
-      el('div', { class: 'mini' }, `红 ${red.length} · 蓝 ${blue.length} · 合计 ${list.length}`),
-      ...list.map((u) => el('div', { class: 'unit' + (inject.unit === u.id ? ' sel' : ''), onclick: () => { inject.unit = u.id; renderControls(); renderUnits(); } }, [
-        el('div', { class: 'hd' }, [el('span', { class: 'id' }, u.id), el('span', { class: 'tag ' + u.side }, u.side === 'red' ? '红' : u.side === 'blue' ? '蓝' : u.side)]),
-        el('div', { class: 'meta' }, [el('span', {}, u.type_label), el('span', {}, u.personnel + '人'), el('span', {}, '士气' + u.morale), el('span', {}, u.q + ',' + u.r), el('span', {}, '弹' + u.ammo + ' 油' + u.fuel), u.supply < 0.5 ? el('span', { class: 'tag red' }, '断供') : null, u.status === 'routed' ? el('span', { class: 'tag red' }, '溃退') : null]),
-      ])),
+      el('div', { class: 'mini' }, [
+        el('b', { class: 'nred' }, '红 ' + red.length), ' · ',
+        el('b', { class: 'nblue' }, '蓝 ' + blue.length), ' · 合计 ' + list.length,
+      ]),
+      el('div', { class: 'legend mini' }, [
+        ...['foot', 'motor', 'mech', 'air', 'structure'].map((c) => el('span', {}, [el('i', { class: 'cs ' + c }), CLS_LABEL[c]])),
+        el('span', {}, '兵种 ｜ 战力条 · 士气点按档位着色 ｜ 悬停看明细'),
+      ]),
+      ...rows(red), ...rows(blue),
     );
+  }
+
+  /// 战力指数：复刻引擎 CF 链中与战场上下文无关的因子（不含地形/工事/天候/空权/相克）
+  function cfIndex(u) {
+    const t = typeMap[u.type] || {};
+    const strength = t.personnel ? u.personnel / t.personnel : 1;
+    const pers = 0.75 + 0.0025 * (u.training ?? 0) + 0.0015 * (u.experience ?? 0);
+    const mor = Math.max(0.4, Math.min(1.2, 0.5 + (u.morale ?? 0) / 100 * 0.7));
+    const sup = Math.max(0.6, Math.min(1, 0.6 + 0.4 * (u.supply ?? 1)));
+    const ammo = u.ammo <= 0 ? 0.3 : Math.max(0.3, Math.min(1, 0.5 + 0.5 * u.ammo));
+    return (u.firepower ?? 0) * strength * pers * mor * sup * ammo;
+  }
+
+  function unitRow(u, cf, cfMax) {
+    const t = typeMap[u.type] || {};
+    const band = cf >= cfMax * 0.6 ? 'hi' : cf >= cfMax * 0.3 ? 'mid' : 'lo';
+    const m = u.morale ?? 0;
+    const mband = m >= 70 ? 'hi' : m >= 45 ? 'mid' : m >= 25 ? 'low' : 'crit';
+    const al = [];
+    if (u.status === 'destroyed') al.push(el('span', { class: 'al bad', title: '状态：已歼灭' }, '亡'));
+    if (u.status === 'routed') al.push(el('span', { class: 'al bad', title: '状态：溃退' }, '溃'));
+    if ((u.supply ?? 1) < 0.5) al.push(el('span', { class: 'al bad', title: '补给率 ' + u.supply }, '断'));
+    else if ((u.ammo ?? 1) < 0.35) al.push(el('span', { class: 'al warn', title: '弹药 ' + u.ammo }, '弹'));
+    if ((u.fuel ?? 1) < 0.35) al.push(el('span', { class: 'al warn', title: '油料 ' + u.fuel }, '油'));
+    if (u.fort) al.push(el('span', { class: 'al', title: '工事等级 ' + u.fort }, '固' + u.fort));
+    if (u.hq) al.push(el('span', { class: 'al hq', title: '指挥所' }, '指'));
+    const detail = [
+      (u.type_label || u.type) + ' · ' + u.personnel + '/' + (t.personnel ?? '-') + '人',
+      '士气 ' + m + ' · 战力 ' + cf.toFixed(1) + '（编制火力 ' + (u.firepower ?? 0) + '）',
+      '弹 ' + u.ammo + ' 油 ' + u.fuel + ' 粮 ' + u.food + ' · 补给 ' + u.supply,
+      '(' + u.q + ',' + u.r + ') · 训练 ' + u.training + ' 经验 ' + u.experience + (u.commander ? ' · ' + u.commander : ''),
+    ].join('\n');
+    return el('div', {
+      class: 'urow ' + (u.side === 'red' ? 'red' : u.side === 'blue' ? 'blue' : 'neutral') +
+        (u.status === 'destroyed' ? ' dead' : '') + (inject.unit === u.id ? ' sel' : ''),
+      title: detail,
+      onclick: () => { inject.unit = u.id; renderControls(); renderUnits(); },
+    }, [
+      el('span', { class: 'uid' }, u.id),
+      el('span', { class: 'cls ' + (u.cls || 'other') }, (u.type_label || u.type).slice(0, 2)),
+      el('span', { class: 'pwr ' + band }, [el('span', { class: 'tk' }, el('i', { style: 'width:' + Math.round(cf / cfMax * 100) + '%' })), el('b', {}, cf.toFixed(1))]),
+      el('span', { class: 'mor ' + mband, title: '士气 ' + m }, [el('i', {}), el('span', {}, String(m))]),
+      ...al,
+    ]);
   }
 
   function renderControls() {
@@ -139,7 +193,7 @@ export async function renderDirector(root, code, connEl) {
     box.replaceChildren(...logs.slice(-120).reverse().map((e) => el('div', { class: 'ev ' + e.code }, [el('span', { class: 't' }, 'T' + e.turn), e.text])));
   }
 
-  root.querySelector('#legend').replaceChildren(...[['红方', '#c15b4e'], ['蓝方', '#4e82b3'], ['指挥所', '#f0d9a5']].map(([l, c]) => el('span', {}, el('i', { style: 'background:' + c }), ' ' + l)));
+  root.querySelector('#legend').replaceChildren(...[['红方', '#c15b4e'], ['蓝方', '#4e82b3'], ['指挥所', '#f0d9a5']].map(([l, c]) => el('span', {}, [el('i', { style: 'background:' + c }), ' ' + l])));
 
   const sock = new RoomSocket(code, 'director').connect();
   sock.on('welcome', (m) => { if (connEl) { connEl.className = 'conn live'; connEl.textContent = '已连接 · 导演部 · 房间 ' + code; } if (m.view) onView(m.view); });

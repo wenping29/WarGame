@@ -142,6 +142,42 @@ label>span{color:var(--dim)}
 .unit .bar>i{display:block; height:100%}
 .unit .meta{display:flex; gap:8px; color:var(--dim); font-size:11px; margin-top:3px; flex-wrap:wrap}
 .contact.unknown{opacity:.7; border-style:dashed}
+/* 全局兵力：图标 + 颜色分级行 */
+.urow{display:flex; align-items:center; gap:4px; padding:3px 4px; margin-bottom:3px; font-size:11px;
+  border:1px solid var(--line); border-left:3px solid var(--dim); border-radius:4px; cursor:pointer; white-space:nowrap}
+.urow:hover{border-color:var(--accent)}
+.urow.sel{border-color:var(--accent); background:var(--panel2)}
+.urow.red{border-left-color:var(--red)} .urow.blue{border-left-color:var(--blue)}
+.urow.dead{opacity:.5}
+.urow .uid{font-family:var(--mono); font-weight:600; min-width:24px}
+.urow .cls{min-width:26px; padding:0 2px; border:1px solid var(--line); border-radius:3px; text-align:center}
+.cls.foot{color:#9ccd86; border-color:#3f6039; background:#1a241a}
+.cls.motor{color:#e6c183; border-color:#6b5527; background:#241f14}
+.cls.mech{color:#83c7d6; border-color:#2f6068; background:#14262a}
+.cls.air{color:#c3a0dc; border-color:#5b3f68; background:#20192a}
+.cls.structure{color:#a6b2bc; border-color:#414d57; background:#1b2126}
+.cls.other{color:var(--dim); border-color:var(--line)}
+.urow .pwr{display:flex; align-items:center; gap:3px; margin-left:auto}
+.urow .pwr .tk{width:26px; height:4px; border-radius:2px; background:#0d1114; overflow:hidden}
+.urow .pwr .tk>i{display:block; height:100%}
+.urow .pwr b{font-family:var(--mono); font-weight:600; min-width:26px; text-align:right}
+.pwr.hi .tk>i{background:var(--accent)} .pwr.hi b{color:var(--accent)}
+.pwr.mid .tk>i{background:var(--warn)} .pwr.mid b{color:var(--warn)}
+.pwr.lo .tk>i{background:#55636e} .pwr.lo b{color:var(--dim)}
+.urow .mor{display:flex; align-items:center; gap:3px; font-family:var(--mono); min-width:30px}
+.urow .mor>i{width:7px; height:7px; border-radius:50%; flex:0 0 auto}
+.mor.hi{color:#9ccd86} .mor.hi>i{background:#7fb069}
+.mor.mid{color:#e6c183} .mor.mid>i{background:#d8a24a}
+.mor.low{color:#e8a37f} .mor.low>i{background:#d9754a}
+.mor.crit{color:#f0c9c4} .mor.crit>i{background:var(--danger)}
+.urow .al{font-size:10px; line-height:15px; padding:0 3px; border-radius:3px; background:var(--panel2); color:var(--dim)}
+.urow .al.warn{background:#3a2d16; color:#f0d9a5}
+.urow .al.bad{background:#3a1d1a; color:#f0c9c4}
+.urow .al.hq{background:#3d3620; color:#f0d9a5}
+.mini .nred{color:#e08d80} .mini .nblue{color:#7fa8d4}
+.legend i.cs.foot{background:#7fb069} .legend i.cs.motor{background:#d8a24a}
+.legend i.cs.mech{background:#56b6c2} .legend i.cs.air{background:#b48ead}
+.legend i.cs.structure{background:#8b98a4}
 .draft-item{padding:4px 6px; border:1px solid var(--line); border-radius:4px; margin-bottom:4px; font-size:12px;
   display:flex; justify-content:space-between; align-items:center; gap:6px}
 .draft-item .x{cursor:pointer; color:var(--danger)}
