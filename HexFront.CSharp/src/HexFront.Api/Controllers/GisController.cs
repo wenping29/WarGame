@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using HexFront.Api.DTOs;
+using HexFront.Core.Geometry;
 using HexFront.Core.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,7 +18,7 @@ namespace HexFront.Api.Controllers;
 public class GisController : ControllerBase
 {
     private readonly string _gisDir;
-    private readonly Dictionary<string, GisJob> _jobs = new();
+    private static readonly Dictionary<string, GisJob> _jobs = new();
 
     public GisController()
     {
@@ -301,8 +304,6 @@ public class GisController : ControllerBase
 
         try
         {
-            // TODO: Call Python subprocess or implement native C# generation
-            // For now, simulate with a delay and load existing package if available
             var pkgPath = Path.Combine(_gisDir, $"{job.PkgName}.json");
 
             if (System.IO.File.Exists(pkgPath))
@@ -313,9 +314,8 @@ public class GisController : ControllerBase
             }
             else
             {
-                job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 等待原生 C# 生成器实现...");
-                // Placeholder: generate minimal synthetic grid
-                job.Package = GenerateSyntheticGrid(job.Spec);
+                // Call Python hexgen.py for real generation
+                job.Package = GenerateViaPython(job.Spec, job);
             }
 
             job.Status = GisJobStatus.Done;
@@ -340,6 +340,216 @@ public class GisController : ControllerBase
         {
             job.FinishedAt = DateTime.UtcNow;
         }
+    }
+
+    /// <summary>Call Python hexgen.py subprocess for real terrain generation.</summary>
+    private HexPackage? GenerateViaPython(GisJobSpec spec, GisJob job)
+    {
+        var scriptPath = FindPythonScript();
+        if (string.IsNullOrEmpty(scriptPath))
+        {
+            job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 未找到 hexgen.py，降级为合成网格");
+            return GenerateSyntheticGrid(spec);
+        }
+
+        var pythonExe = FindPythonExecutable();
+        if (string.IsNullOrEmpty(pythonExe))
+        {
+            job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 未找到 Python，降级为合成网格");
+            return GenerateSyntheticGrid(spec);
+        }
+
+        // Build command line arguments
+        var args = new List<string>
+        {
+            scriptPath,
+            "--bbox",
+            string.Join(",", spec.Bbox.Select(v => v.ToString("F6"))),
+            "--cell-km", spec.CellKm.ToString("F2"),
+            "--out", Path.Combine(_gisDir, $"{spec.Name}.json").Replace('\\', '/'),
+            "--dem", spec.Dem,
+            "--landuse", spec.Landuse,
+            "--roads", spec.Roads ? "on" : "off",
+            "--water", spec.Water ? "auto" : "off",
+            "--network", spec.Network ? "auto" : "off",
+            "--features", spec.Features ? "on" : "off",
+            "--seed", spec.Seed.ToString(),
+            "--print-meta",
+        };
+        if (spec.Offline)
+            args.Add("--offline");
+
+        job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 调用 Python: {pythonExe} {scriptPath}");
+        job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 参数: {string.Join(" ", args.Skip(1))}");
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = pythonExe,
+            Arguments = string.Join(" ", args),
+            WorkingDirectory = GetRepoRoot(),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+
+        // Set environment variables for Python
+        startInfo.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
+        startInfo.EnvironmentVariables["PYTHONUTF8"] = "1";
+        startInfo.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
+
+        using var process = Process.Start(startInfo);
+        if (process == null)
+        {
+            job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 无法启动 Python 进程");
+            return GenerateSyntheticGrid(spec);
+        }
+
+        var outputLines = new List<string>();
+        var errorLines = new List<string>();
+
+        // Read stdout and stderr asynchronously
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
+        // Wait for completion with timeout (20 minutes)
+        var completed = process.WaitForExit((int)TimeSpan.FromMinutes(20).TotalMilliseconds);
+        if (!completed)
+        {
+            process.Kill();
+            job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 生成超时（20 分钟）已终止");
+            throw new TimeoutException("GIS generation timed out after 20 minutes");
+        }
+
+        var stdout = stdoutTask.Result;
+        var stderr = stderrTask.Result;
+
+        // Parse log lines
+        foreach (var line in stdout.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("##META## "))
+            {
+                continue; // Skip meta line, we'll parse from JSON file
+            }
+            if (trimmed.Length > 0)
+            {
+                job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] {trimmed}");
+                if (outputLines.Count < 240) // Keep last 240 lines
+                    outputLines.Add(trimmed);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(stderr))
+        {
+            foreach (var line in stderr.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.Length > 0)
+                {
+                    job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] ! {trimmed}");
+                    errorLines.Add(trimmed);
+                }
+            }
+        }
+
+        // Check exit code
+        if (process.ExitCode != 0)
+        {
+            var errorMsg = errorLines.Any() ? string.Join("; ", errorLines.TakeLast(3)) : $"进程退出码 {process.ExitCode}";
+            throw new InvalidOperationException($"Python 生成失败: {errorMsg}");
+        }
+
+        // Load generated package from disk
+        var pkgPath = Path.Combine(_gisDir, $"{spec.Name}.json");
+        if (!System.IO.File.Exists(pkgPath))
+        {
+            throw new FileNotFoundException($"Python 脚本执行成功但未找到输出文件: {pkgPath}");
+        }
+
+        var json = System.IO.File.ReadAllText(pkgPath);
+        var package = JsonSerializer.Deserialize<HexPackage>(json);
+        if (package == null)
+        {
+            throw new InvalidOperationException("无法解析生成的数据包 JSON");
+        }
+
+        job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] Python 生成完成: {package.Meta.Width}×{package.Meta.Height} 格");
+        return package;
+    }
+
+    /// <summary>Find hexgen.py script path relative to repo root.</summary>
+    private string? FindPythonScript()
+    {
+        var repoRoot = GetRepoRoot();
+        var candidates = new[]
+        {
+            Path.Combine(repoRoot, "tools", "gis", "hexgen.py"),
+            Path.Combine(repoRoot, "..", "tools", "gis", "hexgen.py"),
+            Path.Combine(repoRoot, "..", "..", "tools", "gis", "hexgen.py"),
+        };
+
+        foreach (var path in candidates)
+        {
+            var fullPath = Path.GetFullPath(path);
+            if (System.IO.File.Exists(fullPath))
+                return fullPath;
+        }
+
+        return null;
+    }
+
+    /// <summary>Find Python executable from environment or PATH.</summary>
+    private string? FindPythonExecutable()
+    {
+        // Check environment variable first
+        var fromEnv = Environment.GetEnvironmentVariable("HEXGEN_PYTHON")?.Trim();
+        if (!string.IsNullOrEmpty(fromEnv) && System.IO.File.Exists(fromEnv))
+            return fromEnv;
+
+        // Try common Python executables
+        var candidates = new[] { "python", "py", "python3" };
+        foreach (var exe in candidates)
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = exe,
+                    Arguments = "--version",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process != null)
+                {
+                    process.WaitForExit(5000);
+                    if (process.ExitCode == 0)
+                        return exe;
+                }
+            }
+            catch
+            {
+                // Ignore failures, try next candidate
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Get repository root directory (parent of src/HexFront.Api).</summary>
+    private string GetRepoRoot()
+    {
+        // Current directory is typically src/HexFront.Api/bin/Debug/net10.0/
+        // Go up 4 levels: bin/Debug/net10.0 → HexFront.Api → src → HexFront.CSharp
+        var currentDir = Directory.GetCurrentDirectory();
+        var repoRoot = Path.GetFullPath(Path.Combine(currentDir, "..", "..", "..", ".."));
+        return repoRoot;
     }
 
     private HexPackage GenerateSyntheticGrid(GisJobSpec spec)

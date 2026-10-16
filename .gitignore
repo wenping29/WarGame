@@ -39,6 +39,14 @@ webapi/uploads/
 *.userosscache
 *.sln.docstates
 
+hexfront.csharp/src/hexfront.api/bin/
+hexfront.csharp/src/hexfront.api/obj/
+hexfront.csharp/src/hexfront.core/bin/
+hexfront.csharp/src/hexfront.core/obj/
+hexfront.csharp/tests/hexfront.tests/bin/
+hexfront.csharp/tests/hexfront.tests/obj/
+
+
 ## 发布输出
 webapi/[Pp]ublish/
 webapi/dist/
