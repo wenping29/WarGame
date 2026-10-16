@@ -22,9 +22,9 @@ public class GisController : ControllerBase
 
     public GisController()
     {
-        // data/gis/ is two levels up from src/HexFront.Api/bin/Debug/net10.0/
-        var baseDir = Directory.GetCurrentDirectory();
-        _gisDir = Path.Combine(baseDir, "..", "..", "..", "..", "data", "gis");
+        // Use same repo root calculation as Python subprocess calls
+        var repoRoot = GetRepoRoot();
+        _gisDir = Path.Combine(repoRoot, "data", "gis");
         if (!Directory.Exists(_gisDir))
             Directory.CreateDirectory(_gisDir);
     }
@@ -346,6 +346,9 @@ public class GisController : ControllerBase
     private HexPackage? GenerateViaPython(GisJobSpec spec, GisJob job)
     {
         var scriptPath = FindPythonScript();
+        job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 仓库根目录: {GetRepoRoot()}");
+        job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] hexgen.py 路径: {scriptPath ?? "未找到"}");
+        
         if (string.IsNullOrEmpty(scriptPath))
         {
             job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 未找到 hexgen.py，降级为合成网格");
@@ -353,6 +356,8 @@ public class GisController : ControllerBase
         }
 
         var pythonExe = FindPythonExecutable();
+        job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] Python 可执行文件: {pythonExe ?? "未找到"}");
+        
         if (string.IsNullOrEmpty(pythonExe))
         {
             job.Log.Add($"[{DateTime.UtcNow:HH:mm:ss}] 未找到 Python，降级为合成网格");
@@ -364,7 +369,10 @@ public class GisController : ControllerBase
         {
             scriptPath,
             "--bbox",
-            string.Join(",", spec.Bbox.Select(v => v.ToString("F6"))),
+            spec.Bbox[0].ToString("F6"),
+            spec.Bbox[1].ToString("F6"),
+            spec.Bbox[2].ToString("F6"),
+            spec.Bbox[3].ToString("F6"),
             "--cell-km", spec.CellKm.ToString("F2"),
             "--out", Path.Combine(_gisDir, $"{spec.Name}.json").Replace('\\', '/'),
             "--dem", spec.Dem,
@@ -484,6 +492,7 @@ public class GisController : ControllerBase
     private string? FindPythonScript()
     {
         var repoRoot = GetRepoRoot();
+        
         var candidates = new[]
         {
             Path.Combine(repoRoot, "tools", "gis", "hexgen.py"),
@@ -545,10 +554,14 @@ public class GisController : ControllerBase
     /// <summary>Get repository root directory (parent of src/HexFront.Api).</summary>
     private string GetRepoRoot()
     {
-        // Current directory is typically src/HexFront.Api/bin/Debug/net10.0/
-        // Go up 4 levels: bin/Debug/net10.0 → HexFront.Api → src → HexFront.CSharp
-        var currentDir = Directory.GetCurrentDirectory();
-        var repoRoot = Path.GetFullPath(Path.Combine(currentDir, "..", "..", "..", ".."));
+        // Use assembly location to find the project root reliably
+        var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+        var binDir = Path.GetDirectoryName(assemblyPath); // bin/Debug/net10.0
+        if (string.IsNullOrEmpty(binDir))
+            return Directory.GetCurrentDirectory();
+        
+        // Go up: bin/Debug/net10.0 → HexFront.Api → src → HexFront.CSharp → wargame
+        var repoRoot = Path.GetFullPath(Path.Combine(binDir, "..", "..", "..", "..", ".."));
         return repoRoot;
     }
 
