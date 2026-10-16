@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HexFront.Api/HexFront.Api.csproj" />
+    <Project Path="src/HexFront.Core/HexFront.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HexFront.Tests/HexFront.Tests.csproj" />
+  </Folder>
+</Solution>
