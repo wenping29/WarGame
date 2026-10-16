@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { CommandRequest } from '../services/api'
 
 // 游戏状态类型定义
 export interface Unit {
@@ -10,6 +11,12 @@ export interface Unit {
   hp: number
   morale: number
   fatigue: number
+}
+
+export interface ValidationError {
+  unitId: string
+  reason: string
+  message: string
 }
 
 export interface GameState {
@@ -32,6 +39,11 @@ export interface GameState {
   // 选中的单位
   selectedUnit: Unit | null
 
+  // 指令队列
+  pendingOrders: CommandRequest[]
+  validationErrors: ValidationError[]
+  isSubmitting: boolean
+
   // Actions
   setTurn: (turn: number) => void
   setUnits: (units: Unit[]) => void
@@ -40,6 +52,14 @@ export interface GameState {
   selectUnit: (unit: Unit | null) => void
   nextTurn: () => void
   reset: () => void
+  
+  // Order management
+  addOrder: (order: CommandRequest) => void
+  removeOrder: (index: number) => void
+  clearOrders: () => void
+  setValidationErrors: (errors: ValidationError[]) => void
+  clearValidationErrors: () => void
+  setSubmitting: (submitting: boolean) => void
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -55,6 +75,11 @@ export const useGameStore = create<GameState>((set) => ({
   viewMode: 'director',
   currentSide: null,
   selectedUnit: null,
+  
+  // Order management state
+  pendingOrders: [],
+  validationErrors: [],
+  isSubmitting: false,
 
   // Actions
   setTurn: (turn) => set({ turn }),
@@ -69,5 +94,19 @@ export const useGameStore = create<GameState>((set) => ({
     over: false,
     winner: null,
     selectedUnit: null,
+    pendingOrders: [],
+    validationErrors: [],
   }),
+  
+  // Order management actions
+  addOrder: (order) => set((state) => ({
+    pendingOrders: [...state.pendingOrders, order],
+  })),
+  removeOrder: (index) => set((state) => ({
+    pendingOrders: state.pendingOrders.filter((_, i) => i !== index),
+  })),
+  clearOrders: () => set({ pendingOrders: [] }),
+  setValidationErrors: (errors) => set({ validationErrors: errors }),
+  clearValidationErrors: () => set({ validationErrors: [] }),
+  setSubmitting: (submitting) => set({ isSubmitting: submitting }),
 }))

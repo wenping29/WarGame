@@ -111,3 +111,291 @@ label{display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--
 .muted{color:var(--dim)}
 .small{font-size:12px}
 .mono{font-family:var(--mono)}
+
+/* Unit Interaction System */
+.unit-interaction{
+  position:fixed; bottom:20px; right:20px; z-index:50;
+}
+
+.command-panel{
+  background:var(--panel); border:1px solid var(--line); border-radius:8px;
+  padding:16px; min-width:280px; box-shadow:0 4px 12px rgba(0,0,0,0.5);
+}
+
+.panel-header{
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:12px;
+}
+
+.panel-header h3{
+  margin:0; font-size:16px; color:#eef3f7;
+}
+
+.close-btn{
+  background:none; border:none; color:var(--dim); font-size:24px;
+  cursor:pointer; padding:0 4px; line-height:1;
+}
+
+.close-btn:hover{
+  color:var(--fg);
+}
+
+.unit-info{
+  margin-bottom:16px;
+}
+
+.info-row{
+  display:flex; justify-content:space-between; padding:4px 0;
+  font-size:13px; border-bottom:1px solid var(--line);
+}
+
+.info-row span:first-child{
+  color:var(--dim);
+}
+
+.info-row .red{
+  color:var(--red);
+}
+
+.info-row .blue{
+  color:var(--blue);
+}
+
+.command-buttons{
+  display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;
+}
+
+.cmd-btn{
+  padding:10px; font-size:13px; text-align:center;
+  background:var(--panel2); border:1px solid var(--line);
+  border-radius:4px; cursor:pointer; transition:all 0.2s;
+}
+
+.cmd-btn:hover:not(:disabled){
+  border-color:var(--accent); background:var(--panel);
+}
+
+.cmd-btn.active{
+  border-color:var(--accent); background:#2f4d3a;
+}
+
+.cmd-btn:disabled{
+  opacity:0.4; cursor:not-allowed;
+}
+
+.path-controls{
+  margin-top:12px; display:flex; gap:8px;
+}
+
+.path-preview-info{
+  position:fixed; top:60px; left:50%; transform:translateX(-50%);
+  background:var(--panel2); border:1px solid var(--accent);
+  padding:8px 16px; border-radius:4px; font-size:13px;
+}
+
+.attack-mode-indicator{
+  position:fixed; top:60px; left:50%; transform:translateX(-50%);
+  background:var(--panel2); border:1px solid var(--danger);
+  padding:8px 16px; border-radius:4px; font-size:13px; color:var(--danger);
+}
+
+/* Order Submission System */
+.order-submission{
+  background:var(--panel); border:1px solid var(--line);
+  border-radius:6px; padding:16px; margin-top:16px;
+}
+
+.submission-header{
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:12px;
+}
+
+.submission-header h3{
+  margin:0; font-size:14px; color:var(--fg);
+}
+
+.history-toggle{
+  background:none; border:none; color:var(--dim);
+  cursor:pointer; font-size:12px;
+}
+
+.history-toggle:hover{
+  color:var(--accent);
+}
+
+.side-indicator{
+  padding:6px 12px; border-radius:4px; font-size:12px;
+  margin-bottom:12px; text-align:center;
+}
+
+.side-indicator.red{
+  background:#4a2a28; border:1px solid #7a423c; color:#f0c9c4;
+}
+
+.side-indicator.blue{
+  background:#2a3a4a; border:1px solid #3b6186; color:#c7ddf2;
+}
+
+.validation-errors{
+  background:#4a2a28; border:1px solid #7a423c;
+  border-radius:4px; padding:12px; margin-bottom:12px;
+}
+
+.error-header{
+  color:#f0c9c4; font-weight:600; margin-bottom:8px; font-size:13px;
+}
+
+.error-list{
+  display:flex; flex-direction:column; gap:6px;
+}
+
+.error-item{
+  font-size:12px; color:#e8d0cc;
+}
+
+.error-reason{
+  color:#c4a8a4; font-size:11px; margin-left:8px;
+}
+
+.pending-orders{
+  margin-bottom:12px;
+}
+
+.empty-queue{
+  text-align:center; color:var(--dim); font-size:12px;
+  padding:20px;
+}
+
+.queue-summary{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:8px 12px; background:var(--panel2);
+  border-radius:4px; margin-bottom:8px; font-size:12px;
+}
+
+.type-breakdown{
+  display:flex; gap:6px; flex-wrap:wrap;
+}
+
+.type-tag{
+  background:var(--panel); padding:2px 8px;
+  border-radius:3px; font-size:11px; color:var(--dim);
+}
+
+.order-list{
+  display:flex; flex-direction:column; gap:6px;
+  max-height:300px; overflow-y:auto;
+}
+
+.order-item{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 12px; background:var(--panel2);
+  border-radius:4px; border:1px solid var(--line);
+}
+
+.order-info{
+  display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+  font-size:12px;
+}
+
+.order-op{
+  font-weight:600; min-width:80px;
+}
+
+.order-unit{
+  color:var(--dim); font-family:var(--mono);
+}
+
+.order-detail{
+  color:var(--dim); font-size:11px;
+}
+
+.remove-btn{
+  background:none; border:none; color:var(--dim);
+  cursor:pointer; font-size:14px; padding:4px 8px;
+  border-radius:3px;
+}
+
+.remove-btn:hover{
+  background:var(--panel); color:var(--danger);
+}
+
+.submission-actions{
+  display:flex; gap:8px; margin-top:12px;
+}
+
+.btn-submit, .btn-advance{
+  flex:1; padding:10px 16px; border-radius:4px;
+  font-size:13px; font-weight:600; cursor:pointer;
+  border:1px solid var(--line);
+}
+
+.btn-submit{
+  background:#2f4d3a; border-color:#437050; color:#cfe9d6;
+}
+
+.btn-submit:hover:not(:disabled){
+  background:#38603f;
+}
+
+.btn-submit:disabled{
+  opacity:0.4; cursor:not-allowed;
+}
+
+.btn-advance{
+  background:var(--panel2); color:var(--fg);
+}
+
+.btn-advance:hover:not(:disabled){
+  border-color:var(--accent);
+}
+
+.btn-advance:disabled{
+  opacity:0.4; cursor:not-allowed;
+}
+
+.history-panel{
+  margin-top:12px; padding-top:12px;
+  border-top:1px solid var(--line);
+}
+
+.history-header{
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:8px;
+}
+
+.history-header h4{
+  margin:0; font-size:13px; color:var(--fg);
+}
+
+.clear-history{
+  background:none; border:none; color:var(--dim);
+  cursor:pointer; font-size:11px;
+}
+
+.clear-history:disabled{
+  opacity:0.4; cursor:not-allowed;
+}
+
+.empty-history{
+  text-align:center; color:var(--dim); font-size:12px;
+  padding:16px;
+}
+
+.history-list{
+  display:flex; flex-direction:column; gap:4px;
+  max-height:200px; overflow-y:auto;
+}
+
+.history-item{
+  display:flex; gap:8px; padding:6px 10px;
+  background:var(--panel2); border-radius:3px;
+  font-size:11px;
+}
+
+.history-op{
+  min-width:70px;
+}
+
+.history-unit{
+  color:var(--dim); font-family:var(--mono);
+}

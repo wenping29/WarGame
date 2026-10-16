@@ -14,9 +14,13 @@ interface HexMapProps {
   units: StoreUnit[]
   selectedUnit?: StoreUnit | null
   hoveredHex?: { q: number; r: number } | null
+  pathPoints?: Array<{ q: number; r: number }>
+  attackTarget?: StoreUnit | null
+  reachableHexes?: Set<string>
   obsPoints?: Record<string, number> // hexKey -> observation points
   onHexClick?: (q: number, r: number) => void
   onUnitClick?: (unit: StoreUnit) => void
+  onPathPointAdd?: (q: number, r: number) => void
 }
 
 // Terrain colors matching the design system
@@ -44,9 +48,13 @@ export default function HexMap({
   units,
   selectedUnit,
   hoveredHex,
+  pathPoints = [],
+  attackTarget,
+  reachableHexes = new Set(),
   obsPoints = {},
   onHexClick,
   onUnitClick,
+  onPathPointAdd,
 }: HexMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -268,6 +276,108 @@ export default function HexMap({
     [hoveredHex, hexToPixel]
   )
 
+  // Draw movement path
+  const drawPath = useCallback(
+    (ctx: CanvasRenderingContext2D) => {
+      if (pathPoints.length < 2) return
+
+      // Draw path line
+      ctx.strokeStyle = '#ffd700'
+      ctx.lineWidth = 3
+      ctx.setLineDash([5, 3])
+      ctx.beginPath()
+
+      pathPoints.forEach((point, i) => {
+        const { x, y } = hexToPixel(point.q, point.r)
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      })
+
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // Draw path points
+      pathPoints.forEach((point, i) => {
+        const { x, y } = hexToPixel(point.q, point.r)
+        
+        // Start point
+        if (i === 0) {
+          ctx.fillStyle = '#4caf50'
+          ctx.beginPath()
+          ctx.arc(x, y, 6, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        // End point
+        else if (i === pathPoints.length - 1) {
+          ctx.fillStyle = '#f44336'
+          ctx.beginPath()
+          ctx.arc(x, y, 6, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        // Intermediate points
+        else {
+          ctx.fillStyle = '#ffd700'
+          ctx.beginPath()
+          ctx.arc(x, y, 4, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      })
+    },
+    [pathPoints, hexToPixel]
+  )
+
+  // Draw reachable hexes
+  const drawReachable = useCallback(
+    (ctx: CanvasRenderingContext2D) => {
+      if (reachableHexes.size === 0) return
+
+      reachableHexes.forEach((key) => {
+        const [q, r] = key.split(',').map(Number)
+        const { x, y } = hexToPixel(q, r)
+        
+        ctx.fillStyle = 'rgba(76, 175, 80, 0.2)'
+        ctx.beginPath()
+        for (let i = 0; i < 6; i++) {
+          const angle = (Math.PI / 3) * i - Math.PI / 6
+          const px = x + HEX_SIZE * Math.cos(angle)
+          const py = y + HEX_SIZE * Math.sin(angle)
+          if (i === 0) ctx.moveTo(px, py)
+          else ctx.lineTo(px, py)
+        }
+        ctx.closePath()
+        ctx.fill()
+      })
+    },
+    [reachableHexes, hexToPixel]
+  )
+
+  // Draw attack target indicator
+  const drawAttackTarget = useCallback(
+    (ctx: CanvasRenderingContext2D) => {
+      if (!attackTarget) return
+
+      const { x, y } = hexToPixel(attackTarget.q, attackTarget.r)
+      
+      // Red circle around target
+      ctx.strokeStyle = '#f44336'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.arc(x, y, 15, 0, Math.PI * 2)
+      ctx.stroke()
+
+      // Crosshair
+      ctx.strokeStyle = '#f44336'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(x - 20, y)
+      ctx.lineTo(x + 20, y)
+      ctx.moveTo(x, y - 20)
+      ctx.lineTo(x, y + 20)
+      ctx.stroke()
+    },
+    [attackTarget, hexToPixel]
+  )
+
   // Main render loop
   useEffect(() => {
     const canvas = canvasRef.current
@@ -288,10 +398,13 @@ export default function HexMap({
     // Draw layers in order
     drawTerrain(ctx)
     drawFeatures(ctx)
+    drawReachable(ctx)
+    drawPath(ctx)
     drawUnits(ctx)
+    drawAttackTarget(ctx)
     drawFog(ctx)
     drawHover(ctx)
-  }, [width, height, cells, units, selectedUnit, hoveredHex, obsPoints, drawTerrain, drawFeatures, drawUnits, drawFog, drawHover])
+  }, [width, height, cells, units, selectedUnit, hoveredHex, pathPoints, attackTarget, reachableHexes, obsPoints, drawTerrain, drawFeatures, drawReachable, drawPath, drawUnits, drawAttackTarget, drawFog, drawHover])
 
   // Handle click events
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -302,12 +415,18 @@ export default function HexMap({
     const mouseX = e.clientX - rect.left
     const mouseY = e.clientY - rect.top
     
-    // Find clicked hex (simplified - should use proper hex picking)
+    // Find clicked hex
     for (const cell of cells) {
       const { x, y } = hexToPixel(cell.q, cell.r)
       const dist = Math.sqrt((mouseX - x) ** 2 + (mouseY - y) ** 2)
       
       if (dist < HEX_SIZE) {
+        // If drawing path, add point
+        if (onPathPointAdd && pathPoints.length > 0) {
+          onPathPointAdd(cell.q, cell.r)
+          return
+        }
+        
         // Check if clicking on a unit
         const unit = units.find(u => u.q === cell.q && u.r === cell.r)
         if (unit && onUnitClick) {
