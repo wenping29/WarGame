@@ -143,7 +143,7 @@ side_view(side) = {
 | 步骤 | 内容 | 覆盖后效果 |
 | --- | --- | --- |
 | 1 剧本与名称 | 剧本卡片：时代、战场、规模、胜负目标、难度；副本名与随机种子 | 基线 |
-| 2 战场环境与六角格 | 三选一：**沿用剧本默认** / **选已有 GIS 数据包**（元信息卡片：格数、对边距、数据层、bbox）/ **按范围现场生成**（经纬度范围框 + 对边距（可"用推荐对边距"，另有档位快选）+ 数据层开关：高程、土地覆盖、道路）；生成走后台作业，日志逐行回显，完成后自动选中该包 | `overrides.gis_package`；六角格几何与地形全部来自该数据包（见 §6.2） |
+| 2 战场环境与六角格 | 三选一：**沿用剧本默认** / **选已有 GIS 数据包**（元信息卡片：格数、对边距、数据层、bbox）/ **按范围现场生成**（经纬度范围框 + 对边距（可"用推荐对边距"，另有档位快选）+ 数据层开关：高程、土地覆盖、水系（真实矢量河湖）、道路）；生成走后台作业，日志逐行回显，完成后自动选中该包 | `overrides.gis_package`；六角格几何与地形全部来自该数据包（见 §6.2） |
 | 3 天气与演变 | 初始天气（晴/云/雨/暴雨/雪/雾/沙尘）+ 演变模型（固定 / 逐回合概率转移 / 导演部手控） | 覆盖剧本默认天气 |
 | 4 部队编成（OOB 与兵种属性） | 红蓝各：单位清单 + **人员水平**（训练度、经验、士气基线、指挥官能力）；另有**兵种属性覆盖**：机动/火力/防护/侦察/负荷/消耗（本局双方共用的装备基线） | 替换剧本默认兵力；改兵种装备性能并按偏离度**自动重算点数**，预算不足当场报红（见 §7） |
 | 5 审阅并创建 | 完整覆盖 JSON 预览 + 服务端校验错误清单 + 回合上限/胜负等剧本默认展示 | 一个剧本可长出竞技版与教学版 |
@@ -169,7 +169,8 @@ OOB 自定义的两条约束（否则内容立刻崩）：
 真实数据源（已落地）
   ├─ DEM 高程：本地 GeoTIFF `data/dem/global_dem_30s.tif`（EPSG:4326，30″≈0.926 km，SRTM+GEBCO 合成，离线）
   ├─ 土地覆盖：ESA WorldCover 2020 10m（AWS 开放桶，3°×3° 瓦片，按需拉取 + 本地缓存 `data/landcover/`）
-  ├─ 水系：由 DEM 谷底带 + WorldCover 真实水体占比共同判定（无 OSM，见 §11 问 11）
+  ├─ 水系：**Natural Earth 10m 真实矢量**（本地 GeoPackage `data/water/global_water.gpkg`：rivers 线 + lakes_all 面，EPSG:4326）；
+  │        与 DEM 谷底脊线并用——真实河线/湖面按占比叠加判 river/water，谷底脊线兜底保证河带纵向贯通（无 OSM，见 §11 问 11）
   ├─ 道路：由地形派生的通行走廊（**明确标注为派生数据，不是实测路网**）
   └─ 聚落：WorldCover 建筑区占比（为可玩性上限 24 格）
         │
@@ -179,8 +180,9 @@ OOB 自定义的两条约束（否则内容立刻崩）：
   ③ 高程均值 + 邻域高差 / **实地**格距 → 坡度 → 平地/丘陵/山地
   ④ 土地覆盖众数 + 水体/建筑占比 → 林地/农田/城市/水
   ⑤ 规则融合 → 兵棋地形类别，并给每格留**覆盖判据** `lc`（可追溯是"真判"还是"代理"）
-  ⑥ 走廊道路 / 谷底河带 / 桥位 / 聚落叠加覆盖
-  ⑦ 输出：{meta(ox,oy,radius_m,cell_km,**cell_ground_m**,**mercator_scale**,center_lonlat,layers,source), cells:[{q,r,terrain,elev,slope,lc,road,river,city,obs}]}
+  ⑥ 真实水系叠加（在修路之前）：Natural Earth 河线穿过的格判 river、湖面按占比 ≥ 阈值判 water；
+  │   再叠加 DEM 谷底脊线保证河带纵向贯通；走廊道路 / 桥位（= 道路 ∩ 完整河网）/ 聚落覆盖
+  ⑦ 输出：{meta(ox,oy,radius_m,cell_km,**cell_ground_m**,**mercator_scale**,center_lonlat,layers,source,**water**), cells:[{q,r,terrain,elev,slope,lc,road,river,city,obs}]}
         │
         ▼
   在线底图瓦片：天地图 WMTS _w（EPSG:3857）+ 六角格叠加 = 严格对齐，零漂移
@@ -192,8 +194,8 @@ OOB 自定义的两条约束（否则内容立刻崩）：
 - **格距与规模**：战斗级 1–2 km/格、战役级 5–10 km/格；单包上限 30000 格（`gisMaxCells`，超限直接拒），生成作业串行排队、20 分钟超时。
 - **几何只能来自数据包**：引擎建格时优先用 `meta.ox/oy/radius_m/cell_km/mercator_scale`，**不再**回落到 `environment.cell_km` 默认值——这条曾经是真 bug（换包不改几何，格网与底图错位），已由 `verify.dart` 第 [7] 组 7 项锁住。
 - **离线可玩**：数据包是静态 JSON，无 DEM 时可用程序化地形降级（`meta.source` 标注来源）；底图瓦片要密钥且需要联网，加载失败即降级为纯 GIS 上色六角，**玩法不受联网影响**。
-- **数据层诚实标注**：`meta.layers` 逐层记 `elevation/landcover/roads/hydrology/settlements` 的真实/派生/关闭状态，前端元信息卡片直接展示；道路是地形派生走廊，不冒充实测路网。
-- **复现命令**：`python tools/gis/hexgen.py --bbox 6.8,51.2,7.3,51.6 --cell-km 1 --name my_site --out data/gis/my_site.json`；`--plan --bbox ...` 只出方案不生成；`--capabilities` 报告 python/GDAL/DEM/土地覆盖可用性；`--only-validate --out data/gis/xxx.json` 只校验已有数据包（24 项）。浏览器里等价的入口是创建副本向导第 2 步。
+- **数据层诚实标注**：`meta.layers` 逐层记 `elevation/landcover/roads/hydrology/settlements` 的真实/派生/关闭状态，前端元信息卡片直接展示；水系层标注实际用了哪些图层（`natural-earth-rivers+natural-earth-lakes+dem-spine` 等）并附 `meta.water` 溯源（河/湖要素数、缓冲宽度、命中格数）；道路是地形派生走廊，不冒充实测路网。`--water off` 或本机无 gpkg/无 geopandas 时，水文降级为 DEM 派生河带并在 note 里说明，玩法不受影响。
+- **复现命令**：`python tools/gis/hexgen.py --bbox 6.8,51.2,7.3,51.6 --cell-km 1 --name my_site --out data/gis/my_site.json`；`--plan --bbox ...` 只出方案不生成；`--capabilities` 报告 python/GDAL/DEM/土地覆盖/**水系 gpkg**可用性；`--water auto|off` 开关真实矢量水系叠加；`--only-validate --out data/gis/xxx.json` 只校验已有数据包（24 项）。浏览器里等价的入口是创建副本向导第 2 步。
 
 ### 6.3 地形对玩法的既有 + 新增作用
 

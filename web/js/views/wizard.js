@@ -83,7 +83,7 @@ function newState() {
       pkg: '',                 // existing 模式选中的包名（'' = 用剧本默认）
       bbox: { w: env.w, s: env.s, e: env.e, n: env.n },
       cell_km: '',
-      dem: 'auto', landuse: 'auto', roads: true,
+      dem: 'auto', landuse: 'auto', roads: true, water: true,
       name: '',
       plan: null, planBusy: false, planErr: '',
       job: null, jobErr: '', caps: null,
@@ -546,10 +546,15 @@ function generatePanel(st, ctx) {
         el('input', { type: 'checkbox', checked: g.roads, onchange: (e) => { g.roads = e.target.checked; } }),
         el('span', {}, '道路走廊（地形派生：无公开真实道路矢量可用）'),
       ]),
+      el('label', { class: 'sw' }, [
+        el('input', { type: 'checkbox', checked: g.water, onchange: (e) => { g.water = e.target.checked; } }),
+        el('span', {}, '水系（真实矢量：Natural Earth 10m 河流/湖泊，叠加于 DEM 派生河带之上）'),
+      ]),
     ]),
     g.caps && !g.caps.available ? el('p', { class: 'warn small' }, '本机没有可用的 Python，无法现场生成：' + (g.caps.reason || '未知原因')) : null,
     g.caps && g.caps.available && !g.caps.rasterio ? el('p', { class: 'warn small' }, 'Python 缺 rasterio/numpy ⇒ 只能生成合成地形；真实栅格请 pip 安装后重试。') : null,
     g.caps && g.caps.available && g.caps.rasterio && !g.caps.dem_present ? el('p', { class: 'warn small' }, '未发现本地 DEM（' + (g.caps.dem_tif || '?') + '）⇒ 高程将退回合成。') : null,
+    g.caps && g.caps.available && g.water && g.caps.water_vector_ok === false ? el('p', { class: 'warn small' }, '真实水系不可用（' + (g.caps.water_reason || '缺 GeoPackage 或缺 geopandas') + '）⇒ 水文退回 DEM 派生河带。') : null,
     el('div', { class: 'row', style: 'margin-top:12px' }, [
       el('label', {}, [el('span', {}, '数据包名'), d.name]),
       el('button', {
@@ -651,7 +656,7 @@ async function startGen(st, ctx) {
   if (!cell) return toast('请先给出对边距', 'err');
   const spec = {
     bbox: bb, cell_km: cell, name: (g.name || '').trim(),
-    dem: g.dem, landuse: g.landuse, roads: g.roads,
+    dem: g.dem, landuse: g.landuse, roads: g.roads, water: g.water,
   };
   g.jobErr = '';
   const res = await api.gisStartJob(spec);
