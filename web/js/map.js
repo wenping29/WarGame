@@ -288,47 +288,44 @@ export class MapView {
     this._drawTileHint(ctx);
   }
 
-  /// 有密钥但一张瓦片都没成功（key 错/被 WAF 拦/断网）：指数退避后重试。
-  /// 状态条每帧常驻（否则只在跃迁那一帧闪现），并在失败态里自维持重绘——
-  /// Canvas 是按需重绘的，没有这个循环退避计时器永远不会再被检查，瓦片就再也起不来。
+  /// 有密钥但一张瓦片都没成功（key 错/被 WAF 拦/断网）：指数退避后重试，并在画布上常驻状态条。
+  /// Canvas 按需重绘，所以失败态/在途态都要自维持一个 1 s 心跳（见 _reapStalled），
+  /// 否则退避计时器永远不会再被检查，瓦片再也起不来。
   _tileStatus(ctx, w, h) {
     if (!this.tk || !this.tilesEnabled) return;
     if (this.tileSuccess > 0) return;
-    if (this._reapStalled()) { /* 悬挂请求已折算成错误，继续走失败分支 */ }
+    this._reapStalled();
+    // 1 s 心跳：瓦片拿不到时既可能在途也可能已被闸门阻断且无在途请求，两种状态都得有人再叫一次 draw()，
+    // 否则 Canvas 按需重绘 → 没人重绘 → 退避计时器永不推进 → 底图永久熄火。放弃后停止心跳。
+    if (!this._tileGiveUp() && !this._statusTimer) {
+      this._statusTimer = setTimeout(() => { this._statusTimer = 0; this.requestDraw(); }, 1000);
+    }
+    if (this._gateRound > 0) {
+      const backoff = Math.min(60000, 3000 * Math.pow(2, this._gateRound - 1));
+      if (Date.now() - (this._gateSince || 0) < backoff) return; // 本窗口只重试一次，避免每帧刷请求
+    }
     if (this.tileErrors < 6) return; // 首批请求还在途
-    const msg = 'rgba(255,255,255,.55)';
-    ctx.fillStyle = msg;
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
     ctx.font = '11px sans-serif';
     ctx.textAlign = 'left';
     if (this._tileGiveUp()) {
       ctx.fillText('在线底图不可用（密钥或网络问题）· 六角地形仍按 GIS 数据上色 · 修正 data/tianditu.json 后刷新', 8, h - 26);
       return;
     }
-    if (!this._gateSince) this._gateSince = Date.now();
-    const backoff = Math.min(60000, 3000 * Math.pow(2, this._gateRound || 0));
-    const left = backoff - (Date.now() - this._gateSince);
-    if (left <= 0) {
-      this._gateRound = (this._gateRound || 0) + 1;
-      this._gateSince = Date.now();
-      this.tiles.clear();
-      this.tileErrors = 0;
-      return;
-    }
-    ctx.fillText('在线底图连接失败（密钥或网络问题），' + Math.ceil(left / 1000) + ' 秒后重试…', 8, h - 26);
-    if (!this._statusTimer) {
-      this._statusTimer = setTimeout(() => { this._statusTimer = 0; this.requestDraw(); }, 1000);
-    }
+    this._gateRound = (this._gateRound || 0) + 1;
+    this._gateSince = Date.now();
+    this.tiles.clear();
+    this.tileErrors = 0;
+    ctx.fillText('在线底图连接失败（密钥或网络问题），第 ' + this._gateRound + ' 次重试…', 8, h - 26);
   }
 
   /// 请求悬挂（被中间层吞掉，既不 onload 也不 onerror——本机实测浏览器直连天地图就是这种）
   /// 超过 8 s 一律折算成失败，否则 tileErrors 永远是 0，闸门与状态条都不会出现。
   _reapStalled() {
     const now = Date.now();
-    let n = 0;
     for (const t of this.tiles.values()) {
-      if (t.status === 'loading' && t.started && now - t.started > 8000) { t.status = 'err'; this.tileErrors++; n++; }
+      if (t.status === 'loading' && t.started && now - t.started > 8000) { t.status = 'err'; this.tileErrors++; }
     }
-    return n > 0;
   }
 
   /// 连续退避 5 轮仍拿不到瓦片就不再自动重试（约 6 批请求，护住天地图配额），
