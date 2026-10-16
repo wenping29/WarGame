@@ -36,8 +36,12 @@ public sealed class UnitTypeDef
     public bool IsHQ { get; init; }
     public bool SupplySource { get; init; }
     public bool IsAir => Cls == "air";
+    public string AirRole { get; init; } = ""; // fighter/strike/transport (for air units)
     public double Points { get; init; }
     public List<EquipmentItem> Equipment { get; init; } = new();
+    
+    /// <summary>Mobility penalty based on terrain and status.</summary>
+    public double MobilityPenalty() => 1.0; // Simplified, can be expanded
 }
 
 public sealed class EquipmentItem
@@ -68,6 +72,9 @@ public sealed class Rules
     public double FatigueMarch { get; init; } = 1.0;
     public double FatigueCombat { get; init; } = 1.0;
     public double MoraleLossRouted { get; init; } = 20.0;
+    public double FoodPerTurn { get; init; } = 0.05;
+    public double SupplyCrit { get; init; } = 0.3;
+    public int TurnHours { get; init; } = 4;
 }
 
 // ─────────────── Cell (hex terrain + features) ───────────────

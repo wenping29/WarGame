@@ -6,6 +6,9 @@ using HexFront.Core.Models;
 
 namespace HexFront.Core.Services;
 
+/// <summary>Fog of War track (moved to Models namespace).</summary>
+// public class Track { ... } // Now in GameState.cs
+
 /// <summary>
 /// Fog of War: observation accumulation → line-of-sight → exposure levels → side view裁剪.
 /// Ported from fog.dart with full compatibility.
