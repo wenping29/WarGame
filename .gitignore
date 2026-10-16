@@ -147,3 +147,9 @@ appsettings.*.json
 # *.db
 # *.sqlite
 # *.sqlite3
+HexFront.CSharp/src/HexFront.Api/bin/
+HexFront.CSharp/src/HexFront.Api/obj/
+HexFront.CSharp/tests/HexFront.Tests/obj/
+
+
+HexFront.CSharp/tests/HexFront.Tests/bin/
