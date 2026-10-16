@@ -84,6 +84,8 @@ function newState() {
       bbox: { w: env.w, s: env.s, e: env.e, n: env.n },
       cell_km: '',
       dem: 'auto', landuse: 'auto', roads: true, water: true,
+      network: true,   // 真实矢量地物（World_Roads 道路 + NE 机场/隧道）
+      features: true,  // 派生地物层（铁路/电网/车站/隧道等玩法层）
       name: '',
       plan: null, planBusy: false, planErr: '',
       job: null, jobErr: '', caps: null,
@@ -427,6 +429,7 @@ function numField(label, value, oninput, ph = '继承默认') {
 const GIS_MODES = [['existing', '使用已有数据包'], ['generate', '按范围现场生成']];
 const LAYER_CN = {
   elevation: '高程', landcover: '土地覆盖', roads: '道路', hydrology: '水系', settlements: '聚落',
+  railway: '铁路', power: '电网', tunnels: '隧道', airports: '机场',
 };
 
 function pkgOf(name) { return gisPackages().find((p) => p.name === name) || null; }
@@ -544,17 +547,28 @@ function generatePanel(st, ctx) {
           .map(([v, t]) => optionFor(v, t, g.landuse)))]),
       el('label', { class: 'sw' }, [
         el('input', { type: 'checkbox', checked: g.roads, onchange: (e) => { g.roads = e.target.checked; } }),
-        el('span', {}, '道路走廊（地形派生：无公开真实道路矢量可用）'),
+        el('span', {}, '道路走廊（地形派生：补齐真实路网卡住的渡河点）'),
       ]),
       el('label', { class: 'sw' }, [
         el('input', { type: 'checkbox', checked: g.water, onchange: (e) => { g.water = e.target.checked; } }),
         el('span', {}, '水系（真实矢量：Natural Earth 10m 河流/湖泊，叠加于 DEM 派生河带之上）'),
+      ]),
+      el('label', { class: 'sw' }, [
+        el('input', { type: 'checkbox', checked: g.network, onchange: (e) => { g.network = e.target.checked; } }),
+        el('span', {}, '真实矢量地物（World_Roads 干道 + Natural Earth 机场/桥隧标注）'),
+      ]),
+      el('label', { class: 'sw' }, [
+        el('input', { type: 'checkbox', checked: g.features, onchange: (e) => { g.features = e.target.checked; } }),
+        el('span', {}, '地物玩法层（铁路/火车站/公路桥/隧道/电网/电厂/变电站/机场）'),
       ]),
     ]),
     g.caps && !g.caps.available ? el('p', { class: 'warn small' }, '本机没有可用的 Python，无法现场生成：' + (g.caps.reason || '未知原因')) : null,
     g.caps && g.caps.available && !g.caps.rasterio ? el('p', { class: 'warn small' }, 'Python 缺 rasterio/numpy ⇒ 只能生成合成地形；真实栅格请 pip 安装后重试。') : null,
     g.caps && g.caps.available && g.caps.rasterio && !g.caps.dem_present ? el('p', { class: 'warn small' }, '未发现本地 DEM（' + (g.caps.dem_tif || '?') + '）⇒ 高程将退回合成。') : null,
     g.caps && g.caps.available && g.water && g.caps.water_vector_ok === false ? el('p', { class: 'warn small' }, '真实水系不可用（' + (g.caps.water_reason || '缺 GeoPackage 或缺 geopandas') + '）⇒ 水文退回 DEM 派生河带。') : null,
+    g.caps && g.caps.available && g.network && g.caps.vector_ok === false ? el('p', { class: 'warn small' }, '矢量地物读取不可用（' + (g.caps.vector_reason || '缺 pyogrio') + '）⇒ 真实路网卡关闭，地物只按地形派生。') : null,
+    g.caps && g.caps.available && g.network && g.caps.roads_gdb_present === false ? el('p', { class: 'warn small' }, '未发现本地道路库（' + (g.caps.roads_gdb || '?') + '）⇒ 请先解压：7zr x data/gis/World_Roads.lpk "v10/roads.gdb/*" -odata/gis/roads_pkg -y') : null,
+    g.caps && g.caps.available && g.network && g.caps.airports_present === false ? el('p', { class: 'warn small' }, '未发现机场库（' + (g.caps.airports_shp || '?') + '）⇒ 机场改为按地形派生一处野战场站。') : null,
     el('div', { class: 'row', style: 'margin-top:12px' }, [
       el('label', {}, [el('span', {}, '数据包名'), d.name]),
       el('button', {
@@ -644,6 +658,12 @@ function paintProgress(st) {
     j.status === 'done' && j.meta ? el('p', { class: 'small' },
       '自校验 ' + ((j.meta.fails || 0) === 0 ? '全部通过' : (j.meta.fails + ' 项未通过')) +
       ' · 地形构成 ' + JSON.stringify((j.meta.terrain_counts) || {})) : null,
+    j.status === 'done' && j.meta && j.meta.stats ? el('p', { class: 'small' },
+      '地物 ' + [['railway_cells', '铁路'], ['rail_station_cells', '车站'], ['bridge_count', '桥'],
+        ['tunnel_cells', '隧道'], ['powerline_cells', '线路'], ['power_plant_cells', '电厂'],
+        ['substation_cells', '变电站'], ['airport_cells', '机场']]
+        .filter(([k]) => j.meta.stats[k] != null)
+        .map(([k, l]) => l + ' ' + j.meta.stats[k]).join(' / ') || '无地物层') : null,
   ]));
 }
 
@@ -657,6 +677,7 @@ async function startGen(st, ctx) {
   const spec = {
     bbox: bb, cell_km: cell, name: (g.name || '').trim(),
     dem: g.dem, landuse: g.landuse, roads: g.roads, water: g.water,
+    network: g.network, features: g.features,
   };
   g.jobErr = '';
   const res = await api.gisStartJob(spec);

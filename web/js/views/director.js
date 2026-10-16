@@ -48,7 +48,11 @@ export async function renderDirector(root, code, connEl) {
   function renderHud() {
     const hud = root.querySelector('#hud');
     if (!view) { hud.textContent = '连接中…'; return; }
-    hud.innerHTML = `<b>${view.name || ''}</b> · 导演部 · 回合 ${view.turn}/${view.max_turns} · ${hhmm(view.hour)} ${view.day?.label || ''} · ${view.weather?.label || ''} · 迷雾 ${view.flags?.fog ? '开' : '关'}${view.over ? ' · <b>已结束 ' + (view.winner || '') + '</b>' : ''}`;
+    const held = { red: 0, blue: 0 };
+    Object.values(view.node_holders || {}).forEach((s) => { if (held[s] != null) held[s]++; });
+    const pw = view.power ? ` · 电网 红×${view.power.red} 蓝×${view.power.blue}` : '';
+    hud.innerHTML = `<b>${view.name || ''}</b> · 导演部 · 回合 ${view.turn}/${view.max_turns} · ${hhmm(view.hour)} ${view.day?.label || ''} · ${view.weather?.label || ''} · 迷雾 ${view.flags?.fog ? '开' : '关'}` +
+      ` · 要点 红 ${held.red}/蓝 ${held.blue}${pw}${view.over ? ' · <b>已结束 ' + (view.winner || '') + '</b>' : ''}`;
   }
 
   function renderUnits() {

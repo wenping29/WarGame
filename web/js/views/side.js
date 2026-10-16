@@ -76,7 +76,11 @@ export async function renderSide(root, code, role, connEl) {
     const hud = root.querySelector('#hud');
     if (!view) { hud.textContent = '连接中…'; return; }
     const w = view.weather ? view.weather.label : '';
-    hud.innerHTML = `<b>${view.name || ''}</b> · ${view.side === 'red' ? '红方' : '蓝方'} · 回合 ${view.turn}/${view.max_turns} · ${hhmm(view.hour)} ${view.day?.label || ''} · ${w} · 迷雾 ${view.fog ? '开' : '关'}`;
+    // 要点归属只披露己方（视图裁剪过），目标取自 victory 里的 kind=nodes
+    const held = Object.keys(view.node_holders || {}).length;
+    const goal = (view.victory || []).find((v) => v.kind === 'nodes' && v.side === view.side);
+    const nodes = held ? ` · 掌握要点 ${held}${goal && goal.amount ? '/' + goal.amount : ''}` : '';
+    hud.innerHTML = `<b>${view.name || ''}</b> · ${view.side === 'red' ? '红方' : '蓝方'} · 回合 ${view.turn}/${view.max_turns} · ${hhmm(view.hour)} ${view.day?.label || ''} · ${w} · 迷雾 ${view.fog ? '开' : '关'}${nodes}`;
   }
 
   function renderOwn() {

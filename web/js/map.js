@@ -51,6 +51,12 @@ export const TERRAIN_COLOR = {
 };
 const SIDE_COLOR = { red: '#c15b4e', blue: '#4e82b3', neutral: '#7f8c8d' };
 
+// 地形中文名（与 library.dart STANDARD_TERRAIN_JSON 的 label 同源），供格信息条使用
+const TERRAIN_LABEL = {
+  clear: '开阔地', rough: '崎岖地', woods: '林地', hills: '丘陵', mountain: '山地',
+  city: '城镇', swamp: '沼泽', river: '河流', water: '江湖', void: '境外',
+};
+
 export class MapView {
   constructor(canvas) {
     this.canvas = canvas;
@@ -75,6 +81,9 @@ export class MapView {
     this._statusTimer = 0;
     this._idleTimer = 0;
     this.basemap = 'vec';
+    this.nodeHolders = {};   // hexKey -> side（视图已按迷雾裁剪，观战视图为空）
+    this.power = null;       // 导演部：{red:x, blue:x} 电网系数
+    this.nodeLabels = new Map();
     this._cellsKey = null;
     this._cells = [];           // 解析缓存：每帧不再重解析 500 格
     this._cellAt = new Map();
@@ -175,6 +184,9 @@ export class MapView {
   // ── 数据 ──
   setView(view) {
     this.view = view;
+    this.nodeHolders = view.node_holders || {};
+    this.power = view.power || null;
+    this.nodeLabels = new Map((view.nodes || []).map((n) => [n.q + ',' + n.r, n.label]));
     const geo = view.geo;
     if (!geo) return;
     const key = [geo.ox, geo.oy, geo.radius, view.width, view.height, (view.cells || []).length].join('|');
@@ -212,6 +224,9 @@ export class MapView {
         q: c.q, r: c.r, terrain: c.terrain || 'clear',
         elev: c.elev || 0, slope: c.slope || 0,
         road: !!c.road, river: !!c.river, bridge: !!c.bridge, city: c.city || 0,
+        railway: !!c.railway, railStation: !!c.rail_station, tunnel: !!c.tunnel,
+        powerline: !!c.powerline, powerPlant: !!c.power_plant, substation: !!c.substation,
+        airport: c.airport || 0,
         mx, my,
       };
       out.push(rec);
@@ -290,6 +305,7 @@ export class MapView {
     this._drawUnits(ctx);
     this._drawCursorHex(ctx);
     this._drawTileHint(ctx);
+    this._drawFeatureLegend(ctx, this.view.geo ? this.view.geo.radius * this.scale : 0);
   }
 
   /// 有密钥但一张瓦片都没成功（key 错/被 WAF 拦/断网）：指数退避后重试，并在画布上常驻状态条。
@@ -456,6 +472,12 @@ export class MapView {
     ctx.globalAlpha = 1;
     // 道路 / 河流（仅在能看清时画）
     if (rp > 6) this._drawLines(ctx, rp);
+    // 地物层：线状（铁路/输电线）→ 点状（机场/电厂/变电站/车站/隧道）→ 要点归属
+    if (rp > 5) this._drawFeatureLinks(ctx, rp);
+    if (rp > 9) {
+      this._drawFeatureGlyphs(ctx, rp);
+      this._drawNodeRings(ctx, rp);
+    }
     // 格网描边（迷雾底图时更明显）
     if (!showTiles || rp > 14) {
       ctx.globalAlpha = showTiles ? 0.14 : 0.3;
@@ -506,6 +528,273 @@ export class MapView {
           ctx.fillRect(sx + Math.cos(a) * rp * 0.4 - rp * 0.1, sy + Math.sin(a) * rp * 0.4 - rp * 0.1, rp * 0.2, rp * 0.2);
         }
       }
+    }
+  }
+
+  // ── 地物层：铁路 / 输电网络 / 机场 / 电厂 / 变电站 / 车站 / 隧道 / 要点归属 ──
+
+  /// 线状地物沿「共享边」连笔。dirsRight 只取三个偏移，保证每对相邻格只连一次。
+  _linkPairs(key) {
+    const dirsRight = [[1, 0], [1, -1], [0, 1]];
+    const pairs = [];
+    for (const c of this._cells) {
+      if (!c[key]) continue;
+      for (const [dq, dr] of dirsRight) {
+        const nb = this.cellAt(c.q + dq, c.r + dr);
+        if (nb && nb[key]) pairs.push([c, nb]);
+      }
+    }
+    return pairs;
+  }
+
+  _strokePairs(pairs, color, width, dash) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    if (dash) ctx.setLineDash(dash);
+    ctx.beginPath();
+    for (const [a, b] of pairs) {
+      const [ax, ay] = this.toScreen(a.mx, a.my);
+      const [bx, by] = this.toScreen(b.mx, b.my);
+      ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawFeatureLinks(ctx, rp) {
+    const rail = this._linkPairs('railway');
+    if (rail.length) {
+      // 铁路：深色钢轨底 + 浅色枕木断点，和公路的连续实线一眼可分
+      this._strokePairs(rail, '#2b3136', Math.max(1.6, rp * 0.2));
+      this._strokePairs(rail, '#cfd3d6', Math.max(0.9, rp * 0.1), [Math.max(1, rp * 0.12), Math.max(1.6, rp * 0.28)]);
+    }
+    const wire = this._linkPairs('powerline');
+    if (wire.length) this._strokePairs(wire, '#c9b24a', Math.max(1, rp * 0.075), [Math.max(1.5, rp * 0.34), Math.max(1.2, rp * 0.26)]);
+  }
+
+  /// 杆塔只画在线路的端点/分叉上（每个格都画会糊成一片）
+  _pylonCells() {
+    const dirs = [[1, 0], [1, -1], [0, 1], [-1, 1], [-1, 0], [0, -1]];
+    const out = [];
+    for (const c of this._cells) {
+      if (!c.powerline) continue;
+      let deg = 0;
+      for (const [dq, dr] of dirs) {
+        const nb = this.cellAt(c.q + dq, c.r + dr);
+        if (nb && nb.powerline) deg++;
+      }
+      if (deg !== 2) out.push(c);
+    }
+    return out;
+  }
+
+  _drawFeatureGlyphs(ctx, rp) {
+    for (const c of this._cells) {
+      const [sx, sy] = this.toScreen(c.mx, c.my);
+      if (sx < -rp || sy < -rp || sx > this.w + rp || sy > this.h + rp) continue;
+      if (c.tunnel) this._glyphTunnel(sx, sy, rp);
+      if (c.powerPlant) this._glyphPlant(sx, sy, rp);
+      if (c.substation) this._glyphSubstation(sx, sy, rp);
+      if (c.airport > 0) this._glyphAirport(sx, sy, rp, c.airport);
+      if (c.railStation) this._glyphStation(sx, sy, rp);
+    }
+    for (const c of this._pylonCells()) {
+      const [sx, sy] = this.toScreen(c.mx, c.my);
+      if (sx < -rp || sy < -rp || sx > this.w + rp || sy > this.h + rp) continue;
+      this._glyphPylon(sx, sy, rp);
+    }
+  }
+
+  _glyphTunnel(sx, sy, rp) {
+    const ctx = this.ctx, r = rp * 0.32;
+    ctx.beginPath();
+    ctx.moveTo(sx - r, sy + r * 0.75);
+    ctx.lineTo(sx - r, sy - r * 0.1);
+    ctx.arc(sx, sy - r * 0.1, r, Math.PI, 0);
+    ctx.lineTo(sx + r, sy + r * 0.75);
+    ctx.closePath();
+    ctx.fillStyle = '#1c2226'; ctx.fill();
+    ctx.strokeStyle = '#cfd3d6'; ctx.lineWidth = 1; ctx.stroke();
+  }
+
+  _glyphPlant(sx, sy, rp) {
+    const ctx = this.ctx;
+    ctx.beginPath(); ctx.arc(sx, sy, rp * 0.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#3a2f16'; ctx.fill();
+    ctx.strokeStyle = '#e8b53f'; ctx.lineWidth = 1.2; ctx.stroke();
+    const b = [[-.09, -.3], [.16, -.3], [.02, -.05], [.16, -.05], [-.1, .32], [-.01, .03], [-.16, .03]];
+    ctx.beginPath();
+    b.forEach(([x, y], i) => { const px = sx + x * rp, py = sy + y * rp; if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); });
+    ctx.closePath();
+    ctx.fillStyle = '#e8b53f'; ctx.fill();
+  }
+
+  _glyphSubstation(sx, sy, rp) {
+    const ctx = this.ctx, r = rp * 0.34;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - r); ctx.lineTo(sx + r, sy); ctx.lineTo(sx, sy + r); ctx.lineTo(sx - r, sy);
+    ctx.closePath();
+    ctx.fillStyle = '#123330'; ctx.fill();
+    ctx.strokeStyle = '#5fc9b8'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.fillStyle = '#5fc9b8';
+    ctx.fillRect(sx - r * 0.45, sy - r * 0.14, r * 0.9, r * 0.28);
+  }
+
+  _glyphPylon(sx, sy, rp) {
+    const ctx = this.ctx;
+    ctx.strokeStyle = '#c9b24a'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(sx - rp * 0.14, sy + rp * 0.2); ctx.lineTo(sx, sy - rp * 0.22); ctx.lineTo(sx + rp * 0.14, sy + rp * 0.2);
+    ctx.moveTo(sx - rp * 0.2, sy - rp * 0.14); ctx.lineTo(sx + rp * 0.2, sy - rp * 0.14);
+    ctx.stroke();
+  }
+
+  _glyphAirport(sx, sy, rp, grade) {
+    const ctx = this.ctx;
+    const len = rp * (grade >= 2 ? 1.1 : 0.8), wid = rp * 0.22;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(-Math.PI / 5);
+    ctx.fillStyle = '#e2e6e9';
+    ctx.fillRect(-len / 2, -wid / 2, len, wid);
+    ctx.strokeStyle = '#3a4046'; ctx.lineWidth = 0.8;
+    ctx.strokeRect(-len / 2, -wid / 2, len, wid);
+    ctx.setLineDash([rp * 0.12, rp * 0.12]);
+    ctx.beginPath(); ctx.moveTo(-len / 2, 0); ctx.lineTo(len / 2, 0);
+    ctx.strokeStyle = '#a8742a'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.restore();
+    if (grade >= 2) { // 干线机场：塔台角标
+      ctx.beginPath(); ctx.arc(sx + rp * 0.44, sy - rp * 0.44, rp * 0.13, 0, Math.PI * 2);
+      ctx.fillStyle = '#f0d9a5'; ctx.fill();
+    }
+  }
+
+  _glyphStation(sx, sy, rp) {
+    const ctx = this.ctx, w = rp * 0.46, h = rp * 0.3;
+    ctx.fillStyle = '#252a2f';
+    ctx.fillRect(sx - w / 2, sy - h / 2, w, h);
+    ctx.strokeStyle = '#e6e2d6'; ctx.lineWidth = 1;
+    ctx.strokeRect(sx - w / 2, sy - h / 2, w, h);
+    ctx.fillStyle = '#e6e2d6';
+    ctx.fillRect(sx - w / 2, sy - h * 0.1, w, h * 0.2); // 雨棚横线，与兵力的圆角块区分
+  }
+
+  /// 要点归属：视图里给了谁就画谁的虚线圈（双盲视图只含己方，观战视图为空）
+  _drawNodeRings(ctx, rp) {
+    const entries = Object.entries(this.nodeHolders || {});
+    if (!entries.length || rp < 7) return;
+    ctx.save();
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([rp * 0.3, rp * 0.22]);
+    for (const [key, side] of entries) {
+      const c = this._cellAt.get(key);
+      if (!c) continue;
+      const [sx, sy] = this.toScreen(c.mx, c.my);
+      if (sx < -rp || sy < -rp || sx > this.w + rp || sy > this.h + rp) continue;
+      ctx.strokeStyle = SIDE_COLOR[side] || '#7f8c8d';
+      this._hexPath(ctx, sx, sy, rp * 0.88);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _hasFeatures() { return this._cells.some((c) => c.railway || c.powerline || c.tunnel || c.airport || c.powerPlant || c.substation || c.railStation); }
+
+  /// 图例常驻在画布左下，缩略图时也能确认这些线不是渲染噪声
+  /// 图例：竖排在右上（让开缩放控件与底部瓦片提示），缩略时隐藏避免遮挡兵力
+  _drawFeatureLegend(ctx, rp) {
+    if (!this._hasFeatures() || rp < 9 || this.w < 320) return;
+    const has = (k) => this._cells.some((c) => k === 'airport' ? c.airport > 0 : c[k]);
+    const items = [];
+    if (has('railway')) items.push(['rail', '铁路', '#cfd3d6']);
+    if (has('powerline')) items.push(['wire', '输电线', '#c9b24a']);
+    if (has('powerPlant')) items.push(['plant', '发电厂', '#e8b53f']);
+    if (has('substation')) items.push(['sub', '变电站', '#5fc9b8']);
+    if (has('airport')) items.push(['air', '机场', '#e2e6e9']);
+    if (has('railStation')) items.push(['station', '火车站', '#e6e2d6']);
+    if (has('tunnel')) items.push(['tunnel', '隧道', '#cfd3d6']);
+    if (Object.keys(this.nodeHolders || {}).length) items.push(['ring', '掌握要点', '']);
+    const power = this.power ? `电网 红×${this.power.red} 蓝×${this.power.blue}` : null;
+    const rows = items.length + (power ? 1 : 0);
+    const rowH = 15, padX = 7, padY = 6;
+    ctx.save();
+    ctx.font = '11px sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    let boxW = 0;
+    for (const [, label] of items) boxW = Math.max(boxW, 18 + ctx.measureText(label).width);
+    if (power) boxW = Math.max(boxW, ctx.measureText(power).width);
+    boxW += padX * 2;
+    const boxH = rows * rowH + padY * 2;
+    const x0 = this.w - boxW - 8, y0 = 128;
+    ctx.fillStyle = 'rgba(15,19,23,.8)';
+    ctx.strokeStyle = 'rgba(255,255,255,.18)';
+    ctx.lineWidth = 1;
+    this._roundRect(ctx, x0, y0, boxW, boxH, 4);
+    ctx.fill(); ctx.stroke();
+    items.forEach(([kind, label, color], i) => {
+      const cy = y0 + padY + rowH * i + rowH / 2;
+      this._legendMark(ctx, kind, x0 + padX, cy, color);
+      ctx.fillStyle = '#cdd6de';
+      ctx.fillText(label, x0 + padX + 18, cy);
+    });
+    if (power) {
+      ctx.fillStyle = '#e8b53f';
+      ctx.fillText(power, x0 + padX, y0 + padY + rowH * items.length + rowH / 2);
+    }
+    ctx.restore();
+  }
+
+  _legendMark(ctx, kind, x, cy, color) {
+    const cx = x + 8;
+    if (kind === 'rail' || kind === 'wire') {
+      if (kind === 'rail') {
+        ctx.strokeStyle = '#2b3136'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(x + 16, cy); ctx.stroke();
+      }
+      ctx.save();
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.setLineDash(kind === 'wire' ? [3, 2] : [2, 3]);
+      ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(x + 16, cy); ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    if (kind === 'plant') {
+      ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#3a2f16'; ctx.fill();
+      ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.stroke();
+      return;
+    }
+    if (kind === 'sub') {
+      ctx.beginPath(); ctx.moveTo(cx, cy - 5); ctx.lineTo(cx + 5, cy); ctx.lineTo(cx, cy + 5); ctx.lineTo(cx - 5, cy);
+      ctx.closePath();
+      ctx.fillStyle = '#123330'; ctx.fill();
+      ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.stroke();
+      return;
+    }
+    if (kind === 'air') {
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(-Math.PI / 5);
+      ctx.fillStyle = color; ctx.fillRect(-8, -1.4, 16, 2.8); ctx.restore();
+      return;
+    }
+    if (kind === 'station') {
+      ctx.fillStyle = '#252a2f'; ctx.fillRect(cx - 5, cy - 3.5, 10, 7);
+      ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(cx - 5, cy - 3.5, 10, 7);
+      return;
+    }
+    if (kind === 'tunnel') {
+      ctx.beginPath();
+      ctx.moveTo(cx - 5, cy + 4); ctx.lineTo(cx - 5, cy - 1); ctx.arc(cx, cy - 1, 5, Math.PI, 0); ctx.lineTo(cx + 5, cy + 4);
+      ctx.closePath();
+      ctx.fillStyle = '#1c2226'; ctx.fill();
+      ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
+      return;
+    }
+    if (kind === 'ring') {
+      ctx.save(); ctx.setLineDash([3, 2]); ctx.strokeStyle = '#c15b4e'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(cx, cy, 5.5, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
     }
   }
 
@@ -560,6 +849,53 @@ export class MapView {
     ctx.lineWidth = 1.5;
     this._hexPath(ctx, ...this.toScreen(c.mx, c.my), rp * 0.95);
     ctx.stroke();
+    if (rp > 8) this._drawCellInfo(ctx, c, rp);
+  }
+
+  /// 格内地物摘要（悬停即读，不用点）：公路/铁路/桥隧/电网/机场 + 要点归属
+  _cellTags(c) {
+    const t = [];
+    if (c.road) t.push('公路');
+    if (c.railway) t.push('铁路');
+    if (c.railStation) t.push('火车站');
+    if (c.tunnel) t.push('隧道');
+    if (c.powerPlant) t.push('发电厂');
+    if (c.substation) t.push('变电站');
+    else if (c.powerline) t.push('输电线');
+    if (c.airport === 2) t.push('干线机场');
+    else if (c.airport === 1) t.push('野战机场');
+    if (c.bridge) t.push('桥梁');
+    else if (c.river) t.push('无桥渡口');
+    return t;
+  }
+
+  _drawCellInfo(ctx, c, rp) {
+    const key = c.q + ',' + c.r;
+    const tags = this._cellTags(c);
+    const node = this.nodeLabels.get(key);
+    const holder = (this.nodeHolders || {})[key];
+    if (!tags.length && !node) return;
+    const l1 = `(${c.q},${c.r}) ${TERRAIN_LABEL[c.terrain] || c.terrain} · 海拔 ${Math.round(c.elev)}m`;
+    const l2 = [node ? '要点：' + node + (holder ? '（' + (holder === 'red' ? '红方' : '蓝方') + '掌握）' : '') : null, ...tags].filter(Boolean).join(' · ');
+    ctx.save();
+    ctx.font = '11px sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    const lines = l2 ? [l1, l2] : [l1];
+    const wTxt = Math.max(...lines.map((s) => ctx.measureText(s).width));
+    const boxW = wTxt + 14, boxH = lines.length * 15 + 10;
+    const [sx, sy] = this.toScreen(c.mx, c.my);
+    let x0 = sx - boxW / 2, y0 = sy + rp + 8;
+    x0 = Math.max(4, Math.min(this.w - boxW - 4, x0));
+    if (y0 + boxH > this.h - 4) y0 = Math.max(4, sy - rp - boxH - 8);
+    ctx.fillStyle = 'rgba(15,19,23,.86)';
+    ctx.strokeStyle = 'rgba(255,255,255,.2)';
+    ctx.lineWidth = 1;
+    this._roundRect(ctx, x0, y0, boxW, boxH, 4);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#dfe6ec';
+    lines.forEach((s, i) => ctx.fillText(s, x0 + 7, y0 + 12 + i * 15));
+    ctx.restore();
   }
 
   _drawUnits(ctx) {
