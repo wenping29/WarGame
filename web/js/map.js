@@ -4,6 +4,9 @@ import { hexCenterMeters, hexCornerOffsetsMeters, metersToHex, hexDistance, hexR
 import { el } from './util.js';
 
 const E = 20037508.342789244; // EPSG:3857 半周长（米）
+// 屏幕像素/墨卡托米。上限要容得下 fit() 的结果，否则缩放按钮会被夹在边界上毫无反应。
+const SCALE_MIN = 1e-5;
+const SCALE_MAX = 0.6; // 1 km 格 ≈ 600 px，再大瓦片级别也超过天地图的 18 级
 
 // 天地图 WMTS。必须用 _w 后缀（球面墨卡托切片方案）：_c 是经纬度直投，
 // 与六角格所在的 EPSG:3857 不一致，混用会随纬度漂移。
@@ -132,7 +135,7 @@ export class MapView {
 
   _zoomAt(factor, sx, sy) {
     const [mx, my] = this.toMeters(sx, sy);
-    this.scale = Math.max(1e-5, Math.min(3e-3, this.scale * factor));
+    this.scale = Math.max(SCALE_MIN, Math.min(SCALE_MAX, this.scale * factor));
     // 保持光标下的米坐标不动
     this.cx = mx - (sx - this.w / 2) / this.scale;
     this.cy = my + (sy - this.h / 2) / this.scale;
@@ -237,7 +240,8 @@ export class MapView {
     this.cx = (minX + maxX) / 2;
     this.cy = (minY + maxY) / 2;
     const availX = Math.max(1, this.w || 600), availY = Math.max(1, this.h || 400);
-    this.scale = Math.min(availX / spanX, availY / spanY) * 0.92;
+    const k = Math.min(availX / spanX, availY / spanY) * 0.92;
+    this.scale = Math.max(SCALE_MIN, Math.min(SCALE_MAX, k));
   }
 
   // ── 绘制 ──

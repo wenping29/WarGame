@@ -16,53 +16,53 @@
     "classes": {
       "10": {
         "name": "Tree cover",
-        "pixels": 2404786,
-        "pct_of_classified": 59.52
+        "pixels": 51513167,
+        "pct_of_classified": 29.38
       },
       "20": {
         "name": "Shrubland",
-        "pixels": 566557,
-        "pct_of_classified": 14.02
+        "pixels": 8556925,
+        "pct_of_classified": 4.88
       },
       "30": {
         "name": "Grassland",
-        "pixels": 431455,
-        "pct_of_classified": 10.68
+        "pixels": 35240959,
+        "pct_of_classified": 20.1
       },
       "40": {
         "name": "Cropland",
-        "pixels": 43827,
-        "pct_of_classified": 1.08
+        "pixels": 13526840,
+        "pct_of_classified": 7.71
       },
       "50": {
         "name": "Built-up",
-        "pixels": 6762,
-        "pct_of_classified": 0.17
+        "pixels": 722628,
+        "pct_of_classified": 0.41
       },
       "60": {
         "name": "Bare/sparse vegetation",
-        "pixels": 28298,
-        "pct_of_classified": 0.7
+        "pixels": 22413399,
+        "pct_of_classified": 12.78
       },
       "70": {
         "name": "Snow and ice",
-        "pixels": 31,
-        "pct_of_classified": 0.0
+        "pixels": 7016304,
+        "pct_of_classified": 4.0
       },
       "80": {
         "name": "Permanent water bodies",
-        "pixels": 523288,
-        "pct_of_classified": 12.95
+        "pixels": 25854861,
+        "pct_of_classified": 14.75
       },
       "90": {
         "name": "Herbaceous wetland",
-        "pixels": 16791,
-        "pct_of_classified": 0.42
+        "pixels": 3537869,
+        "pct_of_classified": 2.02
       },
       "95": {
         "name": "Mangroves",
-        "pixels": 18191,
-        "pct_of_classified": 0.45
+        "pixels": 142415,
+        "pct_of_classified": 0.08
       },
       "97": {
         "name": "Moss and lichen",
