@@ -223,6 +223,72 @@ void main() {
     check('geo 元信息可往返存档', rt.geo.cellGroundKm == gg.geo.cellGroundKm && rt.geo.radius == gg.geo.radius);
   }
 
+  print('\n[8] 兵种属性覆盖（机动/战力/后勤）与自动计价');
+  final stdLib = Library.standard();
+  final tankBase = stdLib.types['tank']!;
+  final buff = {'id': 'tank', 'firepower': 48, 'mobility': 14, 'consumption': 1.0};
+  final priced = stdLib.withOverrides(types: [Map<String, dynamic>.from(buff)]);
+  final tankPriced = priced.types['tank']!;
+  check('覆盖生效：火力/机动/消耗写进定义库',
+      tankPriced.firepower == 48 && tankPriced.mobility == 14 && tankPriced.consumption == 1.0,
+      '${tankPriced.firepower}/${tankPriced.mobility}/${tankPriced.consumption}');
+  check('未覆盖字段保持出厂值',
+      tankPriced.protection == tankBase.protection && tankPriced.personnel == tankBase.personnel);
+  check('自动计价：强化后点数上升', tankPriced.points > tankBase.points,
+      '${tankBase.points} → ${tankPriced.points}');
+  final oob4 = [
+    {'type': 'tank', 'qty': 4, 'at': [6, 7]}
+  ];
+  check('点数预算按覆盖后属性核算',
+      priced.oobPoints(oob4) > stdLib.oobPoints(oob4),
+      '${stdLib.oobPoints(oob4)} → ${priced.oobPoints(oob4)}');
+  final explicit = stdLib.withOverrides(types: [
+    {'id': 'tank', 'firepower': 48, 'points': 3}
+  ]);
+  check('显式点数优先，不做二次计价', explicit.types['tank']!.points == 3.0);
+  final weakened = stdLib.withOverrides(types: [
+    {'id': 'tank', 'firepower': 6, 'mobility': 5}
+  ]);
+  check('削弱后点数下降但不白送', weakened.types['tank']!.points >= tankBase.points * 0.35,
+      '${weakened.types['tank']!.points}');
+
+  final gt = builder.build(
+    scenarioRaw: scRaw,
+    overrides: {'unit_type_defs': [Map<String, dynamic>.from(buff)]},
+    instanceId: 'VT',
+    instanceName: '强化装甲',
+    seed: 20261016,
+  );
+  final tankU = gt.units.where((u) => u.typeId == 'tank').toList();
+  check('副本单位读到强化后的兵种', tankU.isNotEmpty && gt.typeOf(tankU.first).firepower == 48);
+  final gt2 = GameState.fromJson(gt.toJson());
+  check('存档自包含：载入后强化属性与成交价都在',
+      gt2.typeOf(gt2.units.firstWhere((u) => u.typeId == 'tank')).firepower == 48 &&
+          gt2.lib.types['tank']!.points == tankPriced.points);
+
+  final gBase = builder.build(scenarioRaw: scRaw, instanceId: 'VB0', instanceName: '基线', seed: 31337);
+  final gBuff = builder.build(
+    scenarioRaw: scRaw,
+    overrides: {'unit_type_defs': [Map<String, dynamic>.from(buff)]},
+    instanceId: 'VB1',
+    instanceName: '强化',
+    seed: 31337,
+  );
+  updateObservation(gBase);
+  updateObservation(gBuff);
+  for (var t = 0; t < 3; t++) {
+    resolveTurn(gBase, {
+      'red': aiOrders(gBase, 'red', sideView(gBase, 'red')),
+      'blue': aiOrders(gBase, 'blue', sideView(gBase, 'blue')),
+    });
+    resolveTurn(gBuff, {
+      'red': aiOrders(gBuff, 'red', sideView(gBuff, 'red')),
+      'blue': aiOrders(gBuff, 'blue', sideView(gBuff, 'blue')),
+    });
+  }
+  check('属性覆盖真的进入结算（同种子指纹分叉）', gBase.fingerprint() != gBuff.fingerprint(),
+      '${gBase.fingerprint()} vs ${gBuff.fingerprint()}');
+
   print('\n合计：$_pass 通过 / $_fail 失败');
   exit(_fail == 0 ? 0 : 1);
 }

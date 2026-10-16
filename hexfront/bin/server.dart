@@ -143,12 +143,13 @@ Future<void> api(HttpRequest req, String p) async {
     final sc = store.loadScenario(b['scenario'] as String);
     if (sc == null) return _json(req, {'errors': ['剧本不存在']});
     final merged = b['overrides'] == null ? sc : deepMerge(sc, Map<String, dynamic>.from(b['overrides'] as Map));
-    final errs = Scenario(sc).validate(Library.standard().withOverrides(
-          terrain: (merged['terrain_defs'] as List?)?.cast<Map<String, dynamic>>(),
-          types: (merged['unit_type_defs'] as List?)?.cast<Map<String, dynamic>>(),
-          weather: (merged['weather_defs'] as List?)?.cast<Map<String, dynamic>>(),
-        ));
-    return _json(req, {'errors': errs, 'preview': _oobPreview(merged)});
+    final eff = _effectiveLibrary(merged);
+    final errs = Scenario(merged).validate(eff)..addAll(_validateTypeDefs(merged, library));
+    return _json(req, {
+      'errors': errs,
+      'preview': _oobPreview(merged, eff),
+      'type_points': _typePoints(merged, eff),
+    });
   }
 
   if (req.method == 'POST' && p == '/api/instances') {
@@ -158,12 +159,10 @@ Future<void> api(HttpRequest req, String p) async {
     if (sc == null) return _json(req, {'error': '剧本不存在: $scenarioId'}, 404);
     final overrides = b['overrides'] == null ? <String, dynamic>{} : Map<String, dynamic>.from(b['overrides'] as Map);
     final merged = overrides.isEmpty ? sc : deepMerge(sc, overrides);
-    final errs = Scenario(sc).validate(Library.standard().withOverrides(
-          terrain: (merged['terrain_defs'] as List?)?.cast<Map<String, dynamic>>(),
-          types: (merged['unit_type_defs'] as List?)?.cast<Map<String, dynamic>>(),
-          weather: (merged['weather_defs'] as List?)?.cast<Map<String, dynamic>>(),
-        ))
-      ..addAll(_validateOverrides(overrides));
+    final eff = _effectiveLibrary(merged);
+    final errs = Scenario(merged).validate(eff)
+      ..addAll(_validateTypeDefs(merged, library))
+      ..addAll(_validateOverrides(overrides, eff));
     if (errs.isNotEmpty && b['force'] != true) {
       return _json(req, {'error': '剧本/覆盖校验未通过', 'errors': errs}, 400);
     }
@@ -241,7 +240,80 @@ List<double>? _bboxFromQuery(Map<String, String> q) {
   return [w, s, e, n];
 }
 
-List<String> _validateOverrides(Map<String, dynamic> ov) {
+/// 副本创建者能改的兵种属性（JSON 键名）。其余键一律拒绝：
+/// cls/is_hq/supply_source/air_role 动的是规则语义，不是"装备性能"。
+const TYPE_PATCH_KEYS = {
+  'label', 'mobility', 'firepower', 'protection', 'recon', 'load', 'consumption', 'personnel', 'range', 'anti_air', 'points'
+};
+const TYPE_PATCH_RANGES = {
+  'mobility': [0.0, 60.0],
+  'firepower': [0.0, 120.0],
+  'protection': [0.05, 8.0],
+  'recon': [0.0, 20.0],
+  'load': [0.05, 8.0],
+  'consumption': [0.0, 10.0],
+  'personnel': [1.0, 5000.0],
+  'range': [0.0, 12.0],
+  'anti_air': [0.0, 10.0],
+};
+
+/// 剧本 + 覆盖层 → 有效定义库（校验与预算都必须用它，否则覆盖后的兵种按出厂价算）
+Library _effectiveLibrary(Map<String, dynamic> merged) => Library.standard().withOverrides(
+      terrain: (merged['terrain_defs'] as List?)?.cast<Map<String, dynamic>>(),
+      types: (merged['unit_type_defs'] as List?)?.cast<Map<String, dynamic>>(),
+      weather: (merged['weather_defs'] as List?)?.cast<Map<String, dynamic>>(),
+    );
+
+/// 兵种属性覆盖的合法性（对出厂库检查，覆盖后的库只用来计价）
+List<String> _validateTypeDefs(Map<String, dynamic> merged, Library base) {
+  final errs = <String>[];
+  final defs = merged['unit_type_defs'];
+  if (defs is! List) return errs;
+  for (final e in defs) {
+    if (e is! Map) {
+      errs.add('unit_type_defs 的每一项必须是对象');
+      continue;
+    }
+    final id = e['id'];
+    if (id is! String || !base.types.containsKey(id)) {
+      errs.add('兵种属性覆盖只允许改既有兵种，未知兵种 $id');
+      continue;
+    }
+    for (final k in e.keys) {
+      if (k is! String || k == 'id') continue;
+      if (!TYPE_PATCH_KEYS.contains(k)) errs.add('兵种 $id 不允许覆盖字段 $k');
+    }
+    TYPE_PATCH_RANGES.forEach((k, bound) {
+      final v = e[k];
+      if (v == null) return;
+      if (v is! num) {
+        errs.add('兵种 $id 的 $k 必须是数值');
+        return;
+      }
+      if (v < bound[0] || v > bound[1]) {
+        errs.add('兵种 $id 的 $k=$v 超出允许区间 ${bound[0]}–${bound[1]}');
+      }
+    });
+    if (e['points'] is num && (e['points'] as num) <= 0) errs.add('兵种 $id 的显式点数必须大于 0');
+  }
+  return errs;
+}
+
+/// 覆盖后各兵种的成交价（含自动计价结果），供向导展示——前端不自己算钱
+Map<String, dynamic> _typePoints(Map<String, dynamic> merged, Library eff) {
+  final out = <String, dynamic>{};
+  final defs = merged['unit_type_defs'];
+  if (defs is! List) return out;
+  for (final e in defs) {
+    if (e is! Map) continue;
+    final id = e['id'];
+    final t = id is String ? eff.types[id] : null;
+    if (t != null) out[id] = t.points;
+  }
+  return out;
+}
+
+List<String> _validateOverrides(Map<String, dynamic> ov, Library eff) {
   final errs = <String>[];
   final sides = ov['sides'];
   if (sides is Map) {
@@ -253,11 +325,11 @@ List<String> _validateOverrides(Map<String, dynamic> ov) {
       if (oob is List) {
         for (final u in oob) {
           if (u is! Map) continue;
-          if (!library.types.containsKey(u['type'])) errs.add('未知兵种 ${u['type']}');
+          if (!eff.types.containsKey(u['type'])) errs.add('未知兵种 ${u['type']}');
         }
         final budget = cfg['points_budget'];
         if (budget is num && budget > 0) {
-          final used = library.oobPoints(oob.cast<Map<String, dynamic>>());
+          final used = eff.oobPoints(oob.cast<Map<String, dynamic>>());
           if (used > budget + 0.001) {
             errs.add('阵营 ${e.key} 点数 ${used.toStringAsFixed(0)} 超出预算 ${budget.toStringAsFixed(0)}');
           }
@@ -266,20 +338,20 @@ List<String> _validateOverrides(Map<String, dynamic> ov) {
     }
   }
   final wx = ov['weather'];
-  if (wx is Map && wx['initial'] != null && !library.weather.containsKey(wx['initial'])) {
+  if (wx is Map && wx['initial'] != null && !eff.weather.containsKey(wx['initial'])) {
     errs.add('未知天气 ${wx['initial']}');
   }
   return errs;
 }
 
-Map<String, dynamic> _oobPreview(Map<String, dynamic> merged) {
+Map<String, dynamic> _oobPreview(Map<String, dynamic> merged, Library eff) {
   final sides = merged['sides'] as Map? ?? {};
   final out = <String, dynamic>{};
   sides.forEach((k, v) {
     final cfg = v as Map;
     final oob = (cfg['oob'] as List? ?? []).cast<Map<String, dynamic>>();
     out[k as String] = {
-      'points': library.oobPoints(oob),
+      'points': eff.oobPoints(oob),
       'budget': cfg['points_budget'],
       'units': oob.fold<int>(0, (s, e) => s + ((e['qty'] as num?)?.toInt() ?? 1)),
       'name': cfg['name'],

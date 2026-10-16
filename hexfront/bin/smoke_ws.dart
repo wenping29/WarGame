@@ -265,6 +265,37 @@ Future<void> main(List<String> args) async {
   check('对面 AI 代管时，人类就绪即自动结算（不再空等）',
       red.view['turn'] == t7 + 1, '${red.view['turn']} vs $t7');
 
+  print('\n[8] 兵种属性覆盖：服务端计价与拒非法覆盖');
+  Map<String, dynamic> ov(List<Map<String, dynamic>> defs) => {
+        'scenario': 'rhine_corridor',
+        'overrides': {'unit_type_defs': defs}
+      };
+  final priced = await _post(port, '/api/validate', ov([
+    {'id': 'tank', 'firepower': 48, 'mobility': 14}
+  ]));
+  final tp = (priced['type_points'] as Map?)?['tank'];
+  check('覆盖后点数由服务端自动计价', tp is num && tp > 26, '$tp');
+  final badField = await _post(port, '/api/validate', ov([
+    {'id': 'tank', 'cls': 'air'}
+  ]));
+  check('规则语义字段（cls）不允许覆盖',
+      (badField['errors'] as List? ?? []).any((e) => e.toString().contains('不允许覆盖字段 cls')));
+  final badRange = await _post(port, '/api/validate', ov([
+    {'id': 'tank', 'firepower': 900}
+  ]));
+  check('越界属性被拒', (badRange['errors'] as List? ?? []).any((e) => e.toString().contains('超出允许区间')));
+  final badId = await _post(port, '/api/validate', ov([
+    {'id': 'mecha', 'firepower': 5}
+  ]));
+  check('未知兵种覆盖被拒', (badId['errors'] as List? ?? []).any((e) => e.toString().contains('未知兵种 mecha')));
+  final badCreate = ov([
+    {'id': 'tank', 'cls': 'air'}
+  ]);
+  badCreate['name'] = '非法覆盖';
+  final badResp = await _post(port, '/api/instances', badCreate);
+  check('非法覆盖建不出副本', badResp['code'] == null && badResp['error'] != null,
+      '${badResp['error']}');
+
   print('\n合计：$pass 通过 / $fail 失败');
   exit(fail == 0 ? 0 : 1);
 }

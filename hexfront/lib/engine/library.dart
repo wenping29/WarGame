@@ -48,6 +48,45 @@ const STANDARD_WEATHER_JSON = [
   {'id': 'sandstorm', 'label': '沙尘', 'mobility': 0.8, 'recon': 0.5, 'combat': 0.9, 'attrition': 1.2, 'supply': 0.9, 'visibility': 2},
 ];
 
+/// 兵种属性 → 点数权重（相对基准值的偏离度）。
+/// 战力与防护最贵，机动次之；负荷与消耗是"负担"，调高反而便宜——
+/// 因为它们在结算里真的会扣 MP 和补给，不该按涨价处理。
+const TYPE_PRICE_WEIGHTS = {
+  'firepower': 0.55,
+  'protection': 0.45,
+  'mobility': 0.35,
+  'recon': 0.25,
+  'personnel': 0.30,
+  'load': -0.12,
+  'consumption': -0.18,
+};
+/// 射程类是整数格，按加数量计（每格 / 每点强度）
+const TYPE_PRICE_ADDITIVE = {'range': 0.08, 'anti_air': 0.06};
+const TYPE_PRICE_MIN = 0.35;
+const TYPE_PRICE_MAX = 2.6;
+
+/// 属性覆盖的自动计价：补丁没显式给 points 就按偏离度收钱，
+/// 否则"把坦克火力从 24 调到 48"就能绕过点数预算。
+double pricedPoints(UnitTypeDef base, Map<String, dynamic> patch) {
+  final cur = base.toJson();
+  var mult = 1.0;
+  TYPE_PRICE_WEIGHTS.forEach((key, w) {
+    final raw = patch[key];
+    if (raw is! num) return;
+    final b = (cur[key] as num?)?.toDouble() ?? 0.0;
+    final denom = b.abs() < 0.5 ? 1.0 : b.abs(); // 基准过小时用统一标尺，避免 0.05→0.1 记成 +100%
+    mult += w * ((raw.toDouble() - b) / denom);
+  });
+  TYPE_PRICE_ADDITIVE.forEach((key, w) {
+    final raw = patch[key];
+    if (raw is! num) return;
+    final b = (cur[key] as num?)?.toDouble() ?? 0.0;
+    mult += w * (raw.toDouble() - b);
+  });
+  final k = mult.clamp(TYPE_PRICE_MIN, TYPE_PRICE_MAX);
+  return double.parse((base.points * k).toStringAsFixed(1));
+}
+
 class Library {
   final Map<String, TerrainDef> terrains;
   final Map<String, UnitTypeDef> types;
@@ -82,6 +121,8 @@ class Library {
       final base = u[e['id']];
       final merged = Map<String, dynamic>.from(base?.toJson() ?? {});
       merged.addAll(e);
+      // 补丁未显式标价 ⇒ 按属性偏离度自动计价（存档快照带 points，不会被二次计价）
+      if (base != null && e['points'] == null) merged['points'] = pricedPoints(base, e);
       final d = UnitTypeDef.fromJson(merged);
       u[d.id] = d;
     }

@@ -7,6 +7,8 @@ import { getMeta, router } from '../router.js';
 const FLAGS = [['fog', '战争迷雾'], ['air_superiority', '制空权'], ['strict_supply', '严格后勤'], ['night', '夜间作战']];
 const WMODES = [['', '（继承默认）'], ['fixed', '固定'], ['stochastic', '逐回合概率转移'], ['director', '导演部手控']];
 const STEP_TITLES = ['剧本与名称', '战场环境', '天气', '部队编成', '审阅并创建'];
+// 兵种属性覆盖：只放"装备性能"，规则语义（cls/指挥所/补给源/航空角色）不在创建副本时开放
+const TYPE_ATTRS = [['mobility', '机动'], ['firepower', '火力'], ['protection', '防护'], ['recon', '侦察'], ['load', '负荷'], ['consumption', '消耗']];
 let META = null;
 
 const num = (v) => (v === '' || v == null || isNaN(+v) ? null : +v);
@@ -90,6 +92,8 @@ function newState() {
     weather: { initial: '', mode: '' },
     sides: { red: { oob: [], budget: '' }, blue: { oob: [], budget: '' } },
     _oobDirty: { red: false, blue: false },
+    typeRows: [],                      // 被覆盖属性的兵种 id（按加入顺序）
+    types: {},                         // id → {属性: 输入值}，空字符串=继承默认
     ai: { red: false, blue: false },
     lastValidate: null,
   };
@@ -162,6 +166,18 @@ function buildOverrides(st) {
     if (Object.keys(cfg).length) sides[side] = cfg;
   }
   if (Object.keys(sides).length) ov.sides = sides;
+
+  const tdefs = [];
+  for (const id of st.typeRows) {
+    const p = st.types[id] || {};
+    const e = { id };
+    for (const [k] of TYPE_ATTRS) {
+      const v = num(p[k]);
+      if (v !== null) e[k] = v;
+    }
+    if (Object.keys(e).length > 1) tdefs.push(e);
+  }
+  if (tdefs.length) ov.unit_type_defs = tdefs;
   return ov;
 }
 
@@ -243,10 +259,11 @@ const STEP_RENDER = {
   },
 
   3: (st, ctx) => el('div', {}, [
-    el('h2', {}, '第 4 步 · 红蓝部队编成（OOB）'),
+    el('h2', {}, '第 4 步 · 红蓝部队编成（OOB 与兵种属性）'),
     el('p', { class: 'muted small' }, '留空即继承剧本默认兵力。一旦增删行即整体替换该阵营 OOB（服务端按列表替换语义合并）。'),
     oobWrap(st, 'red', ctx),
     oobWrap(st, 'blue', ctx),
+    typeDefsWrap(st, ctx),
     nav(ctx, 4),
   ]),
 
@@ -300,6 +317,49 @@ function oobWrap(st, side, ctx) {
   ]);
 }
 
+function typeDefsWrap(st, ctx) {
+  const ids = st.typeRows;
+  const pick = el('select', {}, types().map((t) => optionFor(t.id, t.label + '·' + t.points + '点', '')));
+  const head = el('tr', {}, ['兵种'].concat(TYPE_ATTRS.map(([, l]) => l)).concat(['']));
+  const rows = ids.map((id, i) => {
+    const base = types().find((t) => t.id === id) || {};
+    const cur = st.types[id] || (st.types[id] = {});
+    return el('tr', {}, [
+      el('td', {}, el('b', {}, base.label || id)),
+      ...TYPE_ATTRS.map(([k, label]) => el('td', {}, el('input', {
+        class: 'num', type: 'number', step: '0.1',
+        value: cur[k] == null ? '' : cur[k], placeholder: String(base[k] == null ? '' : base[k]),
+        title: label + '：留空=出厂默认 ' + (base[k] == null ? '-' : base[k]),
+        oninput: (e) => { cur[k] = e.target.value; ctx.doValidate(); },
+      }))),
+      el('td', {}, el('button', { class: 'btn btn-sm', onclick: () => { ids.splice(i, 1); ctx.render(); } }, '移除')),
+    ]);
+  });
+  return el('div', { class: 'typedev' }, [
+    el('div', { class: 'row', style: 'justify-content:space-between; align-items:baseline; margin-bottom:6px' }, [
+      el('b', {}, '兵种属性覆盖（机动 / 战力 / 后勤）'),
+      el('div', { class: 'row', style: 'gap:6px' }, [
+        pick,
+        el('button', {
+          class: 'btn btn-sm',
+          onclick: () => {
+            const id = pick.value;
+            if (!id) return toast('请选择兵种', 'err');
+            if (ids.includes(id)) return toast('该兵种已在列表里', 'err');
+            ids.push(id); ctx.render();
+          },
+        }, '加入覆盖'),
+      ]),
+    ]),
+    el('p', { class: 'muted small' },
+      '留空的字段继承出厂定义；改动即按属性偏离度自动加价/减价（见右侧「兵种成交价」）。'
+      + '兵种属性是本局双方共用的装备性能基线，阵营差异请用上面的 OOB 人员水平表达。'),
+    ids.length
+      ? el('div', { style: 'overflow:auto' }, el('table', { class: 'oob-table' }, el('tbody', {}, [head].concat(rows))))
+      : el('div', { class: 'muted small' }, '（未覆盖任何兵种：全部使用剧本/标准库定义）'),
+  ]);
+}
+
 function oobRow(row, patch, remove) {
   const td = (input) => el('td', {}, input);
   const typeSel = el('select', { onchange: (e) => patch({ type: e.target.value }) },
@@ -332,8 +392,18 @@ function sidePanel(st, ctx) {
       el('span', { class: 'mini' }, (p.units || 0) + ' 单位'),
     ]);
   };
+  const tp = (v && v.type_points) || {};
+  const priceRows = Object.keys(tp).map((id) => {
+    const base = types().find((t) => t.id === id) || {};
+    const up = tp[id] > (base.points || 0);
+    return el('div', { class: 'price' + (up ? ' up' : '') }, [
+      el('span', {}, base.label || id),
+      el('span', { class: 'mono' }, (base.points != null ? base.points : '-') + ' → ' + tp[id] + ' 点'),
+    ]);
+  });
   return el('div', {}, [
     el('div', { class: 'preview-box' }, [el('h3', {}, '点数预算'), budgetRow('red'), budgetRow('blue')]),
+    priceRows.length ? el('div', { class: 'preview-box' }, [el('h3', {}, '兵种成交价（服务端自动计价）'), priceRows]) : null,
     el('div', { class: 'preview-box' }, [
       el('h3', {}, 'AI 代管（开局即托管，便于单端自测）'),
       el('div', { class: 'row' }, [

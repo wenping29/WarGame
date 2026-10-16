@@ -92,6 +92,9 @@ label>span{color:var(--dim)}
 .preview-box{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:10px; margin-bottom:10px}
 .budget{display:flex; justify-content:space-between; font-size:13px}
 .budget .over{color:var(--danger)}
+.price{display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:2px 0}
+.price.up span:last-child{color:var(--warn)}
+.typedev{margin-top:16px; border-top:1px solid var(--line); padding-top:12px}
 .err-list{color:#f0c9c4; font-size:12px; margin:4px 0; padding-left:0; list-style:none}
 .err-list li{padding:2px 0; border-bottom:1px dashed #5a3330}
 .warn{color:var(--warn)}
