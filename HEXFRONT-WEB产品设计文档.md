@@ -195,12 +195,75 @@ OOB 自定义的两条约束（否则内容立刻崩）：
 - **格距与规模**：战斗级 1–2 km/格、战役级 5–10 km/格；单包上限 30000 格（`gisMaxCells`，超限直接拒），生成作业串行排队、20 分钟超时。
 - **几何只能来自数据包**：引擎建格时优先用 `meta.ox/oy/radius_m/cell_km/mercator_scale`，**不再**回落到 `environment.cell_km` 默认值——这条曾经是真 bug（换包不改几何，格网与底图错位），已由 `verify.dart` 第 [7] 组 7 项锁住。
 - **离线可玩**：数据包是静态 JSON，无 DEM 时可用程序化地形降级（`meta.source` 标注来源）；底图瓦片要密钥且需要联网，加载失败即降级为纯 GIS 上色六角，**玩法不受联网影响**。
-- **数据层诚实标注**：`meta.layers` 逐层记 `elevation/landcover/roads/hydrology/settlements` 的真实/派生/关闭状态，前端元信息卡片直接展示；水系层标注实际用了哪些图层（`natural-earth-rivers+natural-earth-lakes+dem-spine` 等）并附 `meta.water` 溯源（河/湖要素数、缓冲宽度、命中格数）；道路是地形派生走廊，不冒充实测路网。`--water off` 或本机无 gpkg/无 geopandas 时，水文降级为 DEM 派生河带并在 note 里说明，玩法不受影响。
-- **复现命令**：`python tools/gis/hexgen.py --bbox 6.8,51.2,7.3,51.6 --cell-km 1 --name my_site --out data/gis/my_site.json`；`--plan --bbox ...` 只出方案不生成；`--capabilities` 报告 python/GDAL/DEM/土地覆盖/**水系 gpkg**可用性；`--water auto|off` 开关真实矢量水系叠加；`--only-validate --out data/gis/xxx.json` 只校验已有数据包（24 项）。浏览器里等价的入口是创建副本向导第 2 步。
+- **数据层诚实标注**：`meta.layers` 逐层记 `elevation/landcover/roads/hydrology/settlements/railway/power/tunnels/airports` 的真实/派生/关闭状态，前端元信息卡片直接展示；水系层标注实际用了哪些图层（`natural-earth-rivers+natural-earth-lakes+dem-spine` 等）并附 `meta.water` 溯源（河/湖要素数、缓冲宽度、命中格数）；道路是真实矢量路网（World_Roads RANK=1 干道 + 地形派生走廊补齐渡河点），不冒充实测路网；铁路/电网/隧道/机场按真实源或派生算法分别标注。`--water off` 或本机无 gpkg/无 geopandas 时，水文降级为 DEM 派生河带并在 note 里说明，玩法不受影响。
+- **复现命令**：`python tools/gis/hexgen.py --bbox 6.8,51.2,7.3,51.6 --cell-km 1 --name my_site --out data/gis/my_site.json`；`--plan --bbox ...` 只出方案不生成；`--capabilities` 报告 python/GDAL/DEM/土地覆盖/**水系 gpkg/矢量地物**可用性；`--water auto|off` 开关真实矢量水系叠加；`--network auto|off` 开关真实矢量地物（World_Roads + NE 机场）；`--features on|off` 开关派生地物玩法层（铁路/电网/车站/隧道/电厂/变电站/机场）；`--only-validate --out data/gis/xxx.json` 只校验已有数据包（37 项）。浏览器里等价的入口是创建副本向导第 2 步。
 
 ### 6.3 地形对玩法的既有 + 新增作用
 
 通行代价（四类机动 foot/horse/motor/mech）、防御加成、观察限制、**通视遮挡（新）**、渡河与桥梁、构筑工事上限。
+
+#### 6.4 地物层玩法（已实现 · 2026-10-17）
+
+真实矢量地物（World_Roads 干道 + Natural Earth 机场/桥隧标注）与派生地物层（铁路/火车站/公路桥/隧道/电网/电厂/变电站/野战/干线机场）共同构成战场基础设施网络，直接影响机动、补给与胜利条件。
+
+**数据口径（能真则真，诚实标注）**：
+
+| 地物 | 数据来源 | 处理方式 | 约束不变式 |
+|---|---|---|---|
+| 公路 | World_Roads.lpk (RANK=1) + 地形派生走廊 | 真实路网为主，派生走廊补渡河点 | bridge ⊆ river |
+| 河流 | Natural Earth 10m rivers/lakes + DEM 派生河带 | 真实矢量叠加于 DEM 纵向贯通河带之上 | 河带始终纵向贯通 |
+| 铁路 | Dijkstra 最短路径（西边缘→首都→东边缘） | 派生，只在桥位渡河 | 铁路河 ⊆ 桥位 |
+| 隧道 | Natural Earth RD_FEATURE=Tunnel + 地形坡度/起伏派生 | 真实在线上非水面格保留，派生限 6 处 | 隧道在线上且不在水面 |
+| 机场 | Natural Earth 10m airports (major/international) | 真实点取前 3 个，否则派生一处野战 | 等级 ∈ {1,2} |
+| 电厂/变电站 | 地形平坦度 + 距河距离 + 城市分布 | 派生，每个电厂都连到电网 | 电厂⊆平地，变电站⊆聚落 |
+| 火车站 | 铁路格 ∩ 聚落格 | 派生 | 车站铁路 |
+| 电网线路 | 电厂→变电站→变电站 最小生成树 | 派生，跨河有惩罚 | 线路占比受控 |
+
+**引擎玩法集成**：
+
+| 机制 | 规则 | 代码位置 |
+|---|---|---|
+| 铁路机动 | motor/mech ×0.8（与公路 0.65 可叠加 → 0.52）；foot 不搭车不受惠 | `turn.dart:stepCost()` |
+| 隧道限行 | motor/mech ×1.5，foot ×1.2 | `turn.dart:stepCost()` |
+| 机场补给节点 | 夺下场站格 + 该方仍有航空兵在场 ⇒ 距离归 0；航空兵撤离后失效 | `mechanics.dart:supplyDistances()` |
+| 电网系数 | 必须同时掌握「电厂」和「至少一处变电站」才通电；红利 = 1.0 + 0.15×held/nodes，封顶 +15% | `mechanics.dart:powerFactor()` |
+| 电网进补给 | supply_rate × power_factor | `mechanics.dart:computeSupply()` |
+| 要点归属 | 争夺中（两方同格）不算占；双盲视图只披露己方占领 | `fog.dart:nodeHolders()` |
+| 要点胜利 | `kind: "nodes", amount: N` ⇒ 同时掌握 N 处要点即达成 | `turn.dart:_checkVictory()` |
+
+**迷雾纪律**：要点地理（城镇/车站/机场/电厂/变电站的位置与类别）是公开知识，随 `_common` 下发所有视图；但**归属（谁占了哪个要点）是情报**，`sideView` 只给己方占领的归属，`directorView` 给双方，`spectatorView` 不给任何归属。导演部 HUD 额外显示双方电网系数。
+
+**前端渲染**（map.js）：铁路用深色钢轨底 + 浅色枕木断点（与公路连续实线区分）；输电线用黄色虚线；机场用跑道符号（干线加塔台角标）；电厂用闪电符号；变电站用菱形；火车站用雨棚矩形；隧道用拱形；杆塔只画在线路端点/分叉上；要点归属用阵营色虚线圈。悬停格内显示地物摘要标签（公路/铁路/桥隧/电网/机场/要点名称与归属）。右上角常驻图例（缩略时隐藏）。
+
+**验证结果**（bin/verify.dart [9] 节，23 项全部通过）：
+
+```
+✓ 铁路/隧道/电网/机场写入引擎格网
+✓ 地物不变式：车站⊆铁路 · 桥⊆河 · 隧道在线上且不在水面
+✓ 地物字段随存档往返
+✓ 铁路使摩托化机动更省，徒步不搭车不受惠
+✓ 公路与铁路折扣可叠加（0.65×0.8）
+✓ 隧道限行：重装备比徒步更吃亏
+✓ 无桥渡河重罚 +2，桥位免罚
+✓ 开局双方都不通电（电网系数 1.0）
+✓ 只夺电厂仍不通电
+✓ 电厂 + 变电站同时掌握才通电（红利封顶 +15%）
+✓ 未掌握电网的一方不吃红利
+✓ 电网红利进入补给系数（远端最弱格上浮）
+✓ 地面部队站上机场 ⇒ 该格成为补给节点（距离归 0）
+✓ 航空兵撤离后机场不再供补给（空运需要机组）
+✓ 机场等级只用 1/2（野战/干线）
+✓ 要点清单齐备（含类别与中文标签）
+✓ 各方视图的要点地理一致（地形不是情报）
+✓ 双盲视图只披露己方占领（敌方归属属情报）
+✓ 导演部视图给出双方电网系数
+✓ 观战视图不给要点归属
+✓ 落位后红方确握 3 处要点
+✓ 要点数量达成即终局（kind=nodes）
+✓ 带地物地图可连续推演（14 回合）且无异常
+```
+
+总引擎自检：**61 通过 / 0 失败**（原地物前 38/38）。
 
 ---
 
@@ -368,10 +431,10 @@ dart run bin/server.dart 8770
 
 ```bash
 cd D:/Project/wargame/hexfront
-dart run bin/verify.dart        # 引擎 38 项全绿：迷雾裁剪 / 确定性对拍 / 存档往返 / 覆盖 / 全 AI 终局 / 出生格可通行 / GIS 包→几何同源 / 兵种属性覆盖与计价
+dart run bin/verify.dart        # 引擎 61 项全绿（原地物前 38 项 + 地物玩法 23 项）：迷雾裁剪 / 确定性对拍 / 存档往返 / 覆盖 / 全 AI 终局 / 出生格可通行 / GIS 包→几何同源 / 兵种属性覆盖与计价 / 铁路机动 / 隧道限行 / 机场补给节点 / 电网系数 / 要点归属与胜利
 dart run bin/smoke_ws.dart 8770 # 多人 32 项：角色接入 / 占用 / 双盲 / 拒令 / 导调 / 存档载入 / 断线重连 / 顶号 / AI 就绪屏障 / 兵种覆盖计价与拒非法字段
 cd D:/Project/wargame/tools/gis
-python hexgen.py --only-validate  # 只校验现有 GIS 数据包
+python hexgen.py --only-validate  # 只校验现有 GIS 数据包（37 项自校验，含地物层不变式）
 ```
 
 ### 12.1 会话生命周期（多人可用的前提）
@@ -401,3 +464,202 @@ python hexgen.py --only-validate  # 只校验现有 GIS 数据包
 一个要记住的取舍：瓦片请求**不带** `crossOrigin`（天地图不保证回 CORS 头，带 `anonymous` 会整批加载失败）。代价是叠了在线瓦片后画布被"污染"，`getImageData`/`toDataURL` 会抛 SecurityError。当前前端从不回读像素（拾取走坐标反算），所以无影响；**若将来要做"从画布取色/导出地图 PNG"，必须改成服务端代理瓦片**，不能在浏览器直连。
 
 验证提醒：开发时若 Qoder 的 Browser 面板处于隐藏状态，后台标签页的 `requestAnimationFrame` 会被冻结，canvas 完全不绘制（宽高停在默认 300×150、瓦片请求为 0），看起来像"底图坏了"。做像素级验收必须先把面板打开；逻辑层可直接调用 `MapView` 的状态方法单测（退避/收割/放弃三态已这样验过）。
+
+---
+
+## 13. C# Core WebAPI 重构规划（2026-10-17 起）
+
+当前 Dart 原型（hexfront/）已端到端跑通：GIS 六角格生成 → 引擎推演 → WebSocket 多人房间 → Canvas 渲染，共 61 项引擎自检 + 32 项多人冒烟全部通过。以下规划将现有成果迁移至 .NET 技术栈，分三个阶段推进。
+
+### 13.1 阶段一：六角格生成 C# Core WebAPI
+
+**目标**：把 `tools/gis/hexgen.py` + `rasters.py` 的完整能力重写为 ASP.NET Core Minimal API，提供 RESTful 接口供后续 React 前端调用。
+
+**输入资产**：
+
+| Python 模块 | C# 对应 | 关键依赖 |
+|---|---|---|
+| `hexgen.py` (2300+ lines) | `HexGenService` | NetTopologySuite, ProjNet |
+| `rasters.py` (DEM/LC 取样) | `RasterSampler` | GDAL C# bindings / RasterSharp |
+| `roads_by_hex` (pyogrio OpenFileGDB) | `RoadVectorReader` | OGR C# / GeoPackage.Net |
+| `airports_by_hex` (NE shapefile) | `AirportVectorReader` | SharpMap / DotSpatial |
+| `build_features` (rail/power/tunnel/plant) | `FeatureBuilder` | QuickGraph (Dijkstra), NetTopologySuite |
+| `validate` (37 项自校验) | `HexPackageValidator` | xUnit / FluentAssertions |
+
+**API 设计**：
+
+```
+POST   /api/gis/plan          → 给定 bbox + cell_km，返回推荐对边距 + 格网方案
+POST   /api/gis/generate      → 异步作业，返回 job_id；轮询 GET /api/gis/jobs/{id}
+GET    /api/gis/packages      → 列出 data/gis/ 下所有可用数据包及其 meta
+GET    /api/gis/packages/{name}/meta → 单个数据包的完整元信息（含地物 stats）
+POST   /api/gis/validate      → 上传或指定已有包名，返回 37 项校验结果
+GET    /api/gis/capabilities  → 报告本机 DEM/LC/roads/airports/vector 可用性
+```
+
+**数据格式兼容**：生成的 JSON 结构与现有 Python 版完全一致（`hexes[]`, `meta{width,height,radius_m,cell_ground_m,mercator_scale,layers,stats,...}`），确保现有 Dart 引擎和 React 前端无需改动即可消费。
+
+**验收标准**：
+
+- [ ] `rhine_ruhr_2p5km.json` 重新生成后与原版 diff 为零（确定性种子相同）
+- [ ] 37 项自校验全部通过（含地物不变式）
+- [ ] 性能：2.5km 格距 1645 格生成 < 30s（本机 i7 + SSD）
+- [ ] Swagger UI 可交互测试所有端点
+
+### 13.2 阶段二：推演后端 C# Core WebAPI
+
+**目标**：把 `hexfront/lib/engine/*` (defs, state, turn, mechanics, fog, commands, library, scenario) 重写为 ASP.NET Core WebAPI + SignalR Hub，替代现有 Dart server。
+
+**核心移植清单**：
+
+| Dart 模块 | C# 对应 | 复杂度 |
+|---|---|---|
+| `defs.dart` (Cell, UnitTypeDef, TerrainDef, WeatherDef, Rules) | `Models/Defs.cs` | ★☆☆ 纯数据类 |
+| `state.dart` (Unit, GameState, VictoryCond, InstanceBuilder) | `Models/GameState.cs` | ★★☆ 序列化 + 深拷贝 |
+| `library.dart` (STANDARD_TERRAIN/UNIT_TYPES/WEATHER_JSON) | `Services/LibraryService.cs` | ★☆☆ 常量表 |
+| `scenario.dart` (deepMerge, validate) | `Services/ScenarioService.cs` | ★★☆ 递归合并 |
+| `commands.dart` (Command, validateOrders) | `Services/CommandValidator.cs` | ★★★ 相邻性/视野/弹药校验 |
+| `turn.dart` (_movementPhase, _combatPhase, resolveTurn) | `Services/TurnResolver.cs` | ★★★ 六阶段裁决 |
+| `mechanics.dart` (supplyDistances, computeSupply, powerFactor, nodeHolders, objectiveNodes) | `Services/MechanicsService.cs` | ★★★ BFS + 电网算法 |
+| `fog.dart` (updateObservation, sideView, directorView, spectatorView) | `Services/FogService.cs` | ★★★ 观测累计 + 视图裁剪 |
+| `hex.dart` (Hex, cube rounding, neighbors) | `Geometry/Hex.cs` | ★★☆ 轴向↔立方体转换 |
+| `ai.dart` (aiOrders) | `Services/AiService.cs` | ★★☆ 启发式决策 |
+| `server/hexgen.dart` (GisJobSpec, GisService) | `Controllers/GisController.cs` | ★★☆ 作业队列 |
+| `server/store.dart` (Store, load/save) | `Persistence/FileStore.cs` | ★★☆ JSON 文件读写 |
+
+**SignalR Hub 设计**：
+
+```csharp
+public class RoomHub : Hub
+{
+    // 客户端 → 服务端
+    Task JoinRoom(string roomId, string role, string nickname);
+    Task SendOrders(List<Command> orders);
+    Task SetReady(bool ready);
+    Task DirectorCmd(DirectorAction action);
+    
+    // 服务端 → 客户端
+    void OnWelcome(WelcomeMessage msg);
+    void OnState(StateUpdate update);
+    void OnEvents(List<EventLog> events);
+    void OnSaved(SaveConfirmation save);
+    void OnKicked(string reason);
+    void OnError(ErrorDetail err);
+}
+```
+
+**验收标准**：
+
+- [ ] 现有 `bin/verify.dart` 61 项用例全部在 C# 端通过（xUnit 等价实现）
+- [ ] 现有 `bin/smoke_ws.dart` 32 项多人冒烟全部通过（SignalR 替换 WebSocket）
+- [ ] 同种子同指令 → 同指纹（确定性对拍）
+- [ ] 存档往返指纹一致（JSON 序列化兼容）
+- [ ] 性能：14 回合全 AI 对抗 < 5s（与 Dart 版持平）
+
+### 13.3 阶段三：React 前端
+
+**目标**：把 `web/js/*` (map.js, views/*.js, api.js, ws.js, router.js, util.js, hex.js) 重写为 React + TypeScript SPA，Canvas 渲染保留但封装为组件。
+
+**技术选型建议**：
+
+| 层级 | 推荐 | 理由 |
+|---|---|---|
+| 框架 | React 18 + Vite | 轻量、HMR 快、生态成熟 |
+| 语言 | TypeScript 5.x | 类型安全，与 C# DTO 对齐 |
+| 状态管理 | Zustand | 比 Redux 轻，适合游戏状态 |
+| 路由 | React Router v6 | hash 路由兼容现有 `#/new` 等路径 |
+| UI 组件 | Ant Design 5.x | 深色主题支持好，与现有视觉 token 匹配 |
+| Canvas | react-konva 或原生 canvas ref | Konva 有图层管理优势；原生更可控 |
+| SignalR | @microsoft/signalr | 官方客户端，自动重连 |
+| 构建 | Vite + SWC | 比 CRA 快 10 倍+ |
+
+**组件拆分**：
+
+```
+src/
+── App.tsx                    # 路由容器
+├── routes/
+│   ├── Home.tsx               # 首页三入口
+│   ├── Lobby.tsx              # 大厅
+│   ├── Wizard.tsx             # 5步创建向导
+│   └── Room.tsx               # 房间视图（按 role 分支）
+├── components/
+│   ├── MapCanvas.tsx          # Canvas 渲染组件（map.js 移植）
+│   ├── UnitPanel.tsx          # 兵力列表
+│   ├── DraftBar.tsx           # 指令草案栏
+│   ├── ContactList.tsx        # 接触目标列表
+│   ├── DirectorControls.tsx   # 导调面板
+│   ├── EventLog.tsx           # 事件日志
+│   └── HudOverlay.tsx         # HUD 浮层
+── services/
+│   ├── signalr.ts             # SignalR 连接管理
+│   ├── api.ts                 # REST API 调用
+│   └── gameState.ts           # Zustand store
+├── geometry/
+│   └── hex.ts                 # hex.js 移植
+└── styles/
+    └── dark-theme.css         # 现有 app.css 移植
+```
+
+**验收标准**：
+
+- [ ] 创建副本向导 5 步流程完整可用（含真实数据包选择 + 地物层展示）
+- [ ] 导演部视图：全局兵力 + 地图 + 导调控制 + 双方指令 + 事件日志
+- [ ] 红/蓝视图：己方单位 + 接触目标 + 指令草案 + 迷雾隔离
+- [ ] 观战视图：公开情报层 + 无归属披露
+- [ ] 地图渲染：天地图瓦片 + 六角格 + 道路/河流/铁路/电网/机场/电厂/变电站/车站/隧道 + 悬停格信息 + 图例
+- [ ] 缩放/拖拽/双击放大流畅（60fps）
+- [ ] 断线重连恢复会话 + 顶号提示
+- [ ] 响应式布局（最小 1024×768 可用）
+
+### 13.4 迁移策略与风险控制
+
+**并行开发**：三个阶段不必串行等待，可在 Dart 原型稳定运行的前提下并行推进：
+
+```
+Week 1-2:  阶段一 API 骨架 + 单元测试
+Week 3-4:  阶段一完整 + 阶段二 Defs/State/Library
+Week 5-6:  阶段二 Turn/Mechanics/Fog + xUnit 验证
+Week 7-8:  阶段二 SignalR Hub + smoke 测试
+Week 9-10: 阶段三 React 脚手架 + MapCanvas
+Week 11-12: 阶段三完整视图 + 联调
+Week 13:   集成测试 + 性能对比 + 文档更新
+```
+
+**风险与缓解**：
+
+| 风险 | 概率 | 影响 | 缓解措施 |
+|---|---|---|---|
+| GDAL C# 绑定安装复杂 | 高 | 中 | 备选 RasterSharp 纯 C# 栅格读取；或保留 Python subprocess 调用 hexgen.py |
+| 确定性浮点差异导致指纹不一致 | 中 | 高 | 使用 decimal 代替 double；或允许 ±1e-9 容差比对 |
+| SignalR 消息顺序与 WebSocket 不一致 | 低 | 中 | 加 sequence_number 字段，客户端按序处理 |
+| React Canvas 性能不如原生 | 中 | 中 | 优先用原生 canvas ref + requestAnimationFrame；Konva 仅用于 UI 覆盖层 |
+| 迁移期间需求变更 | 高 | 高 | Dart 原型作为"活文档"持续维护；C# 每完成一个模块即同步验证 |
+
+**过渡期运行模式**：
+
+```
+─────────────┐     REST/SignalR      ┌──────────────┐
+│  React SPA  │ ◄──────────────────►  │ C# WebAPI    │
+│  (localhost:3000)                   │  (localhost:5000)
+└─────────────┘                        └──────┬───────┘
+                                              │
+                                     ┌────────▼────────┐
+                                     │  Python hexgen  │ ← 可选：GDAL 未就绪时
+                                     │  (subprocess)   │   保留 Python 生成能力
+                                     └─────────────────┘
+```
+
+Dart 原型（hexfront/）在迁移期间保持可运行状态，作为参考实现和回归基准。所有 C# 代码的验收都以"Dart 版能通过 → C# 版也能通过"为标准。
+
+### 13.5 待拍板事项（§11 遗留问题）
+
+以下设计决策在 §11 中标记为"待拍板"，需在 C# 重构启动前明确：
+
+1. **重新开雾是否回收情报**（§11.2）：当前 Dart 实现中，导演部关闭再开启战争迷雾时，已暴露的 contacts **不会**被回收（情报一旦获得就永久保留）。这是合理的设计选择（模拟真实战争中"侦察到的情报不会因为云层变厚就忘记"），但需要在 C# 版中显式确认此行为。**推荐：保持现状，不回收**。
+
+2. **账号体系**（§11.1）：当前原型无登录系统，角色会话用 `roomId + sessionToken` 标识。C# 版是否需要接入身份认证（JWT/OAuth）？**推荐：MVP 阶段保持无账号模式，用 localStorage 存 sessionToken；v2 再加用户系统**。
+
+3. **进程重启丢房间**（§11.3）：当前 Dart 版服务端重启后所有房间丢失（内存态）。C# 版是否需要持久化房间状态？**推荐：房间本身仍是内存态（符合实时对抗语义），但加入房间的配置（剧本/覆盖/OOB）应从存档重建，而非从零开始**。
+
+4. **Git 大文件治理**（§12.1 脚注）：`.git` 目录已达 92MB（102MB roads_pkg + 24MB global_water.gpkg 已在历史中）。**推荐：新增 `.gitattributes` 声明 `*.gdb/** binary` + `*.gpkg binary`，未来大文件走 Git LFS；本次不 rewrite history（成本过高）**。
