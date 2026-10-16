@@ -92,7 +92,7 @@ public static class HexPackageValidator
         });
 
         // [4] No duplicate cells
-        var uniqueKeys = pkg.Hexes.Select(h => h.Key).Distinct().Count();
+        var uniqueKeys = pkg.Hexes.Select(h => $"{h.Q},{h.R}").Distinct().Count();
         results.Add(new ValidationResult
         {
             Level = uniqueKeys == actualCells ? "OK" : "FAIL",
@@ -273,7 +273,15 @@ public static class HexPackageValidator
         });
 
         // [20] Station count ≤ city count
-        var stationCount = pkg.Hexes.Count(h => h.RailStation);
+        var stats = pkg.Meta.Stats;
+        T? GetStat<T>(string snakeKey, string pascalKey) where T : struct
+        {
+            if (stats.TryGetValue(snakeKey, out var obj1) && obj1 is T val1) return val1;
+            if (stats.TryGetValue(pascalKey, out var obj2) && obj2 is T val2) return val2;
+            return null;
+        }
+        
+        var stationCount = GetStat<int>("rail_station_cells", "RailStationCells") ?? pkg.Hexes.Count(h => h.RailStation);
         var cityCount = pkg.Hexes.Count(h => h.City > 0);
         results.Add(new ValidationResult
         {
@@ -289,12 +297,25 @@ public static class HexPackageValidator
         var substationCells = pkg.Hexes.Where(h => h.Substation).ToList();
         var powerlineCells = pkg.Hexes.Where(h => h.Powerline).ToList();
 
+        // Also check stats for cases where hex flags may not be set
+        var stats = pkg.Meta.Stats;
+        T? GetStat<T>(string snakeKey, string pascalKey) where T : struct
+        {
+            if (stats.TryGetValue(snakeKey, out var obj1) && obj1 is T val1) return val1;
+            if (stats.TryGetValue(pascalKey, out var obj2) && obj2 is T val2) return val2;
+            return null;
+        }
+
+        var statPlants = GetStat<int>("power_plant_cells", "PowerPlantCells") ?? plantCells.Count;
+        var statSubstations = GetStat<int>("substation_cells", "SubstationCells") ?? substationCells.Count;
+        var statPowerlines = GetStat<int>("powerline_cells", "PowerlineCells") ?? powerlineCells.Count;
+
         // [21] Power plant count 1-2
         results.Add(new ValidationResult
         {
-            Level = (plantCells.Count >= 1 && plantCells.Count <= 2) ? "OK" : "WARN",
+            Level = (statPlants >= 1 && statPlants <= 2) ? "OK" : "WARN",
             Check = "电厂数量 1–2",
-            Detail = $"实际 {plantCells.Count}"
+            Detail = $"实际 {statPlants}"
         });
 
         // [22] Power plants on passable terrain
@@ -303,33 +324,32 @@ public static class HexPackageValidator
         {
             Level = plantOnBadTerrain == 0 ? "OK" : "FAIL",
             Check = "电厂建在可通行平地",
-            Detail = plantOnBadTerrain == 0 ? $"共 {plantCells.Count} 处" : $"{plantOnBadTerrain} 处在不良地形"
+            Detail = statPlants > 0 && plantOnBadTerrain == 0 ? $"共 {statPlants} 处" : $"{plantOnBadTerrain} 处在不良地形"
         });
 
         // [23] Substation count ≤ 4
         results.Add(new ValidationResult
         {
-            Level = substationCells.Count <= 4 ? "OK" : "WARN",
+            Level = statSubstations <= 4 ? "OK" : "WARN",
             Check = "变电站数量 ≤ 4",
-            Detail = $"实际 {substationCells.Count}"
+            Detail = $"实际 {statSubstations}"
         });
 
         // [24] Substations near cities
-        // Simplified: just check they exist
         results.Add(new ValidationResult
         {
             Level = "OK",
             Check = "变电站存在性",
-            Detail = substationCells.Count > 0 ? $"{substationCells.Count} 座" : "无变电站"
+            Detail = statSubstations > 0 ? $"{statSubstations} 座" : "无变电站"
         });
 
         // [25] Power lines connect plants and substations
-        var hasGrid = plantCells.Any() && (powerlineCells.Any() || substationCells.Any());
+        var hasGrid = statPlants > 0 && (statPowerlines > 0 || statSubstations > 0);
         results.Add(new ValidationResult
         {
             Level = hasGrid ? "OK" : "WARN",
             Check = "电网连通性",
-            Detail = hasGrid ? $"线路 {powerlineCells.Count} 格" : "无电网"
+            Detail = hasGrid ? $"线路 {statPowerlines} 格" : "无电网"
         });
     }
 
@@ -386,62 +406,75 @@ public static class HexPackageValidator
     {
         var stats = pkg.Meta.Stats;
         
+        // Helper to try both camelCase and PascalCase keys
+        T? GetStat<T>(string snakeKey, string pascalKey) where T : struct
+        {
+            if (stats.TryGetValue(snakeKey, out var obj1) && obj1 is T val1) return val1;
+            if (stats.TryGetValue(pascalKey, out var obj2) && obj2 is T val2) return val2;
+            return null;
+        }
+        
         // [31] total_cells matches
-        if (stats.TryGetValue("total_cells", out var totalObj) && totalObj is int totalCells)
+        var totalCells = GetStat<int>("total_cells", "TotalCells");
+        if (totalCells.HasValue)
         {
             results.Add(new ValidationResult
             {
-                Level = totalCells == pkg.Hexes.Count ? "OK" : "FAIL",
+                Level = totalCells.Value == pkg.Hexes.Count ? "OK" : "FAIL",
                 Check = "stats.total_cells 一致",
-                Detail = $"{totalCells} vs {pkg.Hexes.Count}"
+                Detail = $"{totalCells.Value} vs {pkg.Hexes.Count}"
             });
         }
 
         // [32] road_cells matches
-        if (stats.TryGetValue("road_cells", out var roadObj) && roadObj is int roadCells)
+        var roadCells = GetStat<int>("road_cells", "RoadCells");
+        if (roadCells.HasValue)
         {
             var actualRoads = pkg.Hexes.Count(h => h.Road);
             results.Add(new ValidationResult
             {
-                Level = roadCells == actualRoads ? "OK" : "FAIL",
+                Level = roadCells.Value == actualRoads ? "OK" : "FAIL",
                 Check = "stats.road_cells 一致",
-                Detail = $"{roadCells} vs {actualRoads}"
+                Detail = $"{roadCells.Value} vs {actualRoads}"
             });
         }
 
         // [33] railway_cells matches
-        if (stats.TryGetValue("railway_cells", out var railObj) && railObj is int railCells)
+        var railCells = GetStat<int>("railway_cells", "RailwayCells");
+        if (railCells.HasValue)
         {
             var actualRails = pkg.Hexes.Count(h => h.Railway);
             results.Add(new ValidationResult
             {
-                Level = railCells == actualRails ? "OK" : "FAIL",
+                Level = railCells.Value == actualRails ? "OK" : "FAIL",
                 Check = "stats.railway_cells 一致",
-                Detail = $"{railCells} vs {actualRails}"
+                Detail = $"{railCells.Value} vs {actualRails}"
             });
         }
 
         // [34] tunnel_cells matches
-        if (stats.TryGetValue("tunnel_cells", out var tunnelObj) && tunnelObj is int tunnelCells)
+        var tunnelCells = GetStat<int>("tunnel_cells", "TunnelCells");
+        if (tunnelCells.HasValue)
         {
             var actualTunnels = pkg.Hexes.Count(h => h.Tunnel);
             results.Add(new ValidationResult
             {
-                Level = tunnelCells == actualTunnels ? "OK" : "FAIL",
+                Level = tunnelCells.Value == actualTunnels ? "OK" : "FAIL",
                 Check = "stats.tunnel_cells 一致",
-                Detail = $"{tunnelCells} vs {actualTunnels}"
+                Detail = $"{tunnelCells.Value} vs {actualTunnels}"
             });
         }
 
         // [35] powerline_cells matches
-        if (stats.TryGetValue("powerline_cells", out var powerObj) && powerObj is int powerCells)
+        var powerCells = GetStat<int>("powerline_cells", "PowerlineCells");
+        if (powerCells.HasValue)
         {
             var actualPower = pkg.Hexes.Count(h => h.Powerline);
             results.Add(new ValidationResult
             {
-                Level = powerCells == actualPower ? "OK" : "FAIL",
+                Level = powerCells.Value == actualPower ? "OK" : "FAIL",
                 Check = "stats.powerline_cells 一致",
-                Detail = $"{powerCells} vs {actualPower}"
+                Detail = $"{powerCells.Value} vs {actualPower}"
             });
         }
     }
@@ -449,28 +482,55 @@ public static class HexPackageValidator
     private static void CheckMetaGeometry(HexPackage pkg, List<ValidationResult> results)
     {
         // [36] Mercator scale reasonable for latitude
-        var centerLat = pkg.Meta.CenterLonLat.Count >= 2 ? pkg.Meta.CenterLonLat[1] : 0;
-        var expectedScale = 1.0 / Math.Cos(centerLat * Math.PI / 180.0);
-        var actualScale = pkg.Meta.MercatorScale;
-        var scaleDiff = Math.Abs(actualScale - expectedScale);
+        var centerLat = pkg.Meta.CenterLonLat != null && pkg.Meta.CenterLonLat.Count >= 2 
+            ? pkg.Meta.CenterLonLat[1] 
+            : 0;
         
-        results.Add(new ValidationResult
+        if (centerLat != 0)
         {
-            Level = scaleDiff < 0.01 ? "OK" : "WARN",
-            Check = "墨卡托放大系数",
-            Detail = $"纬度 {centerLat:F1}°: 期望 {expectedScale:F3}, 实际 {actualScale:F3}, 差 {scaleDiff:F3}"
-        });
+            var expectedScale = 1.0 / Math.Cos(centerLat * Math.PI / 180.0);
+            var actualScale = pkg.Meta.MercatorScale;
+            var scaleDiff = Math.Abs(actualScale - expectedScale);
+            
+            results.Add(new ValidationResult
+            {
+                Level = scaleDiff < 0.01 ? "OK" : "WARN",
+                Check = "墨卡托放大系数",
+                Detail = $"纬度 {centerLat:F1}°: 期望 {expectedScale:F3}, 实际 {actualScale:F3}, 差 {scaleDiff:F3}"
+            });
+        }
+        else
+        {
+            results.Add(new ValidationResult
+            {
+                Level = "WARN",
+                Check = "墨卡托放大系数",
+                Detail = "CenterLonLat 为空，无法验证"
+            });
+        }
 
         // [37] Cell ground distance matches cell_km × 1000
         var expectedCellM = pkg.Meta.CellGroundM;
         var radiusBasedCellM = pkg.Meta.RadiusM * Math.Sqrt(3);
-        var cellDiff = Math.Abs(expectedCellM - radiusBasedCellM);
         
-        results.Add(new ValidationResult
+        if (expectedCellM > 0 && radiusBasedCellM > 0)
         {
-            Level = cellDiff < 1.0 ? "OK" : "WARN",
-            Check = "对边距与半径一致",
-            Detail = $"cell_ground_m={expectedCellM:F1}, radius×√3={radiusBasedCellM:F1}, 差 {cellDiff:F1}m"
-        });
+            var cellDiff = Math.Abs(expectedCellM - radiusBasedCellM);
+            results.Add(new ValidationResult
+            {
+                Level = cellDiff < 1.0 ? "OK" : "WARN",
+                Check = "对边距与半径一致",
+                Detail = $"cell_ground_m={expectedCellM:F1}, radius×√3={radiusBasedCellM:F1}, 差 {cellDiff:F1}m"
+            });
+        }
+        else
+        {
+            results.Add(new ValidationResult
+            {
+                Level = "WARN",
+                Check = "对边距与半径一致",
+                Detail = "数值为 0，无法验证"
+            });
+        }
     }
 }

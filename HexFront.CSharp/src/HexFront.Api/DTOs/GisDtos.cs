@@ -94,12 +94,3 @@ public sealed class GisCapabilitiesResponse
     public bool AirportsPresent { get; init; }
     public bool NetworkOk { get; init; }
 }
-
-public sealed class ValidationReport
-{
-    public int Total { get; init; }
-    public int Fails { get; init; }
-    public int Warns { get; init; }
-    public int Passes { get; init; }
-    public List<ValidationResult> Results { get; init; } = new();
-}
