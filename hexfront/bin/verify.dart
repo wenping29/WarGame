@@ -180,6 +180,49 @@ void main() {
   check('终局判定生效', ga.over, '未终局：红 $redP / 蓝 $blueP 人');
   print('    结果：${ga.winner ?? '无'} · 存活 红 $redP / 蓝 $blueP');
 
+  print('\n[7] GIS 数据包 → 几何同源（对边距=实地口径）');
+  const newPkg = 'rhine_2p5km.json';
+  final pkgData = store.loadGisPackage(newPkg);
+  if (pkgData == null) {
+    print('    （$newPkg 不存在，跳过几何同源用例）');
+  } else {
+    final meta = Map<String, dynamic>.from(pkgData['meta'] as Map);
+    final gg = builder.build(
+      scenarioRaw: scRaw,
+      overrides: {'gis_package': newPkg},
+      instanceId: 'VG',
+      instanceName: '几何自检',
+      seed: 555,
+    );
+    check('副本格数取自数据包', gg.cells.length == meta['width'] * meta['height'],
+        '${gg.cells.length} vs ${meta['width'] * meta['height']}');
+    final radiusWanted = (meta['radius_m'] as num).toDouble();
+    check('引擎半径来自数据包而非 env 默认', (gg.geo.radius - radiusWanted).abs() < 1e-6,
+        '${gg.geo.radius} vs $radiusWanted');
+    final cellM = gg.geo.hexW; // √3·R = 对边距（墨卡托米）
+    final ground = (meta['cell_ground_m'] as num?)?.toDouble();
+    if (ground != null) {
+      final scale = (meta['mercator_scale'] as num).toDouble();
+      check('对边距实地↔墨卡托放大自洽', (cellM - ground * scale).abs() / cellM < 1e-9,
+          '$cellM vs ${ground * scale}');
+      check('几何记录实地口径', gg.geo.cellGroundKm > 0 && gg.geo.scale > 1.0,
+          '${gg.geo.cellGroundKm} km / ×${gg.geo.scale}');
+    }
+    // 中心经纬度必须落回中心格：证明格网与在线瓦片同一墨卡托框架
+    final cl = (meta['center_lonlat'] as List).cast<num>();
+    final mp = lonLatToMercator(cl[0].toDouble(), cl[1].toDouble());
+    final fq = ((meta['width'] as num).toInt() - 1) / 2.0;
+    final fr = ((meta['height'] as num).toInt() - 1) / 2.0;
+    check('格网原点取自数据包',
+        (gg.geo.ox - (meta['mercator_ox'] as num).toDouble()).abs() < 1e-6 &&
+            (gg.geo.oy - (meta['mercator_oy'] as num).toDouble()).abs() < 1e-6);
+    final back = gg.geo.nearest(mp[0], mp[1]);
+    check('中心经纬度落回格网中心',
+        (back.q - fq).abs() <= 1.0 && (back.r - fr).abs() <= 1.0, '$back vs ($fq,$fr)');
+    final rt = GameState.fromJson(gg.toJson());
+    check('geo 元信息可往返存档', rt.geo.cellGroundKm == gg.geo.cellGroundKm && rt.geo.radius == gg.geo.radius);
+  }
+
   print('\n合计：$_pass 通过 / $_fail 失败');
   exit(_fail == 0 ? 0 : 1);
 }

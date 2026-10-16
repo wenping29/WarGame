@@ -97,8 +97,9 @@ class InstanceBuilder {
     final rules = Rules.fromJson(rulesJson);
 
     final rng = SeededRNG(seed);
-    final cells = _buildCells(merged, library, rng);
-    final geo = _buildGeo(merged, cells);
+    final gis = _gisData(merged);
+    final cells = _buildCells(merged, library, rng, gis);
+    final geo = _buildGeo(merged, gis);
 
     final flags = <String, bool>{
       'fog': true, 'air_superiority': true, 'strict_supply': false, 'night': true,
@@ -137,18 +138,23 @@ class InstanceBuilder {
     return g;
   }
 
-  Map<HexKey, Cell> _buildCells(Map<String, dynamic> merged, Library library, SeededRNG rng) {
-    // ① GIS 数据包（真实 DEM 生成的六角地形）
+  /// ① GIS 数据包：真实栅格生成的六角地形 + 与之同源的几何元信息
+  Map<String, dynamic>? _gisData(Map<String, dynamic> merged) {
     final pkg = merged['gis_package'] as String?;
-    if (pkg != null && loadGisPackage != null) {
-      final data = loadGisPackage!(pkg);
-      if (data != null && data['hexes'] is List) {
-        final cells = <HexKey, Cell>{};
-        for (final h in _ml(data['hexes'])) {
-          cells[hexKey((h['q'] as num).toInt(), (h['r'] as num).toInt())] = Cell.fromJson(h);
-        }
-        return cells;
+    if (pkg == null || loadGisPackage == null) return null;
+    final data = loadGisPackage!(pkg);
+    if (data == null || data['hexes'] is! List) return null;
+    return data;
+  }
+
+  Map<HexKey, Cell> _buildCells(
+      Map<String, dynamic> merged, Library library, SeededRNG rng, Map<String, dynamic>? data) {
+    if (data != null) {
+      final cells = <HexKey, Cell>{};
+      for (final h in _ml(data['hexes'])) {
+        cells[hexKey((h['q'] as num).toInt(), (h['r'] as num).toInt())] = Cell.fromJson(h);
       }
+      return cells;
     }
     // ② 剧本内联地形
     if (merged['terrain'] is List) {
@@ -208,22 +214,43 @@ class InstanceBuilder {
     return cells;
   }
 
-  HexGeo _buildGeo(Map<String, dynamic> merged, Map<HexKey, Cell> cells) {
+  /// 几何必须来自数据包：半径/原点若按 env 默认算，格网会与真实地形错位。
+  /// 对边距口径始终是「实地米」，墨卡托侧按中心纬度放大 1/cos(lat)。
+  HexGeo _buildGeo(Map<String, dynamic> merged, Map<String, dynamic>? gis) {
     final env = _mm(merged['environment'] ?? {});
+    if (gis != null) {
+      final meta = _mm(gis['meta'] ?? {});
+      final ox = (meta['mercator_ox'] as num?)?.toDouble();
+      final oy = (meta['mercator_oy'] as num?)?.toDouble();
+      final radius = (meta['radius_m'] as num?)?.toDouble();
+      final cellKm = (meta['cell_km'] as num?)?.toDouble() ?? 0.0;
+      final scale = (meta['mercator_scale'] as num?)?.toDouble() ?? 0.0;
+      if (ox != null && oy != null && radius != null && radius > 0) {
+        return HexGeo(ox: ox, oy: oy, radius: radius, cellGroundKm: cellKm, scale: scale);
+      }
+    }
     final cellKm = (env['cell_km'] as num?)?.toDouble() ?? 5.0;
     double ox = 4500000, oy = 3200000;
+    double lat = 0;
     if (env['mercator'] is List) {
       ox = (env['mercator'][0] as num).toDouble();
       oy = (env['mercator'][1] as num).toDouble();
+      lat = mercatorToLonLat(ox, oy)[1];
     } else if (env['center_lonlat'] is List) {
-      final p = lonLatToMercator(
-        (env['center_lonlat'][0] as num).toDouble(),
-        (env['center_lonlat'][1] as num).toDouble(),
-      );
+      final clat = (env['center_lonlat'][1] as num).toDouble();
+      final p = lonLatToMercator((env['center_lonlat'][0] as num).toDouble(), clat);
       ox = p[0];
       oy = p[1];
+      lat = clat;
     }
-    return HexGeo(ox: ox, oy: oy, radius: cellKm * 1000 / math.sqrt(3));
+    final scale = 1.0 / math.cos(clampd(lat, -84.0, 84.0) * math.pi / 180.0);
+    return HexGeo(
+      ox: ox,
+      oy: oy,
+      radius: cellKm * 1000 * scale / math.sqrt(3),
+      cellGroundKm: cellKm,
+      scale: scale,
+    );
   }
 
   int _span(Map<HexKey, Cell> cells, bool onQ) {

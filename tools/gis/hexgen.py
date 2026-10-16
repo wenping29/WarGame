@@ -219,13 +219,15 @@ def mercator_scale(lat_deg: float) -> float:
 class HexGrid:
     """尖顶六角格几何：格心 ↔ EPSG:3857。"""
 
-    def __init__(self, center_lon: float, center_lat: float, width: int, height: int, cell_km: float):
+    def __init__(self, center_lon: float, center_lat: float, width: int, height: int, cell_km: float,
+                 scale: float | None = None):
         self.center_lon = center_lon
         self.center_lat = center_lat
         self.width = width
         self.height = height
         self.cell_km = cell_km
-        self.scale = mercator_scale(center_lat)             # 墨卡托米 : 实地米
+        # scale 可由调用方覆盖：旧数据包没标注墨卡托放大，按赤道口径回验
+        self.scale = mercator_scale(center_lat) if scale is None else float(scale)
         self.cell_ground_m = cell_km * 1000.0              # 对边距（实地）——指挥员口径
         self.cell_m = self.cell_ground_m * self.scale       # 同一距离的墨卡托米
         # 尖顶格：横向邻格距离 W = sqrt(3)*radius 必须等于 cell_m ⇒ radius = cell/sqrt(3)
@@ -326,6 +328,80 @@ def grid_from_bbox(bbox, cell_km: float, min_side: int = 8):
     height = int(round((y1 - y0) / probe.row_step_m)) + 1
     return HexGrid(clon, clat, max(min_side, width), max(min_side, height), cell_km)
 
+
+# ---- 对边距推荐（创建副本时的一键「用推荐」，与生成同源，避免两套口径） ----
+
+CELL_LADDER_KM = (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 5.0, 7.5, 10.0, 15.0, 20.0)
+PLAN_TARGET_CELLS = 2400   # 一次交战的可视战场：再大前端渲染与结算都拖沓
+PLAN_MIN_SIDE = 12         # 短边至少 12 格，否则机动没有纵深
+DEM_FLOOR_KM = 1.0         # 本地 DEM 30″≈0.93 km，格距再小也不会更「真实」
+
+
+def bbox_ground_km(bbox):
+    """WGS84 四至 → 实地东西/南北公里（墨卡托放大的逆运算）。"""
+    clat = (bbox[1] + bbox[3]) / 2.0
+    w = (bbox[2] - bbox[0]) * 111.320 * math.cos(math.radians(clat))
+    h = (bbox[3] - bbox[1]) * 110.574
+    return max(w, 1e-6), max(h, 1e-6)
+
+
+def fmt_km(v):
+    return "%.0f" % v if v >= 10 else "%.1f" % v
+
+
+def recommend_cell_km(bbox):
+    """返回 (推荐对边距, 理由)。尖顶格行距 = 0.866×对边距 ⇒ 格数 ≈ 面积/(0.866·c²)。"""
+    w, h = bbox_ground_km(bbox)
+    ideal = math.sqrt(w * h / (0.866 * PLAN_TARGET_CELLS))
+    floor_km = max(ideal, DEM_FLOOR_KM)
+    cap = min(w, h) / (PLAN_MIN_SIDE - 1.0)   # 保证短边铺得下 PLAN_MIN_SIDE 格
+    reasons = ["目标 %d 格左右（实地 %s×%s km）⇒ 理论格距 %.2f km" %
+               (PLAN_TARGET_CELLS, fmt_km(w), fmt_km(h), ideal)]
+    pick = next((c for c in CELL_LADDER_KM if c >= floor_km), CELL_LADDER_KM[-1])
+    if pick > cap:
+        smaller = [c for c in CELL_LADDER_KM if c <= cap]
+        if smaller:
+            pick = smaller[-1]
+            reasons.append("为在短边铺够 %d 格，改取更小格距（格数会超过目标）" % PLAN_MIN_SIDE)
+        else:
+            pick = CELL_LADDER_KM[0]
+            reasons.append("范围过小：已取最小格距，建议扩大范围框")
+    if ideal < DEM_FLOOR_KM:
+        reasons.append("格距不低于高程栅格分辨率（%.1f km），更细只是插值" % DEM_FLOOR_KM)
+    reasons.append("对边距按实地计，中心纬度墨卡托放大 %.2f 倍" % mercator_scale((bbox[1] + bbox[3]) / 2.0))
+    return pick, reasons
+
+
+def plan_payload(bbox, cell_km=None):
+    w_km, h_km = bbox_ground_km(bbox)
+    rec, reasons = recommend_cell_km(bbox)
+    clat = (bbox[1] + bbox[3]) / 2.0
+    ladder = []
+    for c in CELL_LADDER_KM:
+        g = grid_from_bbox(bbox, c)
+        n = g.width * g.height
+        label = ("recommended" if c == rec else
+                 "heavy" if n > PLAN_TARGET_CELLS * 2.5 else
+                 "coarse" if min(g.width, g.height) < PLAN_MIN_SIDE else "ok")
+        ladder.append({"cell_km": c, "width": g.width, "height": g.height, "cells": n, "label": label})
+    cur = None
+    if cell_km:
+        g = grid_from_bbox(bbox, cell_km)
+        cur = {"cell_km": cell_km, "width": g.width, "height": g.height,
+               "cells": g.width * g.height, "mercator_scale": g.scale}
+    return {
+        "ok": True,
+        "bbox": [bbox[0], bbox[1], bbox[2], bbox[3]],
+        "center_lonlat": [(bbox[0] + bbox[2]) / 2.0, clat],
+        "ground_km": [round(w_km, 2), round(h_km, 2)],
+        "mercator_scale": mercator_scale(clat),
+        "target_cells": PLAN_TARGET_CELLS,
+        "min_side": PLAN_MIN_SIDE,
+        "dem_floor_km": DEM_FLOOR_KM,
+        "recommended": {"cell_km": rec, "reasons": reasons},
+        "current": cur,
+        "ladder": ladder,
+    }
 
 
 def axial_distance(a, b) -> int:
@@ -1405,6 +1481,31 @@ def resolve_repo_dir() -> Path:
     return here.parent.parent
 
 
+def capabilities_payload(dem_tif=None):
+    """服务端探测：栅格依赖是否可用、本地 DEM 在不在、读写范围在哪。"""
+    root = resolve_repo_dir()
+    tif = Path(dem_tif) if dem_tif else root / "data" / "dem" / "global_dem_30s.tif"
+    try:
+        import rasters
+        caps = dict(rasters.capabilities())
+    except Exception as exc:
+        rasters = None
+        caps = {"rasterio": False, "reason": "rasters 模块导入失败：%s" % str(exc)[:160]}
+    caps.update({
+        "python": sys.version.split()[0],
+        "repo_dir": str(root),
+        "dem_tif": str(tif),
+        "dem_present": tif.is_file(),
+        "gis_dir": str(root / "data" / "gis"),
+    })
+    if rasters is not None and tif.is_file():
+        try:
+            caps["dem_info"] = rasters.raster_info(str(tif))
+        except Exception as exc:
+            caps["dem_info"] = {"error": str(exc)[:160]}
+    return caps
+
+
 def main(argv=None):
     # Windows 控制台默认 GBK，中文输出可能崩 ⇒ 尽力切 UTF-8
     for stream in (sys.stdout, sys.stderr):
@@ -1453,6 +1554,10 @@ def main(argv=None):
     p.add_argument("--load-dem", default=None, metavar="PATH", help="优先从缓存读取高程（跳过网络）")
     p.add_argument("--only-validate", dest="only_validate", action="store_true",
                    help="只校验 --out 已存在的数据包，不生成")
+    p.add_argument("--plan", action="store_true",
+                   help="只输出格网方案（推荐对边距 + 各档行列数），不生成：##PLAN## {json}")
+    p.add_argument("--capabilities", dest="capabilities", action="store_true",
+                   help="输出栅格依赖与本地 DEM 可用性：##CAP## {json}")
     p.add_argument("--print-meta", dest="print_meta", action="store_true",
                    help="结束时输出一行 ##META## {json}，供服务端解析（作业进度用）")
     p.add_argument("--allow-invalid", dest="allow_invalid", action="store_true",
@@ -1469,6 +1574,18 @@ def main(argv=None):
         p.error("--cell-km 必须为正")
     if args.dem_tif is None:
         args.dem_tif = str(resolve_repo_dir() / "data" / "dem" / "global_dem_30s.tif")
+    if args.capabilities:
+        print("##CAP## " + json.dumps(capabilities_payload(args.dem_tif), ensure_ascii=False, default=str))
+        return 0
+    if args.plan:
+        if args.parsed_bbox is None:
+            p.error("--plan 需要 --bbox 西 南 东 北")
+        try:
+            print("##PLAN## " + json.dumps(plan_payload(args.parsed_bbox, args.cell_km), ensure_ascii=False))
+        except Exception as exc:
+            print("##PLAN## " + json.dumps({"ok": False, "error": str(exc)[:200]}, ensure_ascii=False))
+            return 1
+        return 0
     if args.offline:
         if args.landuse == "auto":
             args.landuse = "proxy"
@@ -1482,7 +1599,9 @@ def main(argv=None):
     if args.only_validate:
         data = json.loads(out_path.read_text(encoding="utf-8"))
         m = data["meta"]
-        g = HexGrid(m["center_lonlat"][0], m["center_lonlat"][1], m["width"], m["height"], m["cell_km"])
+        legacy_scale = m.get("mercator_scale")
+        g = HexGrid(m["center_lonlat"][0], m["center_lonlat"][1], m["width"], m["height"], m["cell_km"],
+                    scale=1.0 if legacy_scale is None else legacy_scale)
         res = validate(data, g, m["cell_km"], strict=False)
         fails, warns = print_report(res, "自校验 %s" % out_path)
         return 1 if fails else 0

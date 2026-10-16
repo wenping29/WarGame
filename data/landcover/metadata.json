@@ -1,0 +1,80 @@
+{
+  "global_landcover": {
+    "file": "D:\\Project\\wargame\\data\\landcover\\global_landcover_0p01.tif",
+    "crs": "EPSG:4326",
+    "bounds": [
+      -180.0,
+      -90.0,
+      180.0,
+      90.0
+    ],
+    "cell_deg": 0.01,
+    "approx_resolution_km": 1.11,
+    "width": 36000,
+    "height": 18000,
+    "nodata": 0,
+    "classes": {
+      "10": {
+        "name": "Tree cover",
+        "pixels": 2404786,
+        "pct_of_classified": 59.52
+      },
+      "20": {
+        "name": "Shrubland",
+        "pixels": 566557,
+        "pct_of_classified": 14.02
+      },
+      "30": {
+        "name": "Grassland",
+        "pixels": 431455,
+        "pct_of_classified": 10.68
+      },
+      "40": {
+        "name": "Cropland",
+        "pixels": 43827,
+        "pct_of_classified": 1.08
+      },
+      "50": {
+        "name": "Built-up",
+        "pixels": 6762,
+        "pct_of_classified": 0.17
+      },
+      "60": {
+        "name": "Bare/sparse vegetation",
+        "pixels": 28298,
+        "pct_of_classified": 0.7
+      },
+      "70": {
+        "name": "Snow and ice",
+        "pixels": 31,
+        "pct_of_classified": 0.0
+      },
+      "80": {
+        "name": "Permanent water bodies",
+        "pixels": 523288,
+        "pct_of_classified": 12.95
+      },
+      "90": {
+        "name": "Herbaceous wetland",
+        "pixels": 16791,
+        "pct_of_classified": 0.42
+      },
+      "95": {
+        "name": "Mangroves",
+        "pixels": 18191,
+        "pct_of_classified": 0.45
+      },
+      "97": {
+        "name": "Moss and lichen",
+        "pixels": 0,
+        "pct_of_classified": 0.0
+      }
+    },
+    "source": {
+      "name": "ESA WorldCover 10m 2021 v200",
+      "prefix": "v200/2021/map/",
+      "license": "CC BY 4.0 (open, attribution required)",
+      "note": "概览抽稀装配，非原生 10m；原生全量 115.5GB 未下载"
+    }
+  }
+}

@@ -25,6 +25,7 @@ import re
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -130,10 +131,21 @@ def fetch_tile(key, cell_deg):
                 col0 = int(round((b.left + 180.0) / cell_deg))
                 row0 = int(round((90.0 - b.top) / cell_deg))
             return row0, col0, rows, cols, np.asarray(arr, dtype=np.uint8)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                log("[跳过] 瓦片不存在 %s" % key)
+                return None
+            last = exc
+            time.sleep(2.0 * (attempt + 1))
         except Exception as exc:  # noqa: BLE001 - 远端任何抖动都退避重试
             last = exc
             time.sleep(2.0 * (attempt + 1))
     raise RuntimeError("瓦片 %s 读取失败：%s" % (key, last))
+
+
+def fetch_job(args):
+    key, cell_deg = args
+    return key, fetch_tile(key, cell_deg)
 
 
 def state_path(root):

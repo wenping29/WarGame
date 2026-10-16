@@ -11,6 +11,7 @@ let META = null;
 
 const num = (v) => (v === '' || v == null || isNaN(+v) ? null : +v);
 function scenarios() { return (META && META.scenarios) || []; }
+function gisPackages() { return (META && META.gis) || []; }
 function types() { return (META && META.unit_types) || []; }
 function weatherList() { return (META && META.weather) || []; }
 function firstType() { return (types()[0] && types()[0].id) || 'rifle'; }
@@ -70,9 +71,21 @@ export async function renderWizard(root) {
 
 function newState() {
   const s = scenarios()[0] || {};
+  const env = envOf(s);
   return {
     step: 0, scenarioId: s.id || s.file, name: s.name || '', seed: '',
-    env: { width: '', height: '', cell_km: '', lon: '', lat: '' },
+    // 程序化降级参数（没有数据包时才起作用）
+    env: { width: '', height: '', cell_km: String(env.cell_km || ''), lon: String(env.lon || ''), lat: String(env.lat || '') },
+    gis: {
+      mode: 'existing',        // existing=用已有数据包 / generate=按范围现场生成
+      pkg: '',                 // existing 模式选中的包名（'' = 用剧本默认）
+      bbox: { w: env.w, s: env.s, e: env.e, n: env.n },
+      cell_km: '',
+      dem: 'auto', landuse: 'auto', roads: true,
+      name: '',
+      plan: null, planBusy: false, planErr: '',
+      job: null, jobErr: '', caps: null,
+    },
     flags: Object.fromEntries(FLAGS.map(([k]) => [k, 'default'])),
     weather: { initial: '', mode: '' },
     sides: { red: { oob: [], budget: '' }, blue: { oob: [], budget: '' } },
@@ -82,13 +95,49 @@ function newState() {
   };
 }
 
+/// 剧本里的 environment → 表单初值（范围框按中心 ±0.9° 起算，够一次营级交战）
+function envOf(s) {
+  const e = (s && s.environment) || {};
+  const lon = num(e.center_lonlat && e.center_lonlat[0]);
+  const lat = num(e.center_lonlat && e.center_lonlat[1]);
+  if (lon === null || lat === null) return { cell_km: e.cell_km, lon: '', lat: '', w: '', s: '', e: '', n: '' };
+  const fmt = (v) => String(Math.round(v * 1000) / 1000);
+  return {
+    cell_km: e.cell_km, lon: fmt(lon), lat: fmt(lat),
+    w: fmt(lon - 0.95), e: fmt(lon + 0.95), s: fmt(lat - 0.55), n: fmt(lat + 0.55),
+  };
+}
+
+function gisBbox(g) {
+  const w = num(g.bbox.w), s = num(g.bbox.s), e = num(g.bbox.e), n = num(g.bbox.n);
+  if (w === null || s === null || e === null || n === null) return null;
+  if (!(w < e && s < n)) return null;
+  return [w, s, e, n];
+}
+
+/// 生效的数据包名：generate 模式用作业产物，existing 用下拉选择
+function effectivePkg(st) {
+  const g = st.gis;
+  if (g.mode === 'generate') return (g.job && g.job.status === 'done') ? g.job.name : '';
+  return g.pkg || '';
+}
+
 function buildOverrides(st) {
   const ov = {};
+  const pkg = effectivePkg(st);
+  if (st.gis.mode === 'generate' && !pkg) {
+    return { __invalid: '战场数据尚未生成：请先在「战场环境」里点「生成六角格网格」并等待完成' };
+  }
+  if (pkg) ov.gis_package = pkg;
+
   const env = {};
-  if (num(st.env.width) !== null) env.width = num(st.env.width);
-  if (num(st.env.height) !== null) env.height = num(st.env.height);
-  if (num(st.env.cell_km) !== null) env.cell_km = num(st.env.cell_km);
-  if (num(st.env.lon) !== null && num(st.env.lat) !== null) env.center_lonlat = [num(st.env.lon), num(st.env.lat)];
+  if (!pkg) {
+    // 无数据包 ⇒ 这些参数决定程序化格网；有数据包 ⇒ 几何由数据包 meta 决定，不再提交
+    if (num(st.env.width) !== null) env.width = num(st.env.width);
+    if (num(st.env.height) !== null) env.height = num(st.env.height);
+    if (num(st.env.cell_km) !== null) env.cell_km = num(st.env.cell_km);
+    if (num(st.env.lon) !== null && num(st.env.lat) !== null) env.center_lonlat = [num(st.env.lon), num(st.env.lat)];
+  }
   if (Object.keys(env).length) ov.environment = env;
 
   const flags = {};
@@ -156,19 +205,23 @@ const STEP_RENDER = {
       return el('label', {}, [el('span', {}, l), sel]);
     });
     return el('div', {}, [
-      el('h2', {}, '第 2 步 · 战场环境'),
-      el('div', { class: 'row' }, [
-        numField('宽（格）', st.env.width, (v) => st.env.width = v),
-        numField('高（格）', st.env.height, (v) => st.env.height = v),
-        numField('格距（km/格）', st.env.cell_km, (v) => st.env.cell_km = v),
-      ]),
-      el('div', { class: 'row' }, [
-        numField('中心经度', st.env.lon, (v) => st.env.lon = v, '如 6.95'),
-        numField('中心纬度', st.env.lat, (v) => st.env.lat = v, '如 51.42'),
-      ]),
+      el('h2', {}, '第 2 步 · 战场环境与六角格'),
+      gisBlock(st, ctx),
       el('h3', { style: 'margin-top:14px' }, '模式开关'),
       el('div', { class: 'row' }, flagRow),
-      el('p', { class: 'muted small' }, '若剧本携带真实 GIS 数据包，宽高/中心由数据包决定，此处覆盖仅作用于程序化降级地形。'),
+      el('details', { style: 'margin-top:12px' }, [
+        el('summary', { class: 'muted small' }, '程序化地形参数（仅在没有任何数据包时生效）'),
+        el('div', { class: 'row', style: 'margin-top:8px' }, [
+          numField('宽（格）', st.env.width, (v) => st.env.width = v),
+          numField('高（格）', st.env.height, (v) => st.env.height = v),
+          numField('对边距（实地 km）', st.env.cell_km, (v) => st.env.cell_km = v),
+        ]),
+        el('div', { class: 'row' }, [
+          numField('中心经度', st.env.lon, (v) => st.env.lon = v, '如 6.95'),
+          numField('中心纬度', st.env.lat, (v) => st.env.lat = v, '如 51.42'),
+        ]),
+      ]),
+      el('p', { class: 'muted small' }, '六角格几何（原点、半径、行列数）始终取自所选数据包，与在线天地图瓦片同一墨卡托框架；对边距按实地公里计。'),
       nav(ctx, 2),
     ]);
   },
@@ -297,4 +350,256 @@ function sidePanel(st, ctx) {
 
 function numField(label, value, oninput, ph = '继承默认') {
   return el('label', {}, [el('span', {}, label), el('input', { type: 'number', value, placeholder: ph, oninput: (e) => oninput(e.target.value) })]);
+}
+
+// ─────────────────── 战场数据（六角格） ───────────────────
+
+const GIS_MODES = [['existing', '使用已有数据包'], ['generate', '按范围现场生成']];
+const LAYER_CN = {
+  elevation: '高程', landcover: '土地覆盖', roads: '道路', hydrology: '水系', settlements: '聚落',
+};
+
+function pkgOf(name) { return gisPackages().find((p) => p.name === name) || null; }
+
+function gisBlock(st, ctx) {
+  const g = st.gis;
+  if (!g.dom) {
+    const nb = (key) => el('input', {
+      type: 'number', step: '0.01', value: g.bbox[key],
+      oninput: (e) => { g.bbox[key] = e.target.value; schedulePlan(st, ctx); },
+    });
+    g.dom = {
+      w: nb('w'), s: nb('s'), e: nb('e'), n: nb('n'),
+      cell: el('input', {
+        type: 'number', step: '0.1', min: '0.5', value: g.cell_km, placeholder: '留空 = 用推荐',
+        oninput: (e) => { g.cell_km = e.target.value; schedulePlan(st, ctx); },
+      }),
+      name: el('input', { type: 'text', value: '', placeholder: '包名（留空自动加时间戳）', oninput: (e) => { g.name = e.target.value; } }),
+      plan: el('div', {}),
+      prog: el('div', {}),
+    };
+  }
+  const modeRow = el('div', { class: 'row' }, GIS_MODES.map(([v, t]) => el('button', {
+    class: 'btn btn-sm' + (g.mode === v ? ' btn-1' : ''), onclick: () => { g.mode = v; if (v === 'generate') loadCaps(g); ctx.render(); },
+  }, t)));
+
+  const head = el('div', { class: 'gis-box' }, [
+    el('h3', {}, '战场数据与六角格网络'),
+    el('p', { class: 'muted small' }, '六角格由真实栅格（本地全球 DEM + ESA WorldCover）按范围现场生成，也可复用已生成的数据包。'),
+    modeRow,
+  ]);
+  head.appendChild(g.mode === 'existing' ? existingPanel(st, ctx) : generatePanel(st, ctx));
+  return head;
+}
+
+function existingPanel(st, ctx) {
+  const g = st.gis;
+  const sc = scenarios().find((s) => (s.id || s.file) === st.scenarioId) || {};
+  const defPkg = sc.gis_package || '';
+  const sel = el('select', { onchange: (e) => { g.pkg = e.target.value; ctx.doValidate(); ctx.render(); } },
+    [optionFor('', defPkg ? ('（继承剧本默认：' + defPkg + '）') : '（无：用程序化地形）', g.pkg)]
+      .concat(gisPackages().map((p) => optionFor(p.name, pkgLabel(p), g.pkg))));
+  const box = el('div', { style: 'margin-top:10px' }, [
+    el('div', { class: 'row' }, [el('label', {}, [el('span', {}, '数据包'), sel])]),
+  ]);
+  const meta = pkgOf(g.pkg) || pkgOf(defPkg);
+  box.appendChild(meta ? pkgCard(meta) : el('p', { class: 'muted small' }, '未选数据包 ⇒ 引擎按「程序化地形参数」造格网（不来自真实地形）。'));
+  return box;
+}
+
+function pkgLabel(p) {
+  return p.name + ' · 对边距 ' + fmtKm(p.cell_km) + ' · ' + (p.width || '?') + '×' + (p.height || '?') +
+    ' 格' + (p.cells ? '（' + p.cells + '）' : '') + (p.legacy ? ' · 旧包' : '');
+}
+
+function fmtKm(v) { return v == null ? '?' : (Math.round(v * 100) / 100) + ' km'; }
+
+function pkgCard(p) {
+  const layers = Object.entries(p.layers || {}).map(([k, v]) =>
+    el('li', {}, (LAYER_CN[k] || k) + '：' + (v || '未标注')));
+  const bb = p.bbox;
+  return el('div', { class: 'card pkg-card' }, [
+    el('div', { class: 'row' }, [
+      kv('来源', p.source || '?'),
+      kv('对边距', fmtKm(p.cell_km) + '（实地）' + (p.mercator_scale ? ' · 墨卡托 ×' + (Math.round(p.mercator_scale * 1000) / 1000) : '')),
+      kv('格网', (p.width || '?') + '×' + (p.height || '?') + ' = ' + (p.cells || '?') + ' 格'),
+    ]),
+    el('div', { class: 'row' }, [
+      kv('实地范围', p.ground_km && p.ground_km[0] ? (Math.round(p.ground_km[0]) + '×' + Math.round(p.ground_km[1]) + ' km') : '?'),
+      kv('四至', bb ? bb.map((v) => (Math.round(v * 100) / 100) + '°').join(' / ') : '?'),
+      kv('生成时间', p.generated_at || '?'),
+    ]),
+    layers.length ? el('ul', { class: 'muted small', style: 'margin:6px 0 0 16px' }, layers) : null,
+    p.legacy ? el('p', { class: 'warn small' }, '旧数据包未标注墨卡托放大，中纬度的实地格距会偏大；建议现场重新生成一份。') : null,
+  ]);
+}
+
+function kv(k, v) {
+  return el('label', { class: 'kv' }, [el('span', {}, k), el('b', {}, String(v))]);
+}
+
+function generatePanel(st, ctx) {
+  const g = st.gis;
+  const d = g.dom;
+  const running = g.job && (g.job.status === 'running' || g.job.status === 'queued');
+  const box = el('div', { style: 'margin-top:10px' }, [
+    el('div', { class: 'row' }, [
+      numField('西经', g.bbox.w, (v) => { g.bbox.w = v; schedulePlan(st, ctx); }),
+      numField('南纬', g.bbox.s, (v) => { g.bbox.s = v; schedulePlan(st, ctx); }),
+      numField('东经', g.bbox.e, (v) => { g.bbox.e = v; schedulePlan(st, ctx); }),
+      numField('北纬', g.bbox.n, (v) => { g.bbox.n = v; schedulePlan(st, ctx); }),
+    ]),
+    el('p', { class: 'muted small' }, '四至指六角格「格心」范围（WGS84）。单边不超过 8°，超过 3 万格会被拒绝。'),
+    el('div', { class: 'row' }, [
+      el('label', {}, [el('span', {}, '六角格对边距（实地 km）'), d.cell]),
+      el('button', {
+        class: 'btn btn-sm', disabled: !g.plan,
+        onclick: () => {
+          if (!g.plan) return;
+          g.cell_km = String(g.plan.recommended.cell_km);
+          d.cell.value = g.cell_km;
+          schedulePlan(st, ctx);
+        },
+      }, '用推荐对边距'),
+    ]),
+    d.plan,
+    el('h3', { style: 'margin-top:12px' }, '数据层'),
+    el('div', { class: 'row' }, [
+      el('label', {}, [el('span', {}, '高程'), el('select', { onchange: (e) => { g.dem = e.target.value; }, },
+        [['auto', '自动（本地真实 DEM 优先）'], ['local', '仅本地 DEM 栅格'], ['synthetic', '合成（离线演示）']]
+          .map(([v, t]) => optionFor(v, t, g.dem)))]),
+      el('label', {}, [el('span', {}, '土地利用/覆盖'), el('select', { onchange: (e) => { g.landuse = e.target.value; }, },
+        [['auto', '真实 WorldCover 10 m'], ['proxy', '噪声代理（无网络）'], ['off', '不参与判类']]
+          .map(([v, t]) => optionFor(v, t, g.landuse)))]),
+      el('label', { class: 'sw' }, [
+        el('input', { type: 'checkbox', checked: g.roads, onchange: (e) => { g.roads = e.target.checked; } }),
+        el('span', {}, '道路走廊（地形派生：无公开真实道路矢量可用）'),
+      ]),
+    ]),
+    g.caps && !g.caps.available ? el('p', { class: 'warn small' }, '本机没有可用的 Python，无法现场生成：' + (g.caps.reason || '未知原因')) : null,
+    g.caps && g.caps.available && !g.caps.rasterio ? el('p', { class: 'warn small' }, 'Python 缺 rasterio/numpy ⇒ 只能生成合成地形；真实栅格请 pip 安装后重试。') : null,
+    g.caps && g.caps.available && g.caps.rasterio && !g.caps.dem_present ? el('p', { class: 'warn small' }, '未发现本地 DEM（' + (g.caps.dem_tif || '?') + '）⇒ 高程将退回合成。') : null,
+    el('div', { class: 'row', style: 'margin-top:12px' }, [
+      el('label', {}, [el('span', {}, '数据包名'), d.name]),
+      el('button', {
+        class: 'btn btn-primary', disabled: running,
+        onclick: () => startGen(st, ctx),
+      }, running ? '生成中…' : '生成六角格网格'),
+      g.job && g.job.status === 'done' ? el('button', {
+        class: 'btn', onclick: () => { g.mode = 'existing'; g.pkg = g.job.name; ctx.render(); },
+      }, '改用新生成的包') : null,
+    ]),
+    d.prog,
+  ]);
+  paintPlan(st);
+  paintProgress(st);
+  return box;
+}
+
+function loadCaps(g) {
+  if (g.caps) return;
+  api.gisCapabilities().then((c) => { g.caps = c; }).catch(() => {});
+}
+
+let planTimer = 0;
+function schedulePlan(st, ctx) {
+  const g = st.gis;
+  clearTimeout(planTimer);
+  const bb = gisBbox(g);
+  if (!bb) { g.plan = null; g.planErr = '范围框需满足 西<东、南<北'; if (g.dom) paintPlan(st); return; }
+  g.planBusy = true;
+  planTimer = setTimeout(() => {
+    api.gisPlan(bb, num(g.cell_km) || undefined).then((res) => {
+      g.planBusy = false;
+      if (res.error) { g.plan = null; g.planErr = res.error; } else { g.plan = res; g.planErr = ''; }
+      if (st.gis.mode === 'generate' && document.body.contains(g.dom.plan)) paintPlan(st);
+    }).catch((e) => { g.planBusy = false; g.planErr = '方案计算失败：' + e; if (g.dom) paintPlan(st); });
+  }, 420);
+}
+
+function paintPlan(st) {
+  const g = st.gis;
+  const host = g.dom && g.dom.plan;
+  if (!host) return;
+  if (g.planErr && !g.plan) { host.replaceChildren(el('p', { class: 'warn small' }, g.planErr)); return; }
+  const p = g.plan;
+  if (!p) {
+    host.replaceChildren(el('p', { class: 'muted small' }, g.planBusy ? '正在计算格网方案…' : '填好范围框后自动给出推荐对边距与行列数。'));
+    return;
+  }
+  const rec = p.recommended.cell_km;
+  const chips = (p.ladder || []).map((c) => el('button', {
+    class: 'btn btn-sm chip' + (String(c.cell_km) === String(g.cell_km) ? ' btn-1' : '') + (c.cell_km === rec ? ' rec' : ''),
+    title: (c.label === 'recommended' ? '推荐' : c.label === 'heavy' ? '格数偏多' : c.label === 'coarse' ? '格数偏少' : ''),
+    onclick: () => { g.cell_km = String(c.cell_km); g.dom.cell.value = g.cell_km; schedulePlan(st, st.ctx || st); },
+  }, fmtKm(c.cell_km) + ' · ' + c.width + '×' + c.height + ' · ' + c.cells + '格'));
+  host.replaceChildren(el('div', { class: 'card plan-card' }, [
+    el('div', { class: 'row' }, [
+      kv('实地范围', Math.round(p.ground_km[0]) + '×' + Math.round(p.ground_km[1]) + ' km'),
+      kv('墨卡托放大', '×' + (Math.round(p.mercator_scale * 1000) / 1000)),
+      kv('推荐对边距', fmtKm(rec)),
+      kv('当前格网', (p.current ? p.current.width + '×' + p.current.height + ' = ' + p.current.cells + ' 格' : '未定')),
+    ]),
+    el('div', { class: 'chips' }, chips),
+    el('ul', { class: 'muted small why' }, (p.recommended.reasons || []).map((r) => el('li', {}, r))),
+  ]));
+}
+
+function paintProgress(st) {
+  const g = st.gis;
+  const host = g.dom && g.dom.prog;
+  if (!host) return;
+  const j = g.job;
+  if (!j) { host.replaceChildren(el('p', { class: 'muted small' }, '尚未生成。真实栅格生成约需十几秒到几分钟。')); return; }
+  const tail = (j.log || []).slice(-9);
+  host.replaceChildren(el('div', { class: 'card job-card' }, [
+    el('div', { class: 'row' }, [
+      kv('作业', j.id),
+      kv('状态', ({ queued: '排队中', running: '生成中', done: '已完成', failed: '失败' })[j.status] || j.status),
+      kv('产物', 'data/gis/' + j.name),
+    ]),
+    el('pre', { class: 'mono job-log' }, tail.join('\n') || '…'),
+    j.error ? el('p', { class: 'warn small' }, j.error) : null,
+    j.status === 'done' && j.meta ? el('p', { class: 'small' },
+      '自校验 ' + ((j.meta.fails || 0) === 0 ? '全部通过' : (j.meta.fails + ' 项未通过')) +
+      ' · 地形构成 ' + JSON.stringify((j.meta.terrain_counts) || {})) : null,
+  ]));
+}
+
+async function startGen(st, ctx) {
+  const g = st.gis;
+  const bb = gisBbox(g);
+  if (!bb) return toast('范围框需满足 西<东、南<北', 'err');
+  const cell = num(g.cell_km) || (g.plan && g.plan.recommended && g.plan.recommended.cell_km);
+  if (!cell) return toast('请先给出对边距', 'err');
+  const spec = {
+    bbox: bb, cell_km: cell, name: (g.name || '').trim(),
+    dem: g.dem, landuse: g.landuse, roads: g.roads,
+  };
+  g.jobErr = '';
+  const res = await api.gisStartJob(spec);
+  if (res.error) { g.jobErr = res.error; return toast(res.error, 'err'); }
+  g.job = res;
+  paintProgress(st);
+  pollJob(st, ctx);
+}
+
+function pollJob(st, ctx) {
+  const g = st.gis;
+  if (g.timer) clearInterval(g.timer);
+  g.timer = setInterval(async () => {
+    const j = await api.gisJob(g.job.id).catch(() => null);
+    if (!j || j.error) { clearInterval(g.timer); g.timer = null; g.job = null; paintProgress(st); return toast((j && j.error) || '作业丢失', 'err'); }
+    g.job = j;
+    paintProgress(st);
+    if (j.status === 'done' || j.status === 'failed') {
+      clearInterval(g.timer); g.timer = null;
+      if (j.status === 'done') {
+        META = await getMeta(true);   // 新数据包进入列表
+        toast('六角格数据包已生成：' + j.name);
+      } else {
+        toast('生成失败：' + (j.error || '见日志'), 'err');
+      }
+    }
+  }, 1500);
 }

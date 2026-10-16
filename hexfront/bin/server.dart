@@ -8,6 +8,7 @@ import 'package:hexfront_web/engine/fog.dart';
 import 'package:hexfront_web/engine/library.dart';
 import 'package:hexfront_web/engine/scenario.dart';
 import 'package:hexfront_web/engine/state.dart';
+import 'package:hexfront_web/server/hexgen.dart';
 import 'package:hexfront_web/server/room.dart';
 import 'package:hexfront_web/server/store.dart';
 
@@ -25,6 +26,10 @@ late final RoomRegistry registry = RoomRegistry(store);
 final InstanceBuilder builder = InstanceBuilder(
   lib: library,
   loadGisPackage: store.loadGisPackage,
+);
+final GisService gis = GisService(
+  repoRoot: projectRoot,
+  gisDir: Directory('${projectRoot.path}${Platform.pathSeparator}data${Platform.pathSeparator}gis'),
 );
 
 /// 天地图瓦片密钥：优先环境变量 TIANDITU_TK，其次 data/tianditu.json 的 {"tk": "..."}。
@@ -47,7 +52,7 @@ void main(List<String> args) async {
   final server = await HttpServer.bind(InternetAddress.anyIPv4, port);
   server.autoCompress = true;
   print('HEXFRONT-WEB  http://localhost:$port  (项目根: ${projectRoot.path})');
-  print('剧本 ${store.listScenarios().length} 个 · GIS 数据包 ${store.listGisPackages().length} 个 · 存档 ${store.listSaves().length} 个');
+  print('剧本 ${store.listScenarios().length} 个 · GIS 数据包 ${store.gisPackageSummaries().length} 个 · 存档 ${store.listSaves().length} 个');
 
   await for (final req in server) {
     try {
@@ -89,7 +94,7 @@ Future<void> api(HttpRequest req, String p) async {
   if (req.method == 'GET' && p == '/api/scenarios') {
     return _json(req, {
       'scenarios': store.listScenarios(),
-      'gis': store.listGisPackages().map((k, v) => MapEntry(k, v)),
+      'gis': store.gisPackageSummaries(),
       'saves': store.listSaves(),
       'weather': library.weather.values.map((w) => w.toJson()).toList(),
       'unit_types': library.types.values.map((t) => t.toJson()).toList(),
@@ -100,6 +105,38 @@ Future<void> api(HttpRequest req, String p) async {
   }
   if (req.method == 'GET' && p == '/api/rooms') {
     return _json(req, {'rooms': registry.list()});
+  }
+
+  // ── GIS 六角格：能力探测 / 格网方案 / 生成作业 ──
+  if (req.method == 'GET' && p == '/api/gis/capabilities') {
+    return _json(req, await gis.capabilities(refresh: req.uri.queryParameters['refresh'] == '1'));
+  }
+  if (req.method == 'GET' && p == '/api/gis/plan') {
+    final q = req.uri.queryParameters;
+    final bb = _bboxFromQuery(q);
+    if (bb == null) return _json(req, {'error': '需要 w/s/e/n 四个数值（西 南 东 北）'}, 400);
+    try {
+      return _json(req, await gis.plan(bb, cellKm: double.tryParse(q['cell_km'] ?? '')));
+    } on GisError catch (e) {
+      return _json(req, {'error': e.message}, 400);
+    }
+  }
+  if (p == '/api/gis/jobs' && req.method == 'GET') {
+    return _json(req, {'jobs': gis.jobs()});
+  }
+  if (p == '/api/gis/jobs' && req.method == 'POST') {
+    final b = await body();
+    try {
+      final job = await gis.startJob(GisJobSpec.fromJson(b));
+      return _json(req, job.toJson());
+    } on GisError catch (e) {
+      return _json(req, {'error': e.message}, 400);
+    }
+  }
+  if (req.method == 'GET' && p.startsWith('/api/gis/jobs/')) {
+    final job = gis.job(p.substring('/api/gis/jobs/'.length));
+    if (job == null) return _json(req, {'error': '作业不存在（服务端重启后作业记录会清空，数据包仍在）'}, 404);
+    return _json(req, job.toJson());
   }
   if (req.method == 'POST' && p == '/api/validate') {
     final b = await body();
@@ -192,6 +229,16 @@ Future<void> api(HttpRequest req, String p) async {
   }
 
   return _json(req, {'error': 'not found: $p'}, 404);
+}
+
+/// /api/gis/plan 的查询串：w/s/e/n = 西/南/东/北（WGS84 度）
+List<double>? _bboxFromQuery(Map<String, String> q) {
+  final w = double.tryParse(q['w'] ?? '');
+  final s = double.tryParse(q['s'] ?? '');
+  final e = double.tryParse(q['e'] ?? '');
+  final n = double.tryParse(q['n'] ?? '');
+  if (w == null || s == null || e == null || n == null) return null;
+  return [w, s, e, n];
 }
 
 List<String> _validateOverrides(Map<String, dynamic> ov) {

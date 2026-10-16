@@ -29,6 +29,7 @@ class Store {
             'scale': m['scale'],
             'description': m['description'],
             'gis_package': m['gis_package'],
+            'environment': m['environment'],
             'max_turns': m['max_turns'],
             'sides': (m['sides'] as Map?)?.keys.toList(),
             'unit_count': _oobUnitCount(m['sides']),
@@ -165,24 +166,73 @@ class Store {
     return out;
   }
 
-  Map<String, String> listGisPackages() {
+  /// 数据包结构化清单（向导展示元信息用）。按 mtime 缓存，避免每次请求重读几百 KB。
+  List<Map<String, dynamic>> gisPackageSummaries() {
     final dir = Directory('${root.path}${Platform.pathSeparator}gis');
-    if (!dir.existsSync()) return {};
-    final out = <String, String>{};
-    for (final f in dir.listSync().whereType<File>()) {
+    if (!dir.existsSync()) return [];
+    final files = dir.listSync().whereType<File>().where((f) => f.path.endsWith('.json')).toList()
+      ..sort((a, b) => a.path.compareTo(b.path));
+    final out = <Map<String, dynamic>>[];
+    for (final f in files) {
       final name = f.uri.pathSegments.last;
-      if (!name.endsWith('.json')) continue;
+      String stamp;
+      try {
+        final st = f.statSync();
+        stamp = '${st.size}@${st.modified.toIso8601String()}';
+      } catch (_) {
+        stamp = 'stat';
+      }
+      final cached = _gisCache[name];
+      if (cached != null && cached['stamp'] == stamp) {
+        if (cached['summary'] != null) out.add(Map<String, dynamic>.from(cached['summary'] as Map));
+        continue;
+      }
+      Map<String, dynamic>? summary;
       try {
         final m = Map<String, dynamic>.from(jsonDecode(f.readAsStringSync()) as Map);
-        final meta = m['meta'] as Map?;
-        out[name] = '(${meta?['source'] ?? '?'}) ${meta?['cell_km'] ?? '?'}km/格 · ${meta?['width'] ?? '?'}×${meta?['height'] ?? '?'}';
+        summary = _gisSummary(name, Map<String, dynamic>.from(m['meta'] as Map? ?? {}));
       } catch (_) {
-        out[name] = '(解析失败)';
+        summary = null; // 坏包不进列表
       }
+      _gisCache[name] = {'stamp': stamp, 'summary': summary};
+      if (summary != null) out.add(summary);
     }
     return out;
   }
+
+  final Map<String, Map<String, dynamic>> _gisCache = {};
 }
+
+Map<String, dynamic> _gisSummary(String name, Map<String, dynamic> meta) {
+  final w = meta['width'], h = meta['height'];
+  final rawLayers = meta['layers'] as Map?;
+  final layers = <String, String>{};
+  rawLayers?.forEach((k, v) {
+    if (v is Map) layers['$k'] = '${v['kind'] ?? v['source'] ?? ''}';
+  });
+  return {
+    'name': name,
+    'label': '(${meta['source'] ?? '?'}) ${meta['cell_km'] ?? '?'}km/格 · ${w ?? '?'}×${h ?? '?'}',
+    'source': meta['source'],
+    'cell_km': meta['cell_km'],
+    'width': w,
+    'height': h,
+    'cells': (w is int && h is int) ? w * h : null,
+    'bbox': meta['bbox'],
+    'center_lonlat': meta['center_lonlat'],
+    'mercator_scale': meta['mercator_scale'],
+    'cell_ground_m': meta['cell_ground_m'],
+    'radius_m': meta['radius_m'],
+    'mercator_ox': meta['mercator_ox'],
+    'mercator_oy': meta['mercator_oy'],
+    'ground_km': [meta['ground_km_east_west'], meta['ground_km_north_south']],
+    'terrain_counts': meta['stats']?['terrain_counts'],
+    'layers': layers,
+    'generated_at': meta['generated_at'],
+    'legacy': meta['mercator_scale'] == null,
+  };
+}
+
 
 int _oobUnitCount(dynamic sides) {
   if (sides is! Map) return 0;

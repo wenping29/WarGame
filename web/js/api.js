@@ -21,4 +21,10 @@ export const api = {
   validate: (scenario, overrides) => jpost('/api/validate', { scenario, overrides }),
   createInstance: (body) => jpost('/api/instances', body),
   loadSave: (instance) => jpost('/api/saves/load', { instance }),
+  gisCapabilities: (refresh) => jget('/api/gis/capabilities' + (refresh ? '?refresh=1' : '')),
+  gisPlan: (bbox, cellKm) => jget('/api/gis/plan?w=' + bbox[0] + '&s=' + bbox[1] +
+    '&e=' + bbox[2] + '&n=' + bbox[3] + (cellKm ? '&cell_km=' + cellKm : '')),
+  gisJobs: () => jget('/api/gis/jobs'),
+  gisJob: (id) => jget('/api/gis/jobs/' + id),
+  gisStartJob: (spec) => jpost('/api/gis/jobs', spec),
 };

@@ -105,7 +105,16 @@ Hex _cubeRound(double fq, double fr) {
 class HexGeo {
   final double ox, oy, radius;
   final int dir; // 0..5 起始方位，用于旋转（本版本不旋转）
-  HexGeo({required this.ox, required this.oy, required this.radius, this.dir = 0});
+  final double cellGroundKm; // 实地对边距（km）；0 = 旧存档未知
+  final double scale; // 墨卡托放大 1/cos(lat)；0 = 未知（按 1 处理）
+  HexGeo({
+    required this.ox,
+    required this.oy,
+    required this.radius,
+    this.dir = 0,
+    this.cellGroundKm = 0,
+    this.scale = 0,
+  });
 
   double get hexW => math.sqrt(3) * radius; // 尖顶格宽
   double get hexVStep => 1.5 * radius;      // 行距
@@ -122,9 +131,18 @@ class HexGeo {
     return _cubeRound(px - py / 2.0, py);
   }
 
-  Map<String, dynamic> toJson() => {'ox': ox, 'oy': oy, 'radius': radius};
-  static HexGeo fromJson(Map<String, dynamic> j) =>
-      HexGeo(ox: (j['ox'] as num).toDouble(), oy: (j['oy'] as num).toDouble(), radius: (j['radius'] as num).toDouble());
+  Map<String, dynamic> toJson() => {
+        'ox': ox, 'oy': oy, 'radius': radius,
+        if (cellGroundKm > 0) 'cell_ground_km': cellGroundKm,
+        if (scale > 0) 'mercator_scale': scale,
+      };
+  static HexGeo fromJson(Map<String, dynamic> j) => HexGeo(
+        ox: (j['ox'] as num).toDouble(),
+        oy: (j['oy'] as num).toDouble(),
+        radius: (j['radius'] as num).toDouble(),
+        cellGroundKm: (j['cell_ground_km'] as num?)?.toDouble() ?? 0,
+        scale: (j['mercator_scale'] as num?)?.toDouble() ?? 0,
+      );
 }
 
 /// 经纬度(WGS84) → EPSG:3857 墨卡托米
