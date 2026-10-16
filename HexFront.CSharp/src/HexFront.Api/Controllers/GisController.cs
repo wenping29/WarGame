@@ -232,37 +232,21 @@ public class GisController : ControllerBase
         if (!System.IO.File.Exists(path))
             return NotFound(new { error = $"Package '{req.PackageName}' not found" });
 
-        // TODO: Implement full 37-check validation suite
-        // For now, return a placeholder that passes basic structural checks
         var json = System.IO.File.ReadAllText(path);
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
-
-        var hexes = root.GetProperty("hexes");
-        var meta = root.GetProperty("meta");
-        var width = meta.GetProperty("width").GetInt32();
-        var height = meta.GetProperty("height").GetInt32();
-        var expectedCells = width * height;
-        var actualCells = hexes.GetArrayLength();
-
-        var results = new List<ValidationResult>
+        var options = new JsonSerializerOptions
         {
-            new() { Level = actualCells == expectedCells ? "OK" : "FAIL", Check = "格数", Detail = $"{actualCells} vs {expectedCells}" },
-            new() { Level = "OK", Check = "q/r 范围", Detail = $"0..{width-1} / 0..{height-1}" },
-            new() { Level = "OK", Check = "terrain 白名单", Detail = "clear/rough/woods/hills/mountain/city/swamp/river/water/void" },
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         };
+        var pkg = JsonSerializer.Deserialize<HexPackage>(json, options);
+        
+        if (pkg == null || pkg.Hexes.Count == 0)
+            return BadRequest(new { error = "Failed to parse package JSON" });
 
-        var fails = results.Count(r => r.Level == "FAIL");
-        var warns = results.Count(r => r.Level == "WARN");
+        // Run full 37-check validation suite
+        var report = HexFront.Core.Validation.HexPackageValidator.Validate(pkg);
 
-        return Ok(new ValidationReport
-        {
-            Total = results.Count,
-            Fails = fails,
-            Warns = warns,
-            Passes = results.Count - fails - warns,
-            Results = results,
-        });
+        return Ok(report);
     }
 
     /// <summary>GET /api/gis/capabilities — Report local GIS toolchain availability.</summary>
@@ -618,7 +602,7 @@ public class GisController : ControllerBase
                 CenterLonLat = new List<double> { (w + e) / 2, (s + n) / 2 },
                 Bbox = spec.Bbox,
                 GeneratedAt = DateTime.UtcNow.ToString("O"),
-                Layers = new Dictionary<string, string>
+                Layers = new Dictionary<string, object>
                 {
                     ["elevation"] = "synthetic",
                     ["landcover"] = "off",
