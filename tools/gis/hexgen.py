@@ -81,6 +81,8 @@ API_USER_AGENT = "hexfront-hexgen/1.0 (+local-gis-tool; python-urllib)"
 
 SOURCE_REAL = "open-meteo-elevation"
 SOURCE_SYNTH = "synthetic-fallback"
+SOURCE_LOCAL_DEM = "local-dem-geotiff"
+LANDCOVER_PRODUCT = "esa-worldcover-v200-10m"
 
 # --- 确定性种子（同 seed ⇒ 同输出；仅 generated_at 变化） ---
 DEFAULT_SEED = 20261016
@@ -141,6 +143,15 @@ WATER_NOISE_MIN = 0.66             # 湖泊噪声 ≥ 此值 ⇒ water（静水�
 WATER_RIVER_MIN_DIST = 1           # 湖泊不吞掉河带本身
 MAX_LAKE_CELLS = 14                # 水面格上限，防异常数据把地图变成湖
 
+# --- 真实土地覆盖（WorldCover）生效阈值：按「格内面积占比」判定，不是格心一点 ---
+LC_WOODS_SHARE = 0.45              # 树覆盖占比 ≥ ⇒ woods
+LC_ROUGH_SHARE = 0.50              # 稀疏植被/苔原/积雪占比 ≥ ⇒ rough
+LC_SWAMP_SHARE = 0.40              # 湿地类占比 ≥ ⇒ swamp
+LC_WATER_SHARE = 0.34              # 水体占比 ≥ ⇒ water（河带格除外）
+LC_CITY_SHARE = 0.25               # 建筑区占比 ≥ ⇒ 聚落候选
+LC_CITY_MAX_FRACTION = 0.12        # 聚落格占全图上限：现实城区会连绵成片，游戏里须留野地
+LC_CITY_LEVEL2_SHARE = 0.45        # 建筑区占比 ≥ ⇒ 聚落等级 2（大城市/枢纽）
+
 # --- 水系 / 道路 / 桥梁 / 聚落 ---
 RIVER_ROUTE_STEPS = (0.35, 0.55, 0.80, 1.05)  # 河带 Dijkstra 逐级放大的「谷底高程容差」（分位跨度）
 RIVER_ROUTE_RIDGE_PCT = 0.70       # 高于此分位的格视作山脊，重罚（首两级生效）
@@ -194,6 +205,16 @@ AXIAL_DIRS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))   # 尖顶 axi
 SLOPE_AXES = (((1, 0), (-1, 0)), ((1, -1), (-1, 1)), ((0, -1), (0, 1)))
 
 
+def mercator_scale(lat_deg: float) -> float:
+    """
+    Web Mercator 在纬度 lat 的线性放大倍数 = 1/cos(lat)：墨卡托米 ÷ 该倍数 = 实地米。
+    为什么必须显式处理：格网画在 EPSG:3857 里才能和瓦片零漂移对齐，但「对边距 5 km」
+    是指挥员嘴里的实地 5 km。51°N 处两者差 60%，不换算就等于把 3.1 km 的格标成 5 km。
+    """
+    return 1.0 / max(0.05, math.cos(math.radians(clamp(lat_deg, -85.0, 85.0))))
+
+
+
 class HexGrid:
     """尖顶六角格几何：格心 ↔ EPSG:3857。"""
 
@@ -203,11 +224,13 @@ class HexGrid:
         self.width = width
         self.height = height
         self.cell_km = cell_km
-        self.cell_m = cell_km * 1000.0
-        # 尖顶格：横向邻格距离 W = sqrt(3)*radius 必须等于 cell_km ⇒ radius = cell/sqrt(3)
+        self.scale = mercator_scale(center_lat)             # 墨卡托米 : 实地米
+        self.cell_ground_m = cell_km * 1000.0              # 对边距（实地）——指挥员口径
+        self.cell_m = self.cell_ground_m * self.scale       # 同一距离的墨卡托米
+        # 尖顶格：横向邻格距离 W = sqrt(3)*radius 必须等于 cell_m ⇒ radius = cell/sqrt(3)
         self.radius_m = self.cell_m / math.sqrt(3.0)
         self.hex_width_m = math.sqrt(3.0) * self.radius_m    # == cell_m（契约校验点）
-        self.row_step_m = 1.5 * self.radius_m                # 南北行距
+        self.row_step_m = 1.5 * self.radius_m                # 南北行距（墨卡托米）
         cx0 = lon_to_x(center_lon)
         cy0 = lat_to_y(center_lat)
         # 令「格网几何中心」= bbox 中心 = center_lonlat：按格心公式反推 ox/oy
@@ -284,6 +307,24 @@ class HexGrid:
         v2 = math.atan2(cy - by, cx - bx)
         d = abs(math.degrees(v2 - v1)) % 360.0
         return min(d, 360.0 - d)
+
+
+def grid_from_bbox(bbox, cell_km: float, min_side: int = 8):
+    """
+    范围框（WGS84 四至，指**格心**范围）+ 对边距 → 居中的格网。
+    行列数由「铺满该范围」决定：列 = Δx/格宽 + 1，行 = Δy/行距 + 1，至少 min_side。
+    """
+    x0, y0 = lon_to_x(bbox[0]), lat_to_y(bbox[1])
+    x1, y1 = lon_to_x(bbox[2]), lat_to_y(bbox[3])
+    if not (x1 > x0 and y1 > y0):
+        raise ValueError("bbox 需满足 西<东 且 南<北：%s" % (bbox,))
+    clon = x_to_lon((x0 + x1) / 2.0)
+    clat = y_to_lat((y0 + y1) / 2.0)
+    probe = HexGrid(clon, clat, 1, 1, cell_km)
+    width = int(round((x1 - x0) / probe.hex_width_m)) + 1
+    height = int(round((y1 - y0) / probe.row_step_m)) + 1
+    return HexGrid(clon, clat, max(min_side, width), max(min_side, height), cell_km)
+
 
 
 def axial_distance(a, b) -> int:
@@ -491,9 +532,10 @@ def compute_slopes(grid: HexGrid, elev):
     三条梯度轴的像素方向角为 0° / +60° / −60°（单位向量长度均为 1，邻格距离 W = cell）：
       dA = gx,  dB = 0.5gx - (√3/2)gy,  dC = 0.5gx + (√3/2)gy
       ⇒ gx = (dA + dB + dC)/3（冗余求均值降噪）,  gy = (dC - dB)/√3
-    边界缺邻居时退化为一阶差分；slope = atan(|grad|)（grad 单位 m/m，基线 = cell_km）。
+    边界缺邻居时退化为一阶差分；slope = atan(|grad|)（grad 单位 m/m，水平基线取**实地**格距，
+    墨卡托米在 51°N 放大了 60%，用它算会把坡度系统性压扁）。
     """
-    W = grid.hex_width_m
+    W = grid.cell_ground_m
     n = grid.width * grid.height
     slopes = [0.0] * n
 
