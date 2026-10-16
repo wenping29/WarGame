@@ -170,6 +170,7 @@ ROAD_BEND_PENALTY_PER_DEG = 2.0    # 道路转弯惩罚
 CITY_TARGET = 4
 CITY_MIN = 2
 CITY_MAX = 4
+CITY_ABS_MAX = 24                # 真实城区连片时的绝对上限（游戏性截断）
 CITY_MIN_SEPARATION = 3            # 聚落最小六角格间距
 CITY_JUNCTION_BONUS = 0.35         # 邻域道路越多（交叉口）加分越大
 CITY_RIVER_MAX_DIST = 2            # 聚落优先选河岸 / 渡口
@@ -642,18 +643,29 @@ def build_thresholds(elev, slopes):
     }
 
 
-def classify_base(grid: HexGrid, elev, slopes, relief, th, seed):
+def lc_flat_terrain(shares):
+    """真实土地覆盖 → 平缓地带形（只裁决 woods/rough/clear；water/city/swamp 需河距，留给上层）。"""
+    if (shares.get(10, 0.0) >= LC_WOODS_SHARE):
+        return "woods"
+    if (shares.get(20, 0.0) + shares.get(90, 0.0) + shares.get(70, 0.0)) >= LC_ROUGH_SHARE:
+        return "rough"
+    return "clear"
+
+
+def classify_base(grid: HexGrid, elev, slopes, relief, th, seed, lc=None):
     """
     先于水系/道路生成，产出基础 terrain（不含 river/city）与辅助噪声场。
-    判据（slope 与 relief 互补：前者是 5km 基线的区域坡度，后者是邻域高差）：
+    判据（slope 与 relief 互补：前者是实地格距基线上的区域坡度，后者是邻域高差）：
       陡 = slope ≥ slope_mountain 或 relief ≥ RELIEF_MOUNTAIN_MIN_M
       缓陡 = slope ≥ slope_hills 或 relief ≥ RELIEF_HILLS_MIN_M
       1) 陡  且 高程 ≥ elev_mountain ⇒ mountain
       2) 陡  但 高程不足（陡而低的破碎地）⇒ rough
       3) 缓陡 且 高程 ≥ elev_hills    ⇒ hills
       4) 缓陡 但 高程不足              ⇒ rough
-      5) 其余（平缓低地）：森林噪声达阈 + 坡度适中 + 非山顶 ⇒ woods；否则 ⇒ clear
+      5) 其余（平缓低地）：有真实土地覆盖 ⇒ 按格内面积占比定 woods/rough/clear；
+         没有 ⇒ 森林噪声达阈 + 坡度适中 + 非山顶 ⇒ woods；否则 ⇒ clear
          （swamp / water 需要「距河距离场」，在 build_payload 里二次定夺）
+      地势类别（mountain/hills/rough）永不被覆盖层改写——树也长在山上。
     """
     terr = ["clear"] * (grid.width * grid.height)
     aux = {}                      # index → (湿度噪声, 湖泊噪声)
@@ -661,8 +673,8 @@ def classify_base(grid: HexGrid, elev, slopes, relief, th, seed):
         i = grid.index(q, r)
         e, sl, rl = elev[i], slopes[i], relief[i]
         px, py = grid.center((q, r))
-        sx = (px - grid.mercator_ox) / 1000.0    # 相对原点的「公里」位置，作为噪声自变量
-        sy = (grid.mercator_oy - py) / 1000.0
+        sx = (px - grid.mercator_ox) / grid.scale / 1000.0    # 相对原点的「实地公里」位置，作为噪声自变量
+        sy = (grid.mercator_oy - py) / grid.scale / 1000.0
         forest = fbm(sx / NOISE_SCALE_WOODS_KM + 3.1, sy / NOISE_SCALE_WOODS_KM - 1.7, seed + 337, octaves=4)
         wet = fbm(sx / NOISE_SCALE_WET_KM - 5.5, sy / NOISE_SCALE_WET_KM + 2.3, seed + 541, octaves=4)
         lake = fbm(sx / NOISE_SCALE_LAKE_KM + 11.0, sy / NOISE_SCALE_LAKE_KM + 7.0, seed + 887, octaves=3)
@@ -674,6 +686,9 @@ def classify_base(grid: HexGrid, elev, slopes, relief, th, seed):
             terr[i] = "mountain" if e >= th["elev_mountain_m"] else "rough"
         elif rolling:
             terr[i] = "hills" if e >= th["elev_hills_m"] else "rough"
+        elif lc is not None:
+            terr[i] = lc_flat_terrain(lc[(q, r)]["shares"]) if not broken else \
+                ("woods" if lc[(q, r)]["shares"].get(10, 0.0) >= LC_WOODS_SHARE else "rough")
         elif broken:
             terr[i] = "rough"
         elif forest >= WOODS_NOISE_MIN and sl <= WOODS_MAX_SLOPE_DEG \
@@ -898,13 +913,14 @@ def place_cities(grid: HexGrid, terr, road, river_dist, bridge_set, seed):
 # =====================================================================================
 
 
-def build_hexes(grid, elev, slopes, terr, road, river_set, bridge_set, city_marks):
+def build_hexes(grid, elev, slopes, terr, road, river_set, bridge_set, city_marks, lc=None):
+    from rasters import WORLDCOVER_TERRAIN          # 只在真的用了覆盖层时才拉可选依赖
     out = []
     for (q, r) in grid.iter_cells():                # r 外层、q 内层
         i = grid.index(q, r)
         e = float(elev[i])
         e_val = int(round(e)) if abs(e - round(e)) < 0.05 else round(e, 1)
-        out.append({
+        hx = {
             "q": q,
             "r": r,
             "terrain": terr[i],
@@ -914,7 +930,12 @@ def build_hexes(grid, elev, slopes, terr, road, river_set, bridge_set, city_mark
             "river": (q, r) in river_set,
             "bridge": (q, r) in bridge_set,
             "city": city_marks.get((q, r), 0),
-        })
+        }
+        if lc is not None:                          # 判类证据留在包里，便于复核「为什么这格是林地」
+            v = lc[(q, r)]
+            hx["lc"] = {"class": v["class"], "share": round(v["share"], 3),
+                        "terrain": WORLDCOVER_TERRAIN.get(v["class"])}
+        out.append(hx)
     return out
 
 
@@ -950,20 +971,42 @@ def validate(data: dict, grid: HexGrid, cell_km: float, strict: bool = True):
     res.append((("OK" if not bad_t else "FAIL"), "terrain 取值合法",
                 "非法值: %s" % (bad_t if bad_t else "无")))
 
-    dev = abs(math.sqrt(3.0) * meta["radius_m"] - cell_km * 1000.0)
-    res.append((("OK" if dev < 1e-6 else "FAIL"), "sqrt(3)*radius≈cell_km",
-                "%.6f m vs %.6f m，差 %.3e" % (math.sqrt(3.0) * meta["radius_m"], cell_km * 1000.0, dev)))
+    scale = float(meta.get("mercator_scale", 1.0))
+    dev = abs(math.sqrt(3.0) * meta["radius_m"] - cell_km * 1000.0 * scale)
+    res.append((("OK" if dev < 1e-6 else "FAIL"), "sqrt(3)*radius≈cell×墨卡托放大",
+                "%.6f m vs %.6f m（scale=%.6f），差 %.3e"
+                % (math.sqrt(3.0) * meta["radius_m"], cell_km * 1000.0 * scale, scale, dev)))
+    if "mercator_scale" not in meta:
+        res.append(("WARN", "旧数据包未标注 mercator_scale",
+                    "按 scale=1（赤道）口径校验；实地格距在中纬会偏大，重新生成可得标注"))
+    cg = meta.get("cell_ground_m")
+    res.append((("OK" if cg is None or abs(float(cg) - cell_km * 1000.0) < 1e-6 else "FAIL"),
+                "对边距=实地口径", "cell_ground_m=%s" % cg))
+
+    layers = meta.get("layers") or {}
+    roads_off = ((layers.get("roads") or {}).get("kind") == "off")
+    lc_real = ((layers.get("landcover") or {}).get("kind") == "esa-worldcover-v200")
+    need_layers = ("elevation", "landcover", "roads", "hydrology", "settlements")
+    layer_note = json.dumps({k: (v or {}).get("kind") or (v or {}).get("source")
+                             for k, v in layers.items()}, ensure_ascii=False) if layers else "无 meta.layers"
+    lvl = "OK" if all(k in layers for k in need_layers) else ("WARN" if not strict else "FAIL")
+    res.append((lvl, "数据层标注完整", layer_note))
 
     bridge_cells = [(hx["q"], hx["r"]) for hx in hexes if hx["bridge"]]
     bad_bridge = [c for c in bridge_cells if by_cell[c]["terrain"] != "river" or not by_cell[c]["river"]]
     res.append((("OK" if not bad_bridge else "FAIL"), "bridge 仅在 river 格",
                 "越界桥位: %s" % (bad_bridge if bad_bridge else "无")))
     crossings = {(hx["q"], hx["r"]) for hx in hexes if hx["road"] and hx["river"]}
-    res.append((("OK" if crossings == set(bridge_cells) else "FAIL"), "道路∩河 = 桥位",
-                "渡河点 %d，桥 %d" % (len(crossings), len(bridge_cells))))
+    if roads_off:
+        res.append((("OK" if not crossings and not bridge_cells else "FAIL"), "道路关闭时无路无桥",
+                    "道路格 %d / 桥 %d" % (sum(1 for hx in hexes if hx["road"]), len(bridge_cells))))
+    else:
+        res.append((("OK" if crossings == set(bridge_cells) else "FAIL"), "道路∩河 = 桥位",
+                    "渡河点 %d，桥 %d" % (len(crossings), len(bridge_cells))))
     nb = len(bridge_cells)
-    res.append((("OK" if BRIDGE_MIN <= nb <= BRIDGE_MAX else "WARN"), "桥梁总数 2–4",
-                "实际 %d 座 @ %s" % (nb, bridge_cells)))
+    res.append((("OK" if (roads_off and nb == 0) or BRIDGE_MIN <= nb <= BRIDGE_MAX else "WARN"),
+                "桥梁总数 2–4" if not roads_off else "道路关闭",
+                "实际 %d 座 @ %s" % (nb, bridge_cells) if not roads_off else "未生成道路"))
     res.append((("OK" if all(by_cell[c]["road"] for c in bridge_cells) else "FAIL"),
                 "桥在道路上", "%s" % (bridge_cells if bridge_cells else "无")))
 
@@ -971,7 +1014,18 @@ def validate(data: dict, grid: HexGrid, cell_km: float, strict: bool = True):
     res.append((("OK" if not bad_city else "FAIL"), "city≥1 ⇒ terrain=city",
                 "%s" % (bad_city if bad_city else "无")))
     nc = sum(1 for hx in hexes if hx["city"] >= 1)
-    res.append((("OK" if CITY_MIN <= nc <= CITY_MAX else "WARN"), "聚落数量 2–4", "实际 %d" % nc))
+    cmax = CITY_ABS_MAX if lc_real else CITY_MAX
+    res.append((("OK" if (0 if roads_off and not lc_real else CITY_MIN) <= nc <= cmax else "WARN"),
+                "聚落数量 %d–%d" % (CITY_MIN, cmax), "实际 %d（来源 %s）"
+                % (nc, (layers.get("settlements") or {}).get("kind", "?"))))
+
+    if lc_real:
+        missing = sum(1 for hx in hexes if "lc" not in hx)
+        res.append((("OK" if missing == 0 else "FAIL"), "每格带覆盖判据 lc", "缺 %d 格" % missing))
+        hit = sum(1 for hx in hexes
+                  if hx.get("lc", {}).get("class") == 50 and hx["lc"].get("share", 0) >= LC_CITY_SHARE)
+        res.append((("OK" if nc >= CITY_MIN else "WARN"), "聚落来自真实建筑区",
+                    "达阈 %d 格 ⇒ 按游戏性上限取 %d 格（聚落是目标点，不能把城区铺满）" % (hit, nc)))
 
     river_cells = {(hx["q"], hx["r"]) for hx in hexes if hx["terrain"] == "river"}
     north = [c for c in river_cells if c[1] == 0]
@@ -1025,29 +1079,32 @@ def validate(data: dict, grid: HexGrid, cell_km: float, strict: bool = True):
     roads = {(hx["q"], hx["r"]) for hx in hexes if hx["road"]}
     west = sorted(c for c in roads if c[0] == 0)
     east = sorted(c for c in roads if c[0] == w - 1)
-    # 逐分量检查：每条走廊是一个独立连通分量，且必须同时触及西、东边缘（无断头路）
-    comps = []
-    unvisited = set(roads)
-    while unvisited:
-        seed_cell = sorted(unvisited)[0]
-        stack = [seed_cell]
-        comp = set()
-        while stack:
-            cur = stack.pop()
-            if cur in comp:
-                continue
-            comp.add(cur)
-            stack.extend(n for n in grid.neighbors(*cur) if n in roads and n not in comp)
-        unvisited -= comp
-        comps.append(comp)
-    conn = bool(roads) and bool(west) and bool(east) and \
-        all((len(c & set(west)) > 0 and len(c & set(east)) > 0) for c in comps)
-    res.append((("OK" if conn else "WARN"), "每条走廊通东西边缘",
-                "道路 %d 格 / 分量 %d 个(尺寸 %s) / 西端 %d / 东端 %d"
-                % (len(roads), len(comps), sorted(len(c) for c in comps), len(west), len(east))))
+    if roads_off:
+        res.append((("OK" if not roads else "FAIL"), "道路关闭", "0 道路格"))
+    else:
+        # 逐分量检查：每条走廊是一个独立连通分量，且必须同时触及西、东边缘（无断头路）
+        comps = []
+        unvisited = set(roads)
+        while unvisited:
+            seed_cell = sorted(unvisited)[0]
+            stack = [seed_cell]
+            comp = set()
+            while stack:
+                cur = stack.pop()
+                if cur in comp:
+                    continue
+                comp.add(cur)
+                stack.extend(n for n in grid.neighbors(*cur) if n in roads and n not in comp)
+            unvisited -= comp
+            comps.append(comp)
+        conn = bool(roads) and bool(west) and bool(east) and \
+            all((len(c & set(west)) > 0 and len(c & set(east)) > 0) for c in comps)
+        res.append((("OK" if conn else "WARN"), "每条走廊通东西边缘",
+                    "道路 %d 格 / 分量 %d 个(尺寸 %s) / 西端 %d / 东端 %d"
+                    % (len(roads), len(comps), sorted(len(c) for c in comps), len(west), len(east))))
     if strict:
-        res.append((("OK" if meta.get("source") in (SOURCE_REAL, SOURCE_SYNTH)
-                    or str(meta.get("source", "")).startswith((SOURCE_REAL, SOURCE_SYNTH)) else "WARN"),
+        res.append((("OK" if str(meta.get("source", "")).startswith(
+                        (SOURCE_REAL, SOURCE_SYNTH, SOURCE_LOCAL_DEM)) else "WARN"),
                     "meta.source 标注", str(meta.get("source"))))
     return res
 
@@ -1081,7 +1138,10 @@ def resolve_default_out() -> str:
 
 
 def get_elevations(grid: HexGrid, args):
-    """返回 (elevations, source, note)。真实 DEM 失败 ⇒ 合成降级，绝不抛异常。"""
+    """
+    返回 (elevations, source, note)。优先级：显式缓存 → 本地真实栅格 → 在线 → 合成。
+    任何一环失败都降级，绝不抛异常打断生成（无网/无 GDAL 也要能开局）。
+    """
     if args.load_dem:
         try:
             cache = json.loads(Path(args.load_dem).read_text(encoding="utf-8"))
@@ -1093,8 +1153,24 @@ def get_elevations(grid: HexGrid, args):
             print("[dem] 缓存与当前格网参数不匹配 ⇒ 忽略缓存", file=sys.stderr)
         except Exception as exc:
             print("[dem] 缓存读取失败（%s）⇒ 忽略缓存" % exc, file=sys.stderr)
-    if args.offline:
-        return synthetic_dem(grid, args.seed), SOURCE_SYNTH, "forced --offline synthetic DEM"
+
+    if args.dem in ("local", "auto") and args.dem_tif:
+        try:
+            import rasters
+            vals, info = rasters.dem_by_hex(args.dem_tif, grid)
+            elev = [vals[c] for c in grid.iter_cells()]
+            src = "%s:%s" % (SOURCE_LOCAL_DEM, Path(args.dem_tif).name)
+            return elev, src, ("本地栅格面均值取样 %s（分辨率 %.8f°）"
+                               % (info["samples"], (info["res_deg"][0] or 0)))
+        except Exception as exc:
+            print("[dem] 本地栅格取样失败（%s）⇒ 继续下一档" % exc, file=sys.stderr)
+            if args.dem == "local":
+                return synthetic_dem(grid, args.seed), SOURCE_SYNTH, "--dem local 失败 ⇒ 合成降级"
+
+    if args.dem == "synthetic" or args.offline:
+        return synthetic_dem(grid, args.seed), SOURCE_SYNTH, "forced synthetic DEM"
+    if args.dem == "open-meteo":
+        pass
     print("[dem] 抓取 Open-Meteo 高程：%d 点 / 每批 ≤%d / 批间 %.1fs / 重试 %d 次"
           % (grid.width * grid.height, args.batch, API_SLEEP_S, API_RETRIES))
     got = None
@@ -1119,8 +1195,77 @@ def get_elevations(grid: HexGrid, args):
     return got, SOURCE_REAL, ""
 
 
+def get_landcover(grid: HexGrid, args):
+    """
+    返回 (per-cell 覆盖 dict 或 None, info dict 或 None)。
+    auto：本地 GDAL 可用 ⇒ 拉真实 WorldCover；失败/离线 ⇒ None（由调用方用噪声代理）。
+    """
+    if args.landuse == "off":
+        return None, {"kind": "off", "note": "未启用土地覆盖层"}
+    if args.landuse == "proxy":
+        return None, {"kind": "noise-proxy", "note": "无土地覆盖数据，用确定性噪声代理"}
+    try:
+        import rasters
+        return rasters.landcover_by_hex(grid, tile_deg=args.lc_tile_deg)
+    except Exception as exc:
+        print("[landuse] 真实土地覆盖取样失败（%s）⇒ 退回噪声代理" % exc, file=sys.stderr)
+        return None, {"kind": "noise-proxy", "note": "真实取样失败：%s" % str(exc)[:160]}
+
+
+
+def city_marks_from_landcover(grid, lc, terr):
+    """
+    真实建筑区 → 聚落：占比达阈的格按占比从高到低取，受「聚落上限」截断
+    （现实城区会连绵几十格，游戏里聚落是目标点，必须留野地）。
+    """
+    cap = max(CITY_MIN, min(CITY_ABS_MAX, int(round(LC_CITY_MAX_FRACTION * grid.width * grid.height))))
+    cands = []
+    for (q, r) in grid.iter_cells():
+        i = grid.index(q, r)
+        if terr[i] in ("mountain", "hills", "river", "water", "swamp"):
+            continue
+        share = lc[(q, r)]["shares"].get(50, 0.0)
+        if share < LC_CITY_SHARE:
+            continue
+        cands.append((-share, i, (q, r)))
+    cands.sort()
+    marks = {}
+    for neg, _, cell in cands:
+        if len(marks) >= cap:
+            break
+        marks[cell] = 2 if -neg >= LC_CITY_LEVEL2_SHARE else 1
+    return marks
+
+
+def apply_landcover_water(grid, lc, terr, river_set):
+    """
+    真实水体/湿地 → water/swamp。规则：河带格保持 river（河是玩法主线），
+    其余按占比判定；water 总数受上限截断，防异常数据把地图变成湖。
+    """
+    n_swamp = n_water = 0
+    cap = max(MAX_LAKE_CELLS, int(0.08 * grid.width * grid.height))
+    wat = sorted((( -lc[(q, r)]["shares"].get(60, 0.0), grid.index(q, r), (q, r))
+                  for (q, r) in grid.iter_cells()
+                  if (q, r) not in river_set and terr[grid.index(q, r)] not in ("mountain", "hills")
+                  and lc[(q, r)]["shares"].get(60, 0.0) >= LC_WATER_SHARE))
+    for _, i, cell in wat[:cap]:
+        terr[i] = "water"
+        n_water += 1
+    for (q, r) in grid.iter_cells():
+        i = grid.index(q, r)
+        if (q, r) in river_set or terr[i] in ("water", "mountain", "hills", "city"):
+            continue
+        sh = lc[(q, r)]["shares"]
+        if (sh.get(80, 0.0) + sh.get(110, 0.0)) >= LC_SWAMP_SHARE:
+            terr[i] = "swamp"
+            n_swamp += 1
+    return n_water, n_swamp
+
+
 def build_payload(args):
-    grid = HexGrid(args.lon, args.lat, args.width, args.height, args.cell_km)
+    grid = (grid_from_bbox(args.parsed_bbox, args.cell_km) if args.parsed_bbox
+            else HexGrid(args.lon, args.lat, args.width, args.height, args.cell_km))
+    args.width, args.height = grid.width, grid.height
     elev, source, note = get_elevations(grid, args)
     elev = [round(max(-200.0, float(v)), 1) for v in elev]
     slopes = compute_slopes(grid, elev)
@@ -1135,7 +1280,17 @@ def build_payload(args):
              th["elev_hills_m"], th["elev_mountain_m"], th["elev_swamp_m"],
              RELIEF_HILLS_MIN_M, RELIEF_MOUNTAIN_MIN_M))
 
-    terr, aux = classify_base(grid, elev, slopes, relief, th, args.seed)
+    lc, lc_info = get_landcover(grid, args)
+    if lc is not None:
+        dom = {}
+        for v in lc.values():
+            dom[v["class"]] = dom.get(v["class"], 0) + 1
+        print("[landuse] 真实土地覆盖：%d 格，众数类别 %s"
+              % (len(lc), json.dumps({str(k): dom[k] for k in sorted(dom)}, ensure_ascii=False)))
+    else:
+        print("[landuse] %s" % (lc_info or {}).get("note", "噪声代理"))
+
+    terr, aux = classify_base(grid, elev, slopes, relief, th, args.seed, lc=lc)
 
     band = extract_river_band(grid, elev)
     river_set = set(band)
@@ -1143,31 +1298,42 @@ def build_payload(args):
         terr[grid.index(q, r)] = "river"
     river_dist = grid.distance_field(river_set)
 
-    # 河漫滩沼泽 / 洼地湖泊（需要 river_dist 才能定夺；不覆盖河带、丘陵、山地）
-    lake_cands = []
-    for (q, r) in grid.iter_cells():
-        i = grid.index(q, r)
-        if terr[i] == "river":
-            continue
-        wet, lake = aux[i]
-        d = river_dist.get((q, r), 99)
-        very_low = elev[i] <= th["elev_swamp_m"]
-        if very_low and wet >= SWAMP_NOISE_MIN and d <= SWAMP_RIVER_MAX_DIST \
-                and terr[i] in SWAMP_SOURCE_TERRAIN:
-            terr[i] = "swamp"
-        elif very_low and lake >= WATER_NOISE_MIN and uplift[i] <= UPLIFT_LAKE_MAX_M \
-                and d >= WATER_RIVER_MIN_DIST and terr[i] in WATER_SOURCE_TERRAIN:
-            lake_cands.append((lake, i))
-    lake_cands.sort(key=lambda t: (-t[0], t[1]))
-    for _, i in lake_cands[:MAX_LAKE_CELLS]:
-        terr[i] = "water"
+    if lc is not None:
+        apply_landcover_water(grid, lc, terr, river_set)
+    else:
+        # 河漫滩沼泽 / 洼地湖泊（需要 river_dist 才能定夺；不覆盖河带、丘陵、山地）
+        lake_cands = []
+        for (q, r) in grid.iter_cells():
+            i = grid.index(q, r)
+            if terr[i] == "river":
+                continue
+            wet, lake = aux[i]
+            d = river_dist.get((q, r), 99)
+            very_low = elev[i] <= th["elev_swamp_m"]
+            if very_low and wet >= SWAMP_NOISE_MIN and d <= SWAMP_RIVER_MAX_DIST \
+                    and terr[i] in SWAMP_SOURCE_TERRAIN:
+                terr[i] = "swamp"
+            elif very_low and lake >= WATER_NOISE_MIN and uplift[i] <= UPLIFT_LAKE_MAX_M \
+                    and d >= WATER_RIVER_MIN_DIST and terr[i] in WATER_SOURCE_TERRAIN:
+                lake_cands.append((lake, i))
+        lake_cands.sort(key=lambda t: (-t[0], t[1]))
+        for _, i in lake_cands[:MAX_LAKE_CELLS]:
+            terr[i] = "water"
 
-    road, bridge_set = build_roads(grid, elev, terr, band, args.seed)
-    city_marks = place_cities(grid, terr, road, river_dist, bridge_set, args.seed)
+    if args.roads == "off":
+        road, bridge_set = set(), set()
+    else:
+        road, bridge_set = build_roads(grid, elev, terr, band, args.seed)
+    if lc is not None:
+        city_marks = city_marks_from_landcover(grid, lc, terr)
+    elif args.roads == "off":
+        city_marks = {}
+    else:
+        city_marks = place_cities(grid, terr, road, river_dist, bridge_set, args.seed)
     for (q, r) in city_marks:
         terr[grid.index(q, r)] = "city"
 
-    hexes = build_hexes(grid, elev, slopes, terr, road, river_set, bridge_set, city_marks)
+    hexes = build_hexes(grid, elev, slopes, terr, road, river_set, bridge_set, city_marks, lc)
 
     counts = {}
     for hx in hexes:
@@ -1179,7 +1345,7 @@ def build_payload(args):
         "source": source,
         "source_note": note,
         "bbox": [round(bb[0], 6), round(bb[1], 6), round(bb[2], 6), round(bb[3], 6)],
-        "center_lonlat": [args.lon, args.lat],
+        "center_lonlat": [grid.center_lon, grid.center_lat],
         "cell_km": args.cell_km,
         "width": args.width,
         "height": args.height,
@@ -1210,8 +1376,33 @@ def build_payload(args):
         "dem_points": len(e_all),
         "effective_thresholds": th,
         "bridge_hexes": [{"q": q, "r": r} for (q, r) in sorted(bridge_set, key=lambda c: (c[1], c[0]))],
+        # ── 本次生成用了哪些数据（可核对，不粉饰）──
+        "mercator_scale": grid.scale,
+        "cell_ground_m": grid.cell_ground_m,
+        "ground_km_east_west": round((grid.hex_width_m * (grid.width - 1)) / grid.scale / 1000.0, 1),
+        "ground_km_north_south": round((grid.row_step_m * (grid.height - 1)) / grid.scale / 1000.0, 1),
+        "layers": {
+            "elevation": {"source": source, "note": note},
+            "landcover": lc_info or {"kind": "noise-proxy"},
+            "roads": {"kind": "derived-corridors" if args.roads != "off" else "off",
+                      "note": "道路无公开真实矢量可用（OSM 已按产品决策排除），按地形代价派生"
+                              if args.roads != "off" else "未生成道路"},
+            "hydrology": {"kind": "derived-river-band" + ("+worldcover-water" if lc is not None else ""),
+                          "note": "河带由 DEM 谷底最短路派生；湖泊/湿地在有真实覆盖时按占比判定"},
+            "settlements": {"kind": "worldcover-builtup" if lc is not None else
+                            ("derived-junctions" if args.roads != "off" else "off")},
+        },
     }
     return grid, {"meta": meta, "hexes": hexes}
+
+
+def resolve_repo_dir() -> Path:
+    """仓库根（含 data/ 或 hexfront/ 的祖先目录）；不依赖 CWD。"""
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "data").is_dir() or (parent / "hexfront").is_dir():
+            return parent
+    return here.parent.parent
 
 
 def main(argv=None):
@@ -1228,38 +1419,62 @@ def main(argv=None):
 
     p = argparse.ArgumentParser(
         prog="hexgen.py",
-        description="生成兵棋引擎的 GIS 六角格地形数据包（Open-Meteo 真实高程；失败自动降级确定性合成 DEM）。",
+        description="生成兵棋引擎的 GIS 六角格地形数据包："
+                    "本地真实 DEM + ESA WorldCover 土地覆盖；任一环节失败自动降级。",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        epilog="示例: python hexgen.py --lon 6.95 --lat 51.42 --width 26 --height 20 --cell-km 5 "
-               "--out ../../data/gis/rhine_5km.json",
+        epilog="示例: python hexgen.py --bbox 6.0 50.9 7.9 51.9 --cell-km 2.5 "
+               "--out ../../data/gis/rhine_2p5km.json",
     )
     p.add_argument("--lon", type=float, default=DEFAULT_LON, help="格网中心经度（WGS84）")
     p.add_argument("--lat", type=float, default=DEFAULT_LAT, help="格网中心纬度（WGS84）")
+    p.add_argument("--bbox", type=float, nargs=4, metavar=("西", "南", "东", "北"), default=None,
+                   help="按范围框生成（格心范围）：给了它就由对边距反推行列数")
     p.add_argument("--width", type=int, default=DEFAULT_WIDTH, help="列数（q ∈ [0,width-1]）")
     p.add_argument("--height", type=int, default=DEFAULT_HEIGHT, help="行数（r ∈ [0,height-1]）")
     p.add_argument("--cell-km", dest="cell_km", type=float, default=DEFAULT_CELL_KM,
-                   help="格距（尖顶格宽 sqrt(3)*radius = cell_km）")
+                   help="六角格对边距（实地 km）；墨卡托侧按 1/cos(中心纬度) 放大")
+    p.add_argument("--dem", choices=("auto", "local", "open-meteo", "synthetic"), default="auto",
+                   help="高程数据源档位；auto = 本地栅格 → 在线 → 合成")
+    p.add_argument("--dem-tif", dest="dem_tif", default=None,
+                   help="本地 DEM GeoTIFF（默认 <repo>/data/dem/global_dem_30s.tif）")
+    p.add_argument("--landuse", choices=("auto", "proxy", "off"), default="auto",
+                   help="土地覆盖层：auto=真实 WorldCover，proxy=噪声代理，off=不参与判类")
+    p.add_argument("--lc-tile-deg", dest="lc_tile_deg", type=int, default=3,
+                   help="WorldCover 瓦片边长（度），官方发布为 3")
+    p.add_argument("--roads", choices=("on", "off"), default="on",
+                   help="道路层（派生走廊）；off 则无道路无桥梁")
     p.add_argument("--out", default=None, help="输出 JSON（默认 <repo>/data/gis/rhine_5km.json）")
     p.add_argument("--seed", type=int, default=DEFAULT_SEED, help="合成 DEM / 噪声场种子（确定性）")
     p.add_argument("--batch", type=int, default=API_BATCH_SIZE, help="高程 API 每批点数（1..100）")
-    p.add_argument("--offline", action="store_true", help="跳过网络，强制使用确定性合成 DEM")
+    p.add_argument("--offline", action="store_true", help="不联网：本地 DEM 仍可用，覆盖层转代理")
     p.add_argument("--no-requests", dest="no_requests", action="store_true",
                    help="只用 urllib（默认允许优先尝试已安装的 requests，urllib 始终兜底）")
     p.add_argument("--save-dem", default=None, metavar="PATH", help="把抓到的真实高程缓存到 JSON，便于离线复现")
     p.add_argument("--load-dem", default=None, metavar="PATH", help="优先从缓存读取高程（跳过网络）")
     p.add_argument("--only-validate", dest="only_validate", action="store_true",
                    help="只校验 --out 已存在的数据包，不生成")
+    p.add_argument("--print-meta", dest="print_meta", action="store_true",
+                   help="结束时输出一行 ##META## {json}，供服务端解析（作业进度用）")
     p.add_argument("--allow-invalid", dest="allow_invalid", action="store_true",
                    help="即使自校验 FAIL 也写文件（默认不产出半成品）")
     p.add_argument("--quiet", action="store_true", help="减少进度输出")
     args = p.parse_args(argv)
+    args.parsed_bbox = tuple(args.bbox) if args.bbox else None
 
     if not 1 <= args.batch <= 100:
         p.error("--batch 必须在 1..100")
-    if args.width < 6 or args.height < 6:
-        p.error("--width/--height 至少为 6")
+    if args.parsed_bbox is None and (args.width < 6 or args.height < 6):
+        p.error("--width/--height 至少为 6（或改用 --bbox 由对边距反推）")
     if args.cell_km <= 0:
         p.error("--cell-km 必须为正")
+    if args.dem_tif is None:
+        args.dem_tif = str(resolve_repo_dir() / "data" / "dem" / "global_dem_30s.tif")
+    if args.offline:
+        if args.landuse == "auto":
+            args.landuse = "proxy"
+            print("[landuse] --offline ⇒ 用噪声代理", file=sys.stderr)
+        if args.dem == "open-meteo":
+            args.dem = "local"
     if args.out is None:
         args.out = resolve_default_out()
     out_path = Path(args.out)
@@ -1282,6 +1497,8 @@ def main(argv=None):
     print("[meta] radius_m = %.3f, row_step = %.3f m, ox/oy = %.3f / %.3f"
           % (payload["meta"]["radius_m"], grid.row_step_m,
              payload["meta"]["mercator_ox"], payload["meta"]["mercator_oy"]))
+    print("[meta] 对边距 %.1f km（实地）= %.1f km（墨卡托，纬度放大 %.3f）"
+          % (args.cell_km, grid.cell_m / 1000.0, grid.scale))
     print("[meta] elev %.1f–%.1f m / slope %.1f–%.1f deg / river %d / road %d / bridge %d @ %s / city %d"
           % (st["elev_min"], st["elev_max"], st["slope_min"], st["slope_max"],
              st["river_cells"], st["road_cells"], st["bridge_count"],
@@ -1291,6 +1508,11 @@ def main(argv=None):
     if fails and not args.allow_invalid:
         print("\n[abort] 自校验有 %d 项 FAIL ⇒ 未写出文件（不产出半成品）。"
               "确需强行写出请加 --allow-invalid。" % fails, file=sys.stderr)
+        if args.print_meta:
+            print("##META## " + json.dumps({"file": str(out_path), "ok": False,
+                                            "fails": fails, "warns": warns,
+                                            "errors": [n for lv, n, _ in res if lv == "FAIL"]},
+                                           ensure_ascii=False))
         return 1
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1301,6 +1523,17 @@ def main(argv=None):
     print("[write] %d 格 / %d 字节 / sha256[:16]=%s"
           % (len(payload["hexes"]), len(text.encode("utf-8")),
              hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]))
+    if args.print_meta:
+        m = payload["meta"]
+        print("##META## " + json.dumps({
+            "ok": True, "file": str(out_path), "name": Path(out_path).name,
+            "source": m["source"], "cell_km": m["cell_km"], "width": m["width"],
+            "height": m["height"], "bbox": m["bbox"], "fails": fails, "warns": warns,
+            "layers": {k: (v or {}).get("kind") or (v or {}).get("source")
+                       for k, v in m["layers"].items()},
+            "terrain_counts": m["stats"]["terrain_counts"],
+            "generated_at": m["generated_at"],
+        }, ensure_ascii=False))
     return 0
 
 

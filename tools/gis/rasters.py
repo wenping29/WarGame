@@ -117,7 +117,8 @@ def _read_window(path, bbox, out_shape):
             raise ValueError("范围 %s 与该栅格无交集" % (bbox,))
         w = w.round_offsets().round_lengths().crop(src.height, src.width)
         arr = src.read(1, window=w, masked=True, out_shape=out_shape)
-        meta = src.meta
+        meta = dict(src.meta)
+        meta["res"] = list(src.res)                 # src.meta 里没有 res，显式补上分辨率供溯源标注
         tf = rasterio.windows.transform(w, src.transform)
         etf = Affine(tf.a * (w.width / out_shape[1]), tf.b, tf.xoff,
                      tf.d, tf.e * (w.height / out_shape[0]), tf.yoff)
