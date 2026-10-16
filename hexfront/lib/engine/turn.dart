@@ -202,6 +202,19 @@ void _applyAirLoss(
 
 // ─────────────── 机动 ───────────────
 
+/// 单格机动消耗：地形基准值 + 地物层修正。
+/// 公路 0.65、铁路再 0.8（仅摩托化/机械化搭得上线，徒步不受惠）；隧道单孔限行，
+/// 重装备 1.5、徒步 1.2；无桥渡河按 +2 重罚但不封死（保留强渡选项）。
+double stepCost(TerrainDef td, Cell cell, String cls) {
+  final heavy = cls == 'motor' || cls == 'mech';
+  var step = td.cost[cls] ?? 2.0;
+  if (cell.road) step *= 0.65;
+  if (cell.railway && heavy) step *= 0.8;
+  if (cell.tunnel) step *= heavy ? 1.5 : 1.2;
+  if (cell.river && !cell.bridge) step += 2.0;
+  return step;
+}
+
 List<Unit> _movementPhase(
   GameState g, Map<String, List<Command>> accepted,
   void Function(String, String, List<String>) emit,
@@ -231,14 +244,7 @@ List<Unit> _movementPhase(
     Hex cur = u.pos;
     for (final h in c.path.skip(1)) {
       final td = g.terrainOf(h);
-      var step = td.cost[cls] ?? 2.0;
-      final cell = g.cellAt(h);
-      if (cell.road) step *= 0.65;
-      // 铁路：摩托化/机械化沿铁路线机动更省（与公路叠加 0.65×0.8）；徒步不搭车，不受惠
-      if (cell.railway && (cls == 'motor' || cls == 'mech')) step *= 0.8;
-      // 隧道：单孔限行，重装备过隧道明显变慢
-      if (cell.tunnel) step *= (cls == 'motor' || cls == 'mech') ? 1.5 : 1.2;
-      if (cell.river && !cell.bridge) step += 2.0; // 无桥渡河重罚
+      final step = stepCost(td, g.cellAt(h), cls);
       if (td.impassable) break;
       if (spent + step > budget) break;
       spent += step;

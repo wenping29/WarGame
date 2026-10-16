@@ -6,6 +6,7 @@ import 'package:hexfront_web/engine/defs.dart';
 import 'package:hexfront_web/engine/fog.dart';
 import 'package:hexfront_web/engine/hex.dart';
 import 'package:hexfront_web/engine/library.dart';
+import 'package:hexfront_web/engine/mechanics.dart';
 import 'package:hexfront_web/engine/scenario.dart';
 import 'package:hexfront_web/engine/state.dart';
 import 'package:hexfront_web/engine/turn.dart';
@@ -288,6 +289,175 @@ void main() {
   }
   check('属性覆盖真的进入结算（同种子指纹分叉）', gBase.fingerprint() != gBuff.fingerprint(),
       '${gBase.fingerprint()} vs ${gBuff.fingerprint()}');
+
+  print('\n[9] 地物层：真实矢量 → 引擎玩法（铁路/隧道/电网/机场/要点）');
+  const featPkg = 'rhine_ruhr_2p5km.json';
+  if (store.loadGisPackage(featPkg) == null) {
+    print('    （$featPkg 不存在，跳过地物用例）');
+  } else {
+    final gf = builder.build(
+      scenarioRaw: scRaw,
+      overrides: {'gis_package': featPkg},
+      instanceId: 'VFE',
+      instanceName: '地物自检',
+      seed: 818,
+    );
+    int cnt(bool Function(Cell c) p) => gf.cells.values.where(p).length;
+    check('铁路/隧道/电网/机场写入引擎格网',
+        cnt((c) => c.railway) > 0 && cnt((c) => c.tunnel) > 0 && cnt((c) => c.powerline) > 0 &&
+            cnt((c) => c.powerPlant) > 0 && cnt((c) => c.substation) > 0 && cnt((c) => c.airport > 0) > 0,
+        '铁路 ${cnt((c) => c.railway)} 隧道 ${cnt((c) => c.tunnel)} 线路 ${cnt((c) => c.powerline)} '
+            '电厂 ${cnt((c) => c.powerPlant)} 变电站 ${cnt((c) => c.substation)} 机场 ${cnt((c) => c.airport > 0)}');
+    check('地物不变式：车站⊆铁路 · 桥⊆河 · 隧道在线上且不在水面',
+        gf.cells.entries.every((e) {
+          final c = e.value;
+          if (c.railStation && !c.railway) return false;
+          if (c.bridge && !c.river) return false;
+          if (c.tunnel && (!(c.railway || c.road) || gf.terrainOf(Hex.parse(e.key)).water)) return false;
+          return true;
+        }));
+    final rtFeat = GameState.fromJson(gf.toJson());
+    check('地物字段随存档往返',
+        rtFeat.cells.values.where((c) => c.railway).length == cnt((c) => c.railway) &&
+            rtFeat.cells.values.where((c) => c.tunnel).length == cnt((c) => c.tunnel) &&
+            rtFeat.cells.values.where((c) => c.airport > 0).length == cnt((c) => c.airport > 0));
+
+    final clearTd = gf.lib.terrains['clear']!;
+    const bare = Cell(terrain: 'clear');
+    const rail = Cell(terrain: 'clear', railway: true);
+    const roadRail = Cell(terrain: 'clear', road: true, railway: true);
+    const tunnel = Cell(terrain: 'clear', tunnel: true);
+    check('铁路使摩托化机动更省，徒步不搭车不受惠',
+        stepCost(clearTd, rail, 'motor') < stepCost(clearTd, bare, 'motor') &&
+            stepCost(clearTd, rail, 'foot') == stepCost(clearTd, bare, 'foot'));
+    check('公路与铁路折扣可叠加（0.65×0.8）',
+        (stepCost(clearTd, roadRail, 'motor') - clearTd.cost['motor']! * 0.52).abs() < 1e-9);
+    check('隧道限行：重装备比徒步更吃亏',
+        stepCost(clearTd, tunnel, 'mech') / stepCost(clearTd, bare, 'mech') >
+            stepCost(clearTd, tunnel, 'foot') / stepCost(clearTd, bare, 'foot'));
+    final riverTd = gf.lib.terrains['river']!;
+    const ford = Cell(terrain: 'river', river: true);
+    const bridged = Cell(terrain: 'river', river: true, bridge: true);
+    check('无桥渡河重罚 +2，桥位免罚',
+        stepCost(riverTd, ford, 'motor') - stepCost(riverTd, bridged, 'motor') > 1.99);
+
+    // 电网：只夺半边不发电，电厂+变电站同时掌握才给补给红利
+    final gA = GameState.fromJson(gf.toJson());
+    final gB = GameState.fromJson(gf.toJson());
+    final busy = gB.units.where((u) => u.alive).map((u) => u.pos.key).toSet();
+    final plantKey = gB.cells.entries.firstWhere((e) => e.value.powerPlant && !busy.contains(e.key)).key;
+    final subKey = gB.cells.entries.firstWhere((e) => e.value.substation && !busy.contains(e.key)).key;
+    final gndB = gB.liveOf('red')
+        .where((u) => !gB.typeOf(u).isAir && !gB.typeOf(u).supplySource && gB.typeOf(u).cls != 'structure')
+        .toList();
+    check('开局双方都不通电（电网系数 1.0）',
+        powerFactor(gA, 'red') == 1.0 && powerFactor(gA, 'blue') == 1.0,
+        '红 ${powerFactor(gA, 'red')} / 蓝 ${powerFactor(gA, 'blue')}');
+    gndB[0].pos = Hex.parse(plantKey);
+    check('只夺电厂仍不通电', powerFactor(gB, 'red') == 1.0, '${powerFactor(gB, 'red')}');
+    gndB[1].pos = Hex.parse(subKey);
+    final pf = powerFactor(gB, 'red');
+    check('电厂 + 变电站同时掌握才通电（红利封顶 +15%）', pf > 1.0 && pf <= 1.1500001, '$pf');
+    check('未掌握电网的一方不吃红利', powerFactor(gB, 'blue') == 1.0);
+    final supA = computeSupply(gA)['red']!;
+    final supB = computeSupply(gB)['red']!;
+    final farKey = supA.entries.reduce((a, b) => a.value <= b.value ? a : b).key;
+    check('电网红利进入补给系数（远端最弱格上浮）',
+        supB[farKey]! > supA[farKey]!, '$farKey ${supA[farKey]} → ${supB[farKey]}');
+
+    // 机场：夺下场站且该方仍有航空兵 → 前进补给节点
+    final gAir = GameState.fromJson(gf.toJson());
+    final apBusy = gAir.units.where((u) => u.alive).map((u) => u.pos.key).toSet();
+    final apFreeKey = gAir.cells.entries
+        .firstWhere((e) => e.value.airport > 0 && !apBusy.contains(e.key))
+        .key;
+    final gndAir = gAir.liveOf('red')
+        .where((u) => !gAir.typeOf(u).isAir && !gAir.typeOf(u).supplySource && gAir.typeOf(u).cls != 'structure')
+        .toList();
+    final d0 = supplyDistances(gAir)['red']![apFreeKey];
+    gndAir[0].pos = Hex.parse(apFreeKey);
+    final d1 = supplyDistances(gAir)['red']![apFreeKey];
+    check('地面部队站上机场 ⇒ 该格成为补给节点（距离归 0）',
+        d1 == 0 && (d0 == null || d0 > 0), '$apFreeKey 距离 $d0 → $d1');
+    for (final u in gAir.units) {
+      if (u.alive && u.side == 'red' && gAir.typeOf(u).isAir) u.status = UnitStatus.destroyed;
+    }
+    final d2 = supplyDistances(gAir)['red']![apFreeKey];
+    check('航空兵撤离后机场不再供补给（空运需要机组）', d2 != 0, '距离 $d2');
+    check('机场等级只用 1/2（野战/干线）', cnt((c) => c.airport > 0) > 0 && gf.cells.values.every((c) => c.airport <= 2));
+
+    // 迷雾纪律：要点地理公开，归属按视图裁剪
+    final gv = GameState.fromJson(gf.toJson());
+    final nodeAll = objectiveNodes(gv);
+    final holders = nodeHolders(gv);
+    check('要点清单齐备（含类别与中文标签）',
+        nodeAll.isNotEmpty && nodeAll.every((n) => (n['label'] as String).isNotEmpty && n['kind'] != null),
+        '${nodeAll.length} 处要点');
+    final vRed = sideView(gv, 'red');
+    final vBlue = sideView(gv, 'blue');
+    final vDir = directorView(gv);
+    final vSpec = spectatorView(gv);
+    check('各方视图的要点地理一致（地形不是情报）',
+        (vRed['nodes'] as List).length == nodeAll.length && (vBlue['nodes'] as List).length == nodeAll.length);
+    final nhRed = (vRed['node_holders'] as Map).map((k, v) => MapEntry(k as String, v as String));
+    final nhBlue = (vBlue['node_holders'] as Map).map((k, v) => MapEntry(k as String, v as String));
+    check('双盲视图只披露己方占领（敌方归属属情报）',
+        nhRed.values.every((s) => s == 'red') && nhBlue.values.every((s) => s == 'blue') &&
+            nhRed.keys.toSet().intersection(nhBlue.keys.toSet()).isEmpty,
+        '红 ${nhRed.length} / 蓝 ${nhBlue.length} / 全局 ${holders.length}');
+    check('导演部视图给出双方电网系数',
+        (vDir['power'] as Map).containsKey('red') && (vDir['power'] as Map).containsKey('blue'));
+    check('观战视图不给要点归属',
+        !vSpec.containsKey('node_holders') && (vSpec['nodes'] as List).isNotEmpty);
+
+    // 目标胜利：同时掌握够多处战场要点即达成
+    final gWin = builder.build(
+      scenarioRaw: scRaw,
+      overrides: {
+        'gis_package': featPkg,
+        'victory': [
+          {'kind': 'nodes', 'side': 'red', 'target': null, 'amount': 3, 'turns': 0}
+        ]
+      },
+      instanceId: 'VFN',
+      instanceName: '要点胜利',
+      seed: 626,
+    );
+    updateObservation(gWin);
+    final taken = gWin.units.where((u) => u.alive).map((u) => u.pos.key).toSet();
+    final freeNodes = objectiveNodes(gWin).where((n) => !taken.contains(n['key'])).take(3).toList();
+    final gndWin = gWin.liveOf('red').where((u) => !gWin.typeOf(u).isAir).toList();
+    for (var i = 0; i < freeNodes.length && i < gndWin.length; i++) {
+      gndWin[i].pos = Hex.parse(freeNodes[i]['key'] as String);
+    }
+    check('落位后红方确握 3 处要点',
+        nodeHolders(gWin, onlySide: 'red').length >= 3, '${nodeHolders(gWin, onlySide: 'red').length}');
+    resolveTurn(gWin, {'red': [], 'blue': []});
+    check('要点数量达成即终局（kind=nodes）', gWin.over && gWin.winner == 'red',
+        'winner=${gWin.winner}');
+    print('    终局：${gWin.winner ?? '无'} · 要点 ${nodeHolders(gWin, onlySide: 'red').length}/${objectiveNodes(gWin).length}');
+
+    // 全 AI 自动对抗在带地物的真实地图上可跑通
+    final gRun = builder.build(
+      scenarioRaw: scRaw,
+      overrides: {'gis_package': featPkg},
+      instanceId: 'VFR',
+      instanceName: '地物自动对抗',
+      seed: 4242,
+    );
+    updateObservation(gRun);
+    var runTurns = 0;
+    while (!gRun.over && gRun.turn <= gRun.maxTurns + 2 && runTurns < 20) {
+      resolveTurn(gRun, {
+        'red': aiOrders(gRun, 'red', sideView(gRun, 'red')),
+        'blue': aiOrders(gRun, 'blue', sideView(gRun, 'blue')),
+      });
+      runTurns++;
+    }
+    final onRail = gRun.units.where((u) => u.alive && gRun.cellAt(u.pos).railway).toList();
+    check('带地物地图可连续推演（$runTurns 回合）且无异常', runTurns >= 3, '${gRun.turn} 回合');
+    print('    地物利用：${onRail.length} 个单位停在铁路上 · 结果 ${gRun.winner ?? '未终局'}');
+  }
 
   print('\n合计：$_pass 通过 / $_fail 失败');
   exit(_fail == 0 ? 0 : 1);
