@@ -242,3 +242,100 @@ def landcover_by_hex(grid, bbox=None, url=WORLDCOVER_URL, tile_deg=3):
         "terrain_map": {str(k): v for k, v in WORLDCOVER_TERRAIN.items()},
         "samples": {"out_shape": list(out), "pixels": int(out[0] * out[1])},
     }
+
+
+# =====================================================================================
+# 真实水系矢量（Natural Earth 10m，GeoPackage）→ 每格 河/湖 判定
+# 与栅格取样不同：这里是矢量叠加，用每格的尖顶六角多边形与河线/湖面求交。
+# 依赖 geopandas + shapely（可选）；缺库或缺文件由调用方降级，绝不打断生成。
+# =====================================================================================
+
+WATER_RIVER_LAYERS = ("rivers", "rivers_scale_rank")
+WATER_LAKE_LAYERS = ("lakes_all", "lakes")
+# 河线是零面积的线：按对边距给一点缓冲宽度，代表"这条河占了一格"，
+# 否则贴着格边流过的河会因数值相切而漏判。
+RIVER_BUFFER_RADIUS_FRAC = 0.35
+RIVER_BUFFER_MIN_M = 20.0
+
+
+def _hex_polygons(grid):
+    """每格的尖顶六角多边形（EPSG:3857，与格网同坐标系）。返回 (cells, polys, hex_area)。"""
+    from shapely.geometry import Polygon
+    r = grid.radius_m
+    cells = list(grid.iter_cells())
+    polys = []
+    for c in cells:
+        cx, cy = grid.center(c)
+        pts = [(cx + r * math.cos(math.radians(60 * i + 30)),
+                cy + r * math.sin(math.radians(60 * i + 30))) for i in range(6)]
+        polys.append(Polygon(pts))
+    hex_area = 1.5 * math.sqrt(3.0) * r * r          # 正六边形面积 = (3√3/2)R²
+    return cells, polys, hex_area
+
+
+def water_by_hex(gpkg: str, grid, bbox=None):
+    """
+    Natural Earth 水系 gpkg → (river_cells:set, lake_share:{cell:pct}, info)。
+      · river_cells：河线（带缓冲）穿过的格
+      · lake_share：湖面与该格相交的面积占比（0..1）
+    矢量按格网 bbox 裁剪后转 EPSG:3857，与每格六角多边形求交；无要素则相应集合为空。
+    """
+    try:
+        import geopandas as gpd
+        from shapely.ops import unary_union
+    except Exception as exc:                          # 缺 geopandas/shapely ⇒ 调用方降级
+        raise RuntimeError("geopandas/shapely 未安装：%s" % str(exc)[:160])
+    if not os.path.isfile(gpkg):
+        raise RuntimeError("水系 GeoPackage 不存在：%s" % gpkg)
+
+    bbox = tuple(bbox or grid.bbox())                 # WGS84 (西, 南, 东, 北)
+    cells, polys, hex_area = _hex_polygons(grid)
+    hexes = gpd.GeoDataFrame({"cid": range(len(cells)), "geometry": polys}, crs="EPSG:3857")
+
+    river_cells, lake_share = set(), {}
+    info = {"kind": "natural-earth-10m-water", "gpkg": gpkg.replace("\\", "/"),
+            "source": "Natural Earth 10m 水系（rivers/lakes）", "crs": "EPSG:4326→3857",
+            "river_features": 0, "lake_features": 0, "layers_used": [],
+            "river_buffer_m": round(max(RIVER_BUFFER_MIN_M, grid.radius_m * RIVER_BUFFER_RADIUS_FRAC), 1)}
+
+    # --- 河流（线）：缓冲后半格相交即判河 ---
+    riv = None
+    for layer in WATER_RIVER_LAYERS:
+        try:
+            g = gpd.read_file(gpkg, layer=layer, bbox=bbox)
+        except Exception:
+            continue
+        if g is not None and len(g):
+            riv = g.to_crs("EPSG:3857")
+            info["layers_used"].append(layer)
+            info["river_features"] = int(len(riv))
+            break
+    if riv is not None:
+        buf = max(RIVER_BUFFER_MIN_M, grid.radius_m * RIVER_BUFFER_RADIUS_FRAC)
+        riv_geom = unary_union(list(riv.geometry.values)).buffer(buf)
+        for cid in hexes.index[hexes.intersects(riv_geom)]:
+            river_cells.add(cells[cid])
+
+    # --- 湖泊（面）：按相交面积占比 ---
+    lak = None
+    for layer in WATER_LAKE_LAYERS:
+        try:
+            g = gpd.read_file(gpkg, layer=layer, bbox=bbox)
+        except Exception:
+            continue
+        if g is not None and len(g):
+            lak = g.to_crs("EPSG:3857")
+            info["layers_used"].append(layer)
+            info["lake_features"] = int(len(lak))
+            break
+    if lak is not None:
+        lak_geom = unary_union(list(lak.geometry.values))
+        cand = sorted(set(int(c) for c in hexes.index[hexes.intersects(lak_geom)]))
+        for cid in cand:
+            inter = polys[cid].intersection(lak_geom)
+            if not inter.is_empty and inter.area > 0:
+                lake_share[cells[cid]] = round(min(1.0, inter.area / hex_area), 3)
+
+    info["river_cells"] = len(river_cells)
+    info["lake_cells"] = len(lake_share)
+    return river_cells, lake_share, info

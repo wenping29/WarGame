@@ -22,6 +22,7 @@ class GisJobSpec {
   final String dem; // auto|local|synthetic
   final String landuse; // auto|proxy|off
   final bool roads;
+  final bool water; // 真实水系矢量（Natural Earth gpkg）叠加开关
   final int seed;
   final bool offline;
   GisJobSpec({
@@ -31,6 +32,7 @@ class GisJobSpec {
     required this.dem,
     required this.landuse,
     required this.roads,
+    required this.water,
     required this.seed,
     required this.offline,
   });
@@ -58,6 +60,7 @@ class GisJobSpec {
       dem: dem,
       landuse: lu,
       roads: j['roads'] != false,
+      water: j['water'] != false,
       seed: (j['seed'] as num?)?.toInt() ?? 7,
       offline: j['offline'] == true,
     );
@@ -97,6 +100,7 @@ class GisJob {
           'dem': spec.dem,
           'landuse': spec.landuse,
           'roads': spec.roads,
+          'water': spec.water,
           'seed': spec.seed,
           'offline': spec.offline,
         },
@@ -181,6 +185,9 @@ class GisService {
         'dem_info': m['dem_info'],
         'script': scriptPath,
         'landcover_online': m['rasterio'] == true,
+        'water_present': m['water_present'] == true,
+        'water_vector_ok': m['water_vector_ok'] == true,
+        'water_reason': m['water_reason'],
       };
     } on GisError catch (e) {
       _caps = {'available': false, 'python': null, 'rasterio': false, 'reason': e.message};
@@ -260,6 +267,7 @@ class GisService {
         '--dem', job.spec.dem,
         '--landuse', job.spec.landuse,
         '--roads', job.spec.roads ? 'on' : 'off',
+        '--water', job.spec.water ? 'auto' : 'off',
         '--seed', '${job.spec.seed}',
         '--print-meta',
         if (job.spec.offline) '--offline',

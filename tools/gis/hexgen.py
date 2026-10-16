@@ -143,6 +143,11 @@ WATER_NOISE_MIN = 0.66             # 湖泊噪声 ≥ 此值 ⇒ water（静水�
 WATER_RIVER_MIN_DIST = 1           # 湖泊不吞掉河带本身
 MAX_LAKE_CELLS = 14                # 水面格上限，防异常数据把地图变成湖
 
+# --- 真实水系矢量（Natural Earth 10m gpkg，见 rasters.water_by_hex）---
+LAKE_SHARE_MIN = 0.30              # 湖面占格面积 ≥ ⇒ water（静水，不可通行）
+LAKE_SHARE_LEVEL2 = 0.60           # 占比很高的格优先计入湖泊上限（真湖心）
+REAL_WATER_MAX_FRACTION = 0.20     # 真实水面（湖）格占全图上限，防大河口/湖区把地图变水域
+
 # --- 真实土地覆盖（WorldCover）生效阈值：按「格内面积占比」判定，不是格心一点 ---
 LC_WOODS_SHARE = 0.45              # 树覆盖占比 ≥ ⇒ woods
 LC_ROUGH_SHARE = 0.50              # 稀疏植被/苔原/积雪占比 ≥ ⇒ rough
@@ -1288,6 +1293,30 @@ def get_landcover(grid: HexGrid, args):
         return None, {"kind": "noise-proxy", "note": "真实取样失败：%s" % str(exc)[:160]}
 
 
+def get_water(grid: HexGrid, args):
+    """
+    真实水系矢量（Natural Earth 10m gpkg）→ (river_cells, lake_share, info) 或 (None, None, info)。
+    auto：本地 gpkg 存在且 geopandas 可用 ⇒ 叠加真实河湖；缺文件/缺库/失败 ⇒ None（由调用方沿用
+    DEM 谷底河带 + WorldCover 水体，玩法不受影响）。绝不抛异常打断生成。
+    """
+    if args.water == "off":
+        return None, None, {"kind": "off", "note": "未启用真实水系矢量层"}
+    gpkg = args.water_gpkg or str(resolve_repo_dir() / "data" / "water" / "global_water.gpkg")
+    if not Path(gpkg).is_file():
+        return None, None, {"kind": "unavailable",
+                            "note": "无水系 gpkg（%s），水文沿用 DEM 派生" % Path(gpkg).name}
+    try:
+        import rasters
+        river_cells, lake_share, info = rasters.water_by_hex(gpkg, grid)
+        if not river_cells and not lake_share:
+            return None, None, {"kind": "natural-earth-10m-water", "gpkg": info.get("gpkg"),
+                                "note": "该范围内 Natural Earth 无河湖要素，水文沿用 DEM 派生"}
+        return river_cells, lake_share, info
+    except Exception as exc:
+        print("[water] 真实水系叠加失败（%s）⇒ 沿用 DEM 派生水文" % exc, file=sys.stderr)
+        return None, None, {"kind": "unavailable", "note": "真实水系叠加失败：%s" % str(exc)[:160]}
+
+
 
 def city_marks_from_landcover(grid, lc, terr):
     """
@@ -1368,10 +1397,34 @@ def build_payload(args):
 
     terr, aux = classify_base(grid, elev, slopes, relief, th, args.seed, lc=lc)
 
+    # DEM 谷底脊线：保证河带纵向贯通 + 单连通锚点（玩法主线，永远保留）
     band = extract_river_band(grid, elev)
     river_set = set(band)
+
+    # 真实水系矢量（Natural Earth 10m）：真实河线并入河网，真实湖面按占比判 water。
+    # 必须在 build_roads 之前完成，桥位 = 道路 ∩ 河网 才与自校验一致。
+    real_river, lake_share, water_info = get_water(grid, args)
+    n_real_river = n_lake = 0
+    if real_river:
+        added = set(real_river) - river_set
+        river_set |= added
+        n_real_river = len(added)
     for (q, r) in river_set:
         terr[grid.index(q, r)] = "river"
+    if lake_share:
+        lake_cap = max(MAX_LAKE_CELLS, int(REAL_WATER_MAX_FRACTION * grid.width * grid.height))
+        lakes = sorted((( -sh, grid.index(*c), c) for c, sh in lake_share.items()
+                        if sh >= LAKE_SHARE_MIN and c not in river_set),
+                       key=lambda t: (t[0], t[1]))
+        for _, i, _cell in lakes[:lake_cap]:
+            terr[i] = "water"
+            n_lake += 1
+    if real_river or lake_share:
+        print("[water] 真实水系叠加：Natural Earth 河格 +%d（脊线外）、湖面 %d 格 ⇒ water（%s）"
+              % (n_real_river, n_lake, ", ".join((water_info or {}).get("layers_used", []))))
+    else:
+        print("[water] %s" % (water_info or {}).get("note", "沿用 DEM 派生水文"))
+
     river_dist = grid.distance_field(river_set)
 
     if lc is not None:
@@ -1399,7 +1452,8 @@ def build_payload(args):
     if args.roads == "off":
         road, bridge_set = set(), set()
     else:
-        road, bridge_set = build_roads(grid, elev, terr, band, args.seed)
+        # 传入合并后的完整河网（脊线 + 真实河），桥位 = 道路 ∩ 河网，与自校验同源
+        road, bridge_set = build_roads(grid, elev, terr, sorted(river_set), args.seed)
     if lc is not None:
         city_marks = city_marks_from_landcover(grid, lc, terr)
     elif args.roads == "off":
@@ -1441,6 +1495,8 @@ def build_payload(args):
             "relief_max": round(max(relief), 1),
             "relief_median": round(percentile(relief, 0.5), 1),
             "river_cells": len(river_set),
+            "real_river_cells": n_real_river,
+            "real_lake_cells": n_lake,
             "road_cells": len(road),
             "bridge_count": len(bridge_set),
             "city_cells": len(city_marks),
@@ -1463,13 +1519,33 @@ def build_payload(args):
             "roads": {"kind": "derived-corridors" if args.roads != "off" else "off",
                       "note": "道路无公开真实矢量可用（OSM 已按产品决策排除），按地形代价派生"
                               if args.roads != "off" else "未生成道路"},
-            "hydrology": {"kind": "derived-river-band" + ("+worldcover-water" if lc is not None else ""),
-                          "note": "河带由 DEM 谷底最短路派生；湖泊/湿地在有真实覆盖时按占比判定"},
+            "hydrology": _hydrology_layer(real_river, lake_share, lc, water_info),
             "settlements": {"kind": "worldcover-builtup" if lc is not None else
                             ("derived-junctions" if args.roads != "off" else "off")},
         },
     }
+    if real_river or lake_share:
+        meta["water"] = water_info       # 真实水系溯源：来源、图层、缓冲、河/湖格数
     return grid, {"meta": meta, "hexes": hexes}
+
+
+def _hydrology_layer(real_river, lake_share, lc, water_info):
+    """诚实标注水文来源：真实矢量优先，DEM 脊线保贯通，WorldCover 补湖沼。"""
+    if real_river or lake_share:
+        parts = []
+        if real_river:
+            parts.append("natural-earth-rivers")
+        if lake_share:
+            parts.append("natural-earth-lakes")
+        parts.append("dem-spine")                    # 纵向贯通的谷底脊线始终保留
+        if lc is not None:
+            parts.append("worldcover-water")
+        used = ", ".join((water_info or {}).get("layers_used", []))
+        return {"kind": "+".join(parts),
+                "note": "河湖来自 Natural Earth 10m 真实矢量（图层 %s）；另保留 DEM 谷底脊线保证河带纵向贯通与渡河作战主线" % used}
+    return {"kind": "derived-river-band" + ("+worldcover-water" if lc is not None else ""),
+            "note": "无真实水系矢量叠加：河带由 DEM 谷底最短路派生；湖泊/湿地在有真实覆盖时按占比判定。%s"
+                    % ((water_info or {}).get("note", ""))}
 
 
 def resolve_repo_dir() -> Path:
@@ -1503,6 +1579,20 @@ def capabilities_payload(dem_tif=None):
             caps["dem_info"] = rasters.raster_info(str(tif))
         except Exception as exc:
             caps["dem_info"] = {"error": str(exc)[:160]}
+    # 真实水系矢量（Natural Earth gpkg）可用性：需要 geopandas/shapely + 文件
+    gpkg = root / "data" / "water" / "global_water.gpkg"
+    try:
+        import geopandas  # noqa: F401
+        import shapely    # noqa: F401
+        vec_ok = True
+        vec_reason = None
+    except Exception as exc:
+        vec_ok = False
+        vec_reason = "geopandas/shapely 未安装：%s" % str(exc)[:120]
+    caps["water_gpkg"] = str(gpkg)
+    caps["water_present"] = gpkg.is_file()
+    caps["water_vector_ok"] = bool(vec_ok and gpkg.is_file())
+    caps["water_reason"] = vec_reason or (None if gpkg.is_file() else "水系 gpkg 不存在")
     return caps
 
 
@@ -1542,6 +1632,10 @@ def main(argv=None):
                    help="土地覆盖层：auto=真实 WorldCover，proxy=噪声代理，off=不参与判类")
     p.add_argument("--lc-tile-deg", dest="lc_tile_deg", type=int, default=3,
                    help="WorldCover 瓦片边长（度），官方发布为 3")
+    p.add_argument("--water", choices=("auto", "off"), default="auto",
+                   help="真实水系矢量层（Natural Earth 10m gpkg）：auto=有则叠加真实河湖，off=只用 DEM 派生水文")
+    p.add_argument("--water-gpkg", dest="water_gpkg", default=None,
+                   help="水系 GeoPackage（默认 <repo>/data/water/global_water.gpkg）")
     p.add_argument("--roads", choices=("on", "off"), default="on",
                    help="道路层（派生走廊）；off 则无道路无桥梁")
     p.add_argument("--out", default=None, help="输出 JSON（默认 <repo>/data/gis/rhine_5km.json）")
