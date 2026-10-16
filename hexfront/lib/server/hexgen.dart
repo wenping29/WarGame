@@ -23,6 +23,8 @@ class GisJobSpec {
   final String landuse; // auto|proxy|off
   final bool roads;
   final bool water; // 真实水系矢量（Natural Earth gpkg）叠加开关
+  final bool network; // 真实交通矢量（World_Roads 路网 + NE 机场）叠加开关
+  final bool features; // 地物玩法层（铁路/车站/电网/电厂/变电站/隧道/机场）
   final int seed;
   final bool offline;
   GisJobSpec({
@@ -33,6 +35,8 @@ class GisJobSpec {
     required this.landuse,
     required this.roads,
     required this.water,
+    required this.network,
+    required this.features,
     required this.seed,
     required this.offline,
   });
@@ -61,6 +65,8 @@ class GisJobSpec {
       landuse: lu,
       roads: j['roads'] != false,
       water: j['water'] != false,
+      network: j['network'] != false,
+      features: j['features'] != false,
       seed: (j['seed'] as num?)?.toInt() ?? 7,
       offline: j['offline'] == true,
     );
@@ -101,6 +107,8 @@ class GisJob {
           'landuse': spec.landuse,
           'roads': spec.roads,
           'water': spec.water,
+          'network': spec.network,
+          'features': spec.features,
           'seed': spec.seed,
           'offline': spec.offline,
         },
@@ -188,6 +196,15 @@ class GisService {
         'water_present': m['water_present'] == true,
         'water_vector_ok': m['water_vector_ok'] == true,
         'water_reason': m['water_reason'],
+        // 真实交通矢量：路网 FGDB（从 World_Roads.lpk 解包）+ NE 机场
+        'vector_ok': m['vector_ok'] == true,
+        'vector_reason': m['vector_reason'],
+        'roads_gdb': m['roads_gdb'],
+        'roads_gdb_present': m['roads_gdb_present'] == true,
+        'airports_shp': m['airports_shp'],
+        'airports_present': m['airports_present'] == true,
+        'network_ok': m['vector_ok'] == true &&
+            (m['roads_gdb_present'] == true || m['airports_present'] == true),
       };
     } on GisError catch (e) {
       _caps = {'available': false, 'python': null, 'rasterio': false, 'reason': e.message};
@@ -268,6 +285,8 @@ class GisService {
         '--landuse', job.spec.landuse,
         '--roads', job.spec.roads ? 'on' : 'off',
         '--water', job.spec.water ? 'auto' : 'off',
+        '--network', job.spec.network ? 'auto' : 'off',
+        '--features', job.spec.features ? 'on' : 'off',
         '--seed', '${job.spec.seed}',
         '--print-meta',
         if (job.spec.offline) '--offline',

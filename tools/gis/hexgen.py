@@ -172,6 +172,7 @@ ROAD_RIVER_BLOCK_COST = 1.0e6      # 非桥位穿河代价 ⇒ 桥数 == 走廊�
 ROAD_WATER_BLOCK_COST = 4.0e5      # 道路不穿湖泊
 ROAD_MOUNTAIN_PENALTY = 700.0      # 道路尽量绕开山地
 ROAD_BEND_PENALTY_PER_DEG = 2.0    # 道路转弯惩罚
+RIVER_RUN_BRIDGE_MAX = 3           # 道路∩河带的连通段 ≤ 此格数 ⇒ 真渡河点（桥）；更长 ⇒ 沿河公路
 CITY_TARGET = 4
 CITY_MIN = 2
 CITY_MAX = 4
@@ -179,6 +180,38 @@ CITY_ABS_MAX = 24                # 真实城区连片时的绝对上限（游戏
 CITY_MIN_SEPARATION = 3            # 聚落最小六角格间距
 CITY_JUNCTION_BONUS = 0.35         # 邻域道路越多（交叉口）加分越大
 CITY_RIVER_MAX_DIST = 2            # 聚落优先选河岸 / 渡口
+
+# --- 地物层：铁路 / 车站 / 隧道 / 电网 / 电厂 / 变电站 / 机场 ---
+# 铁路：一条近东西干线穿首府，格网够宽时补一条支线到次级聚落。
+RAIL_BRANCH_MIN_CELLS = 500        # 小于此格数只做单线（支线会把图挤满）
+RAIL_RIVER_BLOCK_COST = 1.0e6      # 铁路只在既有的桥上渡河 ⇒ 铁路∩河 ⊆ 桥位
+RAIL_WATER_BLOCK_COST = 4.0e5
+RAIL_MOUNTAIN_PENALTY = 900.0
+RAIL_BEND_PENALTY_PER_DEG = 2.5
+RAIL_ROAD_BONUS = 60.0             # 现实里铁路与公路共走廊，轻微吸引
+RAIL_STATION_MAX_DIST = 2          # 车站取「距聚落 ≤ 此值」的铁路格
+# 隧道：线路在陡区「内部」穿越（前后都沿线）才判隧道，刚上山的那个格不算。
+TUNNEL_LINE_NEIGHBORS = 2
+TUNNEL_TERRAIN = ("hills", "mountain")
+TUNNEL_DERIVED_MAX = 6
+TUNNEL_MIN_RELIEF_M = 40.0         # 局部高差不足 ⇒ 不是「穿山」而是缓坡过脊
+# 电力：电厂近水（冷却/水电）、变电站进城镇、线路按「最近已连通节点」成网。
+PLANT_MIN = 1
+PLANT_MAX = 2
+PLANT_RIVER_MAX_DIST = 1
+PLANT_SEPARATION = 4
+PLANT_CITY_MIN_DIST = 2            # 厂区不压在城镇格上（但要在供水/供电范围内）
+SUBSTATION_MAX = 4
+POWER_WATER_BLOCK_COST = 4.0e5
+POWER_MOUNTAIN_PENALTY = 500.0
+POWER_BEND_PENALTY_PER_DEG = 1.5
+POWER_MAX_SLOPE_DEG = 9.0          # 线路尽量沿低坡走（罚，不是禁）
+POWERLINE_MAX_FRACTION = 0.10      # 线路格占全图上限，防成网后铺满地图
+# 机场：真实点优先；战区里没有真实机场要素时，在首府近郊找一块平地派生一处野场。
+AIRPORT_DERIVED_SLOPE_MAX_DEG = 1.5
+AIRPORT_CITY_MIN_DIST = 2
+AIRPORT_CITY_MAX_DIST = 6
+AIRPORT_MAX = 3
 
 # =====================================================================================
 # 3) 投影 / 格网几何
@@ -948,6 +981,35 @@ def build_roads(grid: HexGrid, elev, terr, river_band, seed: int):
     return road, set(bridges)
 
 
+def bridges_at_crossings(grid: HexGrid, road, river_set):
+    """
+    桥位 = 道路 ∩ 河带中「真的把路送过对岸」的那几段。
+    判定按连通段长度：段长 ≤ RIVER_RUN_BRIDGE_MAX ⇒ 一次渡河 ⇒ 整段记桥；
+    更长的段是沿河/河谷公路（贴着水面走几公里，并没有跨水）⇒ 不记桥。
+    不做这一步的话，莱茵-鲁尔这种都会区会把 48 个沿河格全标成桥，渡河不再是作战课题。
+    返回 (bridge_cells, {"crossings": 渡河处数, "沿河段": 长段数})。
+    """
+    cross = road & river_set
+    seen, bridges, long_runs, crossings = set(), set(), 0, 0
+    for cell in sorted(cross):
+        if cell in seen:
+            continue
+        stack, comp = [cell], []
+        while stack:
+            cur = stack.pop()
+            if cur in seen:
+                continue
+            seen.add(cur)
+            comp.append(cur)
+            stack.extend(n for n in grid.neighbors(*cur) if n in cross and n not in seen)
+        if len(comp) <= RIVER_RUN_BRIDGE_MAX:
+            bridges |= set(comp)
+            crossings += 1
+        else:
+            long_runs += 1
+    return bridges, {"crossings": crossings, "bank_runs": long_runs}
+
+
 def place_cities(grid: HexGrid, terr, road, river_dist, bridge_set, seed):
     """
     聚落候选：道路格 + 紧邻河带（渡口/桥头堡），邻域道路越多（交叉口）加分越高。
@@ -990,11 +1052,240 @@ def place_cities(grid: HexGrid, terr, road, river_dist, bridge_set, seed):
 
 
 # =====================================================================================
+# 9b) 地物层：铁路 / 车站 / 隧道 / 电网 / 机场
+# =====================================================================================
+
+
+def build_railway(grid, elev, terr, road, bridge_set, city_marks):
+    """
+    铁路：一条近东西干线穿过首府（等级高的聚落），格网够大时再补一条支线到次级聚落。
+    非桥位渡河代价 = RAIL_RIVER_BLOCK_COST ⇒ 铁路 ∩ 河 只会落在既有桥位上
+    （现实里铁路和公路抢同一批渡口/桥头，玩法上也保住「桥 = 道路 ∩ 河」契约不被铁路破坏）。
+    返回 (rail_cells, stations:{cell: 聚落等级})。
+    """
+    emin = min(elev)
+
+    def cost(q, r):
+        i = grid.index(q, r)
+        t = terr[i]
+        c = elev[i] - emin
+        if t == "river" and (q, r) not in bridge_set:
+            c += RAIL_RIVER_BLOCK_COST
+        if t in ("water", "swamp"):
+            c += RAIL_WATER_BLOCK_COST
+        if t == "mountain":
+            c += RAIL_MOUNTAIN_PENALTY
+        if (q, r) in road:
+            c -= RAIL_ROAD_BONUS
+        return max(0.0, c)
+
+    def bend(a, b, c):
+        return RAIL_BEND_PENALTY_PER_DEG * grid.turn_angle(a, b, c)
+
+    cities = sorted(city_marks.items(), key=lambda kv: (-kv[1], grid.index(*kv[0])))
+    rail = set()
+    if cities:
+        capital = cities[0][0]
+        west = {(0, r) for r in range(grid.height)}
+        east = {(grid.width - 1, r) for r in range(grid.height)}
+        leg_a = dijkstra(grid, west, {capital}, cost, turn_cost=bend)
+        leg_b = dijkstra(grid, {capital}, east, cost, turn_cost=bend)
+        if leg_a and leg_b:
+            rail = set(leg_a) | set(leg_b)
+        else:                                       # 全图被湖/山堵死 ⇒ 退成过首府的行直列（保证有干线）
+            rail = {(q, capital[1]) for q in range(grid.width)}
+        if grid.width * grid.height >= RAIL_BRANCH_MIN_CELLS and len(cities) > 1:
+            branch = dijkstra(grid, set(rail), {cities[1][0]}, cost, turn_cost=bend)
+            if branch:
+                rail |= set(branch)
+    stations = {}
+    for cell, grade in cities:
+        cand = [(axial_distance(cell, rc), grid.index(*rc), rc) for rc in rail
+                if axial_distance(cell, rc) <= RAIL_STATION_MAX_DIST
+                and terr[grid.index(*rc)] not in ("river", "water")]
+        if cand:
+            stations[min(cand)[2]] = grade
+    return rail, stations
+
+
+def build_tunnels(grid, line_cells, terr, slopes, relief, th, real_tunnel_cells):
+    """
+    隧道 = ①真实隧道格（World_Roads 的 RD_FEATURE=Tunnel，须落在线路上）
+          ∪ ②线路在陡区「内部」穿行的格（前后都沿线 ⇒ 是穿山，不是刚上山）。
+    返回 (tunnel_cells, {"real": n, "derived": m, "dropped_real": k})。
+    """
+    real_on_line = {c for c in real_tunnel_cells if c in line_cells
+                    and terr[grid.index(*c)] not in ("river", "water")}
+    dropped = len(real_tunnel_cells) - len(real_on_line)
+    cands = []
+    for c in sorted(line_cells):
+        if c in real_on_line:
+            continue
+        i = grid.index(*c)
+        if terr[i] not in TUNNEL_TERRAIN:
+            continue
+        if slopes[i] < th["slope_hills_deg"] or relief[i] < TUNNEL_MIN_RELIEF_M:
+            continue
+        if sum(1 for n in grid.neighbors(*c) if n in line_cells) < TUNNEL_LINE_NEIGHBORS:
+            continue
+        cands.append((-slopes[i], i, c))
+    cands.sort(key=lambda t: (t[0], t[1]))
+    derived = {c for _, _, c in cands[:TUNNEL_DERIVED_MAX]}
+    return real_on_line | derived, {
+        "real": len(real_on_line), "derived": len(derived), "dropped_real": dropped}
+
+
+def build_power(grid, elev, terr, slopes, city_marks, river_dist):
+    """
+    电网：变电站进城镇 → 电厂挑近水的平地（远离城镇但不脱离供水/负荷）→ 线路按
+    「把未连通的节点接到最近的已连通节点」逐步成网（电厂侧起手，保证每个电厂都上网）。
+    线路和公路不同：跨河是架线塔的正常做法，只罚不禁，否则会沿河谷绕出无意义的长蛇阵。
+    返回 (plants, substations, powerline_cells)。
+    """
+    n_cells = grid.width * grid.height
+    if not city_marks:
+        return set(), set(), set()
+    cities = sorted(city_marks.items(), key=lambda kv: (-kv[1], grid.index(*kv[0])))
+    substations = {cell for cell, _ in cities[:SUBSTATION_MAX]}
+    city_dist = grid.distance_field(substations)
+    emin, emax = min(elev), max(elev)
+    span = max(1.0, emax - emin)
+
+    plant_max = PLANT_MAX if n_cells >= RAIL_BRANCH_MIN_CELLS else PLANT_MIN
+    cand = []
+    for (q, r) in grid.iter_cells():
+        i = grid.index(q, r)
+        cell = (q, r)
+        if terr[i] not in ("clear", "rough") or cell in substations:
+            continue
+        if river_dist.get(cell, 99) > PLANT_RIVER_MAX_DIST:
+            continue
+        if slopes[i] > POWER_MAX_SLOPE_DEG or city_dist.get(cell, 99) < PLANT_CITY_MIN_DIST:
+            continue
+        score = -slopes[i] / POWER_MAX_SLOPE_DEG - 0.4 * city_dist[cell]
+        cand.append((-score, i, cell))
+    cand.sort(key=lambda t: (t[0], t[1]))
+    plants = []
+    for _, _, cell in cand:
+        if len(plants) >= plant_max:
+            break
+        if all(axial_distance(cell, p) >= PLANT_SEPARATION for p in plants):
+            plants.append(cell)
+    plants = set(plants)
+    if not plants:                                  # 全图找不到近水平地 ⇒ 贴着变电站摆一处（保住玩法目标）
+        near = sorted(substations, key=lambda c: grid.index(*c))[:1]
+        for c in near:
+            for n in [c] + grid.neighbors(*c):
+                if terr[grid.index(*n)] in ("clear", "rough") and n not in substations:
+                    plants.add(n)
+                    break
+            if plants:
+                break
+
+    def cost(q, r):
+        i = grid.index(q, r)
+        t = terr[i]
+        c = (elev[i] - emin) + 120.0 * slopes[i] / POWER_MAX_SLOPE_DEG
+        if t in ("water", "swamp"):
+            c += POWER_WATER_BLOCK_COST
+        if t == "mountain":
+            c += POWER_MOUNTAIN_PENALTY
+        if t == "river":
+            c += 0.6 * span                         # 架线塔跨河：可行但不便宜
+        return max(0.0, c)
+
+    def bend(a, b, c):
+        return POWER_BEND_PENALTY_PER_DEG * grid.turn_angle(a, b, c)
+
+    lines, linked = set(), set()
+    nodes = plants | substations
+    cap = int(POWERLINE_MAX_FRACTION * n_cells)
+
+    def attach(starts, targets):
+        path = dijkstra(grid, starts, targets, cost, turn_cost=bend)
+        if not path:
+            return False
+        lines.update(path)
+        linked.update(c for c in path if c in nodes)
+        return True
+
+    # ① 先给每个电厂各拉一条到变电站的出线（否则多电厂时只有「顺路」那个上网，另一个成孤岛）
+    for p in sorted(plants, key=lambda c: grid.index(*c)):
+        if len(lines) >= cap or not substations:
+            break
+        attach({p}, substations - {p})
+        linked.add(p)
+    # ② 再把尚未上网的变电站按「最近的已连通节点」逐个挂上，逐步成网
+    for s in sorted(substations - linked, key=lambda c: grid.index(*c)):
+        if len(lines) >= cap:
+            break
+        if attach(linked | plants, {s}):
+            linked.add(s)
+    lines.update(plants)
+    lines.update(s for s in substations if s in linked)
+    return plants, substations, lines
+
+
+def place_airports(grid, terr, slopes, road, rail, city_marks, real_airports):
+    """
+    机场：真实机场点（Natural Earth 10m）优先；战区里没有真实机场要素时，
+    在首府近郊找一块不压路的平地派生一处野场（meta 里如实标注 derived）。
+    返回 ({cell: 等级 1|2}, "real" | "derived" | "off")。
+    """
+    marks = dict(real_airports or {})
+    if marks:
+        ranked = sorted(marks.items(),
+                        key=lambda kv: (-kv[1], grid.index(*kv[0])))
+        return dict(ranked[:AIRPORT_MAX]), "real"
+    if not city_marks:
+        return {}, "off"
+    capital = sorted(city_marks.items(), key=lambda kv: (-kv[1], grid.index(*kv[0])))[0][0]
+    cands = []
+    for (q, r) in grid.iter_cells():
+        i = grid.index(q, r)
+        cell = (q, r)
+        d = axial_distance(cell, capital)
+        if not AIRPORT_CITY_MIN_DIST <= d <= AIRPORT_CITY_MAX_DIST:
+            continue
+        if terr[i] not in ("clear", "rough") or slopes[i] > AIRPORT_DERIVED_SLOPE_MAX_DEG:
+            continue
+        if cell in road or cell in rail:
+            continue
+        cands.append((d, slopes[i], i, cell))
+    if not cands:
+        return {}, "off"
+    best = min(cands, key=lambda t: (t[0], t[1], t[2]))
+    return {best[3]: 1}, "derived"
+
+
+def build_features(grid, elev, terr, slopes, relief, th, road, bridge_set, city_marks,
+                   river_dist, real_tunnel, real_airports, args):
+    """
+    汇总地物层。features=off 时不派生任何玩法地物（真实矢量落在格上的机场也一并不写，
+    保持「关掉这层 = 地图回到只有地形/道路/河/桥」的干净语义）。
+    """
+    feat = {"railway": set(), "rail_station": {}, "tunnel": set(), "power_plant": set(),
+            "substation": set(), "powerline": set(), "airport": {}}
+    if args.features == "off":
+        return feat, {"railway": "off", "power": "off", "tunnels": "off", "airports": "off"}
+    rail, stations = build_railway(grid, elev, terr, road, bridge_set, city_marks)
+    tunnels, tun_note = build_tunnels(grid, road | rail, terr, slopes, relief, th,
+                                      real_tunnel or set())
+    plants, subs, lines = build_power(grid, elev, terr, slopes, city_marks, river_dist)
+    airports, src = place_airports(grid, terr, slopes, road, rail, city_marks, real_airports)
+    feat.update(railway=rail, rail_station=stations, tunnel=tunnels,
+                power_plant=plants, substation=subs, powerline=lines, airport=airports)
+    return feat, {"railway": "derived-route", "power": "derived-grid",
+                  "tunnels": tun_note, "airports": src}
+
+
+# =====================================================================================
 # 10) 组装 + 自校验
 # =====================================================================================
 
 
-def build_hexes(grid, elev, slopes, terr, road, river_set, bridge_set, city_marks, lc=None):
+def build_hexes(grid, elev, slopes, terr, road, river_set, bridge_set, city_marks, lc=None,
+                feat=None):
     from rasters import WORLDCOVER_TERRAIN          # 只在真的用了覆盖层时才拉可选依赖
     out = []
     for (q, r) in grid.iter_cells():                # r 外层、q 内层
@@ -1012,6 +1303,15 @@ def build_hexes(grid, elev, slopes, terr, road, river_set, bridge_set, city_mark
             "bridge": (q, r) in bridge_set,
             "city": city_marks.get((q, r), 0),
         }
+        if feat is not None:                        # 地物层只写「有」的格：30k 格包省下几十列 false
+            cell = (q, r)
+            for key in ("railway", "tunnel", "powerline", "power_plant", "substation"):
+                if cell in feat[key]:
+                    hx[key] = True
+            if feat["rail_station"].get(cell):
+                hx["rail_station"] = True
+            if feat["airport"].get(cell):
+                hx["airport"] = int(feat["airport"][cell])
         if lc is not None:                          # 判类证据留在包里，便于复核「为什么这格是林地」
             v = lc[(q, r)]
             hx["lc"] = {"class": v["class"], "share": round(v["share"], 3),
@@ -1026,9 +1326,11 @@ def validate(data: dict, grid: HexGrid, cell_km: float, strict: bool = True):
       · 格数 = width*height、q/r 范围正确、无重复、遍历顺序 r 外 q 内
       · terrain 全部落在白名单
       · |sqrt(3)*radius_m - cell_km*1000| < 1e-6
-      · bridge 只出现在 river 格；道路∩河带 == 桥位；桥数 ∈ [2,4]
+      · bridge 只出现在 river 格；桥位 ⊆ 道路∩河带，短渡河段全部成桥（长段 = 沿河公路不记桥）
       · city ≥ 1 ⇒ terrain == city；聚落数 ∈ [2,4]
       · 河带单连通且纵向贯通；stats 与 hexes 一致；ox/oy 中心对齐；bbox 覆盖全部格心
+      · 地物层：隧道在线上且不在水面、铁路只在桥位渡河、车站是铁路格、变电站在聚落、
+        电厂建在平地且都上电网、机场等级合法；地物 7 项计数与 stats 相符
     """
     res = []
     meta = data["meta"]
@@ -1067,7 +1369,8 @@ def validate(data: dict, grid: HexGrid, cell_km: float, strict: bool = True):
     layers = meta.get("layers") or {}
     roads_off = ((layers.get("roads") or {}).get("kind") == "off")
     lc_real = ((layers.get("landcover") or {}).get("kind") == "esa-worldcover-v200")
-    need_layers = ("elevation", "landcover", "roads", "hydrology", "settlements")
+    need_layers = ("elevation", "landcover", "roads", "hydrology", "settlements",
+                   "railway", "power", "tunnels", "airports")
     layer_note = json.dumps({k: (v or {}).get("kind") or (v or {}).get("source")
                              for k, v in layers.items()}, ensure_ascii=False) if layers else "无 meta.layers"
     lvl = "OK" if all(k in layers for k in need_layers) else ("WARN" if not strict else "FAIL")
@@ -1082,14 +1385,44 @@ def validate(data: dict, grid: HexGrid, cell_km: float, strict: bool = True):
         res.append((("OK" if not crossings and not bridge_cells else "FAIL"), "道路关闭时无路无桥",
                     "道路格 %d / 桥 %d" % (sum(1 for hx in hexes if hx["road"]), len(bridge_cells))))
     else:
-        res.append((("OK" if crossings == set(bridge_cells) else "FAIL"), "道路∩河 = 桥位",
-                    "渡河点 %d，桥 %d" % (len(crossings), len(bridge_cells))))
-    nb = len(bridge_cells)
-    res.append((("OK" if (roads_off and nb == 0) or BRIDGE_MIN <= nb <= BRIDGE_MAX else "WARN"),
-                "桥梁总数 2–4" if not roads_off else "道路关闭",
-                "实际 %d 座 @ %s" % (nb, bridge_cells) if not roads_off else "未生成道路"))
+        # 桥位必须是道路∩河的子集；反过来的「道路穿过河却没桥」只允许是沿河长段（贴水不跨水）
+        stray = sorted(set(bridge_cells) - crossings)
+        res.append((("OK" if not stray else "FAIL"), "桥位 ⊆ 道路∩河",
+                    "%s" % (stray[:6] if stray else "无")))
+        segs, seen = [], set()
+        for cell in sorted(crossings):
+            if cell in seen:
+                continue
+            stack, comp = [cell], []
+            while stack:
+                cur = stack.pop()
+                if cur in seen:
+                    continue
+                seen.add(cur)
+                comp.append(cur)
+                stack.extend(n for n in grid.neighbors(*cur) if n in crossings and n not in seen)
+            segs.append(comp)
+        short_unbridged = [c for s in segs if len(s) <= RIVER_RUN_BRIDGE_MAX for c in s
+                           if c not in set(bridge_cells)]
+        res.append((("OK" if not short_unbridged else "FAIL"), "短渡河段全部成桥",
+                    "%d 段缺桥 %s" % (len({tuple(sorted(c)) for c in short_unbridged}),
+                                      short_unbridged[:6]) if short_unbridged
+                    else "%d 处渡河段全有桥（另有 %d 段沿河公路不记桥）"
+                         % (sum(1 for s in segs if len(s) <= RIVER_RUN_BRIDGE_MAX),
+                            sum(1 for s in segs if len(s) > RIVER_RUN_BRIDGE_MAX))))
+    nb = len(set(bridge_cells))
+    real_roads = str((layers.get("roads") or {}).get("kind", "")).startswith("natural-earth")
+    if roads_off:
+        res.append((("OK", "道路关闭", "未生成道路")))
+    elif real_roads:
+        res.append((("OK" if nb >= BRIDGE_MIN else "WARN"), "渡河点数量（真实路网口径）",
+                    "桥格 %d 处（真实高速跨河本来就是多处，不受合成场景 %d–%d 约束）"
+                    % (nb, BRIDGE_MIN, BRIDGE_MAX)))
+    else:
+        res.append((("OK" if BRIDGE_MIN <= len(bridge_cells) <= BRIDGE_MAX else "WARN"),
+                    "桥梁总数 2–4", "实际 %d 座 @ %s" % (len(bridge_cells), bridge_cells)))
     res.append((("OK" if all(by_cell[c]["road"] for c in bridge_cells) else "FAIL"),
-                "桥在道路上", "%s" % (bridge_cells if bridge_cells else "无")))
+                "桥在道路上", "%d 处" % len(bridge_cells) if bridge_cells else "无"))
 
     bad_city = [(hx["q"], hx["r"], hx["terrain"]) for hx in hexes if hx["city"] >= 1 and hx["terrain"] != "city"]
     res.append((("OK" if not bad_city else "FAIL"), "city≥1 ⇒ terrain=city",
@@ -1178,16 +1511,131 @@ def validate(data: dict, grid: HexGrid, cell_km: float, strict: bool = True):
                 stack.extend(n for n in grid.neighbors(*cur) if n in roads and n not in comp)
             unvisited -= comp
             comps.append(comp)
-        conn = bool(roads) and bool(west) and bool(east) and \
-            all((len(c & set(west)) > 0 and len(c & set(east)) > 0) for c in comps)
-        res.append((("OK" if conn else "WARN"), "每条走廊通东西边缘",
-                    "道路 %d 格 / 分量 %d 个(尺寸 %s) / 西端 %d / 东端 %d"
-                    % (len(roads), len(comps), sorted(len(c) for c in comps), len(west), len(east))))
+        conn = [c for c in comps if (c & set(west)) and (c & set(east))]
+        # 真实路网的 rural 支线本就不碰图边 ⇒ 只要求「存在一条贯通东西的主干」，
+        # 不要求每个分量都贯通（那是派生走廊时代的强约束，接真实数据后是误报）。
+        res.append((("OK" if roads and conn else "WARN"), "存在贯通东西的公路主干",
+                    "道路 %d 格 / 分量 %d 个（贯通 %d 个，尺寸 %s）/ 西端 %d / 东端 %d"
+                    % (len(roads), len(comps), len(conn), sorted(len(c) for c in comps),
+                       len(west), len(east))))
     if strict:
         res.append((("OK" if str(meta.get("source", "")).startswith(
                         (SOURCE_REAL, SOURCE_SYNTH, SOURCE_LOCAL_DEM)) else "WARN"),
                     "meta.source 标注", str(meta.get("source"))))
+    res.extend(_validate_features(data, grid, meta, hexes, by_cell, layers))
     return res
+
+
+FEATURE_BOOL_KEYS = ("railway", "tunnel", "powerline", "power_plant", "substation", "rail_station")
+
+
+def _validate_features(data, grid, meta, hexes, by_cell, layers):
+    """
+    地物层自校验：契约（隧道/车站/线路必须挂在线上、铁路只能走既有桥位渡河、电厂必上网）
+    为 FAIL，数量区间为 WARN。老数据包没有这些字段 ⇒ 视为未生成，只查「不该有值」。
+    """
+    def cells_of(key):
+        return {(hx["q"], hx["r"]) for hx in hexes if hx.get(key)}
+    rail, tun = cells_of("railway"), cells_of("tunnel")
+    line, plant = cells_of("powerline"), cells_of("power_plant")
+    subs, station = cells_of("substation"), cells_of("rail_station")
+    apt = {(hx["q"], hx["r"]): int(hx.get("airport", 0) or 0) for hx in hexes if hx.get("airport")}
+    road = {(hx["q"], hx["r"]) for hx in hexes if hx["road"]}
+    river = {(hx["q"], hx["r"]) for hx in hexes if hx["river"]}
+    bridge = {(hx["q"], hx["r"]) for hx in hexes if hx["bridge"]}
+    city = {(hx["q"], hx["r"]) for hx in hexes if hx["city"] >= 1}
+    feats_off = (layers.get("railway") or {}).get("kind") == "off"
+    res = []
+
+    if "railway_cells" not in (meta.get("stats") or {}):
+        res.append((("WARN" if not (rail or tun or line or plant or subs or station or apt) else "FAIL"),
+                    "旧数据包无地物层",
+                    "重新生成可得到铁路/电网/机场/隧道；本次未见字段"
+                    if not (rail or tun or line or plant or subs or station or apt)
+                    else "无 stats 计数却有地物格 %d" % len(rail | tun | line | plant | subs | station)))
+        return res
+
+    if feats_off:
+        res.append((("OK" if not (rail or tun or line or plant or subs or station or apt) else "FAIL"),
+                    "地物层关闭时无残留",
+                    "铁路 %d / 隧道 %d / 线路 %d / 电厂 %d / 变电站 %d / 车站 %d / 机场 %d"
+                    % (len(rail), len(tun), len(line), len(plant), len(subs), len(station), len(apt))))
+        return res
+
+    bad_tun = [c for c in sorted(tun)
+               if (c not in road and c not in rail) or by_cell[c]["terrain"] in ("river", "water")]
+    res.append((("OK" if not bad_tun else "FAIL"), "隧道在线上且不在水面",
+                "%s" % (bad_tun[:6] if bad_tun else "无，共 %d 处" % len(tun))))
+    rail_river = sorted((rail & river) - bridge)
+    res.append((("OK" if not rail_river else "FAIL"), "铁路只在桥位渡河",
+                "越界 %s" % (rail_river[:6] if rail_river else "无（铁路∩河 ⊆ 桥位）")))
+    bad_st = sorted(station - rail)
+    res.append((("OK" if not bad_st else "FAIL"), "车站是铁路格", "%s" % (bad_st if bad_st else "无")))
+    res.append((("OK" if len(station) <= max(1, len(city)) else "WARN"), "车站数 ≤ 聚落数",
+                "车站 %d / 聚落 %d" % (len(station), len(city))))
+
+    comps, unvisited = [], set(rail)
+    while unvisited:
+        stack, comp = [sorted(unvisited)[0]], set()
+        while stack:
+            cur = stack.pop()
+            if cur in comp:
+                continue
+            comp.add(cur)
+            stack.extend(n for n in grid.neighbors(*cur) if n in rail and n not in comp)
+        unvisited -= comp
+        comps.append(comp)
+    w = meta["width"]
+    trunk = any(c and any(x[0] == 0 for x in c) and any(x[0] == w - 1 for x in c) for c in comps)
+    res.append((("OK" if trunk else "WARN"), "铁路干线通东西边缘",
+                "%d 格 / 分量 %d 个 / 贯通 %s" % (len(rail), len(comps), "是" if trunk else "否")))
+
+    bad_plant = [c for c in sorted(plant) if by_cell[c]["terrain"] not in ("clear", "rough")]
+    res.append((("OK" if not bad_plant else "FAIL"), "电厂建在可通行平地",
+                "%s" % (bad_plant if bad_plant else "共 %d 处" % len(plant))))
+    res.append((("OK" if PLANT_MIN <= len(plant) <= PLANT_MAX else "WARN"), "电厂数量 %d–%d"
+                % (PLANT_MIN, PLANT_MAX), "实际 %d" % len(plant)))
+    res.append((("OK" if len(subs) <= SUBSTATION_MAX else "WARN"), "变电站数量 ≤ %d" % SUBSTATION_MAX,
+                "实际 %d（聚落 %d）" % (len(subs), len(city))))
+    bad_sub = sorted(subs - city)
+    res.append((("OK" if not bad_sub else "FAIL"), "变电站落在聚落", "%s" % (bad_sub if bad_sub else "无")))
+
+    def reach(src):
+        seen, stack = set(), list(src)
+        while stack:
+            cur = stack.pop()
+            if cur in seen:
+                continue
+            seen.add(cur)
+            stack.extend(n for n in grid.neighbors(*cur) if n in line and n not in seen)
+        return seen
+    orphan = [c for c in sorted(plant) if not (reach({c}) & subs)]
+    res.append((("OK" if (not plant or not subs or not orphan) else "FAIL"), "每个电厂都上了电网",
+                "孤岛电厂 %s" % (orphan if orphan else "无")))
+    res.append((("OK" if len(line) <= int(POWERLINE_MAX_FRACTION * w * meta["height"]) + len(subs) + len(plant)
+                else "WARN"), "线路格占比受控", "%d 格（上限约 %d）"
+                % (len(line), int(POWERLINE_MAX_FRACTION * w * meta["height"]))))
+
+    bad_apt = [(c, g) for c, g in sorted(apt.items())
+               if g not in (1, 2) or by_cell[c]["terrain"] in ("water", "river", "city")]
+    res.append((("OK" if not bad_apt else "FAIL"), "机场等级合法且不在水面/城镇",
+                "%s" % (bad_apt if bad_apt else "共 %d 处" % len(apt))))
+    res.append((("OK" if len(apt) <= AIRPORT_MAX else "WARN"), "机场数量 ≤ %d" % AIRPORT_MAX,
+                "实际 %d（来源 %s）" % (len(apt), (layers.get("airports") or {}).get("kind", "?"))))
+
+    st = meta.get("stats", {})
+    want = {"railway_cells": rail, "tunnel_cells": tun, "powerline_cells": line,
+            "power_plant_cells": plant, "substation_cells": subs, "rail_station_cells": station,
+            "airport_cells": {c for c in apt}}
+    drift = {k: (st.get(k), len(v)) for k, v in want.items() if st.get(k) != len(v)}
+    res.append((("OK" if not drift else "FAIL"), "地物 stats 与 hexes 一致",
+                "%s" % (json.dumps(drift, ensure_ascii=False) if drift else "7 项计数相符")))
+
+    type_ok = all(isinstance(hx.get(k, False), bool) for hx in hexes for k in FEATURE_BOOL_KEYS) and \
+        all(isinstance(v, int) and v in (1, 2) for v in apt.values())
+    res.append((("OK" if type_ok else "FAIL"), "地物字段类型有效", "bool×6 + airport∈{1,2}"))
+    return res
+
 
 
 def print_report(res, title="自校验"):
@@ -1316,6 +1764,55 @@ def get_water(grid: HexGrid, args):
         print("[water] 真实水系叠加失败（%s）⇒ 沿用 DEM 派生水文" % exc, file=sys.stderr)
         return None, None, {"kind": "unavailable", "note": "真实水系叠加失败：%s" % str(exc)[:160]}
 
+
+
+ROADS_GDB_HINT = ('7zr x data/gis/World_Roads.lpk "v10/roads.gdb/*" -odata/gis/roads_pkg -y')
+
+
+def get_road_layer(grid: HexGrid, args):
+    """
+    真实路网矢量（Natural Earth World_Roads，解包后的 ESri File Geodatabase）
+      → (road_cells, tunnel_cells, info) 或 (None, None, info)。
+    auto：本地 FGDB 存在且 pyogrio 可用 ⇒ 叠加真实干线公路（同时带来真实隧道/桥位计数）；
+    缺文件/缺库/该范围无要素 ⇒ None（道路退回派生走廊，玩法不受影响）。绝不抛异常打断生成。
+    """
+    if args.network == "off":
+        return None, None, {"kind": "off", "note": "未启用真实路网矢量层"}
+    gdb = args.roads_gdb or str(resolve_repo_dir() / "data" / "gis" / "roads_pkg" / "v10" / "roads.gdb")
+    if not Path(gdb).exists():
+        return None, None, {"kind": "unavailable",
+                            "note": "无路网 FGDB（%s）⇒ 道路退回派生走廊；先解包：%s"
+                                    % (Path(gdb).name, ROADS_GDB_HINT)}
+    try:
+        import rasters
+        road, tun, br, info = rasters.roads_by_hex(gdb, grid)
+        if not road:
+            return None, None, {"kind": info.get("kind", "world-roads"),
+                                "note": "该范围内 World_Roads 无干线要素 ⇒ 道路退回派生走廊"}
+        return road, tun, dict(info, real_bridge_cells=len(br))
+    except Exception as exc:
+        print("[network] 真实路网叠加失败（%s）⇒ 道路退回派生走廊" % exc, file=sys.stderr)
+        return None, None, {"kind": "unavailable", "note": "真实路网叠加失败：%s" % str(exc)[:160]}
+
+
+def get_airport_layer(grid: HexGrid, args):
+    """真实机场点（Natural Earth 10m airports）→ ({cell: 等级}, info) 或 (None, info)；失败不打断生成。"""
+    if args.network == "off":
+        return None, {"kind": "off", "note": "未启用真实机场矢量层"}
+    shp = args.airports_shp or str(resolve_repo_dir() / "data" / "airports" / "ne_10m_airports.shp")
+    if not Path(shp).is_file():
+        return None, {"kind": "unavailable",
+                      "note": "无机场矢量（%s）⇒ 机场按地形派生或不出" % Path(shp).name}
+    try:
+        import rasters
+        marks, info = rasters.airports_by_hex(shp, grid)
+        if not marks:
+            return None, {"kind": info.get("kind", "natural-earth-10m-airports"),
+                          "note": "该范围内 Natural Earth 无机场要素 ⇒ 机场改按地形派生"}
+        return marks, info
+    except Exception as exc:
+        print("[airport] 真实机场叠加失败（%s）⇒ 机场改按地形派生" % exc, file=sys.stderr)
+        return None, {"kind": "unavailable", "note": "真实机场叠加失败：%s" % str(exc)[:160]}
 
 
 def city_marks_from_landcover(grid, lc, terr):
@@ -1449,21 +1946,41 @@ def build_payload(args):
         for _, i in lake_cands[:MAX_LAKE_CELLS]:
             terr[i] = "water"
 
+    # ── 道路：派生走廊（保证渡河点）∪ 真实路网矢量（能真则真）──
+    # 桥位一律按「道路 ∩ 河带的渡河段」重算：真实高速过河处自然落进桥位集合，
+    # 而派生走廊保证即使战区没有真实河桥也有渡河点。
+    real_road, real_tunnel, net_info = get_road_layer(grid, args)
+    real_airports, apt_info = get_airport_layer(grid, args)
+
     if args.roads == "off":
-        road, bridge_set = set(), set()
+        road = set()
     else:
         # 传入合并后的完整河网（脊线 + 真实河），桥位 = 道路 ∩ 河网，与自校验同源
-        road, bridge_set = build_roads(grid, elev, terr, sorted(river_set), args.seed)
+        road, _ = build_roads(grid, elev, terr, sorted(river_set), args.seed)
+    if real_road:
+        road |= real_road
+    bridge_set, cross_note = bridges_at_crossings(grid, road, river_set)
+    n_real_road = len(real_road) if real_road else 0
     if lc is not None:
         city_marks = city_marks_from_landcover(grid, lc, terr)
-    elif args.roads == "off":
+    elif args.roads == "off" and not road:
         city_marks = {}
     else:
         city_marks = place_cities(grid, terr, road, river_dist, bridge_set, args.seed)
     for (q, r) in city_marks:
         terr[grid.index(q, r)] = "city"
 
-    hexes = build_hexes(grid, elev, slopes, terr, road, river_set, bridge_set, city_marks, lc)
+    feat, feat_note = build_features(grid, elev, terr, slopes, relief, th, road, bridge_set,
+                                     city_marks, river_dist, real_tunnel, real_airports, args)
+    if feat_note.get("airports") != "off":
+        print("[feature] 地物层：铁路 %d 格 / 车站 %d / 隧道 %d（真实 %d）/ 电厂 %d / 变电站 %d / 线路 %d / 机场 %d（%s）"
+              % (len(feat["railway"]), len(feat["rail_station"]), len(feat["tunnel"]),
+                 feat_note["tunnels"].get("real", 0), len(feat["power_plant"]),
+                 len(feat["substation"]), len(feat["powerline"]), len(feat["airport"]),
+                 feat_note["airports"]))
+
+    hexes = build_hexes(grid, elev, slopes, terr, road, river_set, bridge_set, city_marks,
+                        lc, feat)
 
     counts = {}
     for hx in hexes:
@@ -1498,8 +2015,18 @@ def build_payload(args):
             "real_river_cells": n_real_river,
             "real_lake_cells": n_lake,
             "road_cells": len(road),
+            "real_road_cells": n_real_road,
             "bridge_count": len(bridge_set),
+            "crossing_count": cross_note["crossings"],
+            "bank_road_runs": cross_note["bank_runs"],
             "city_cells": len(city_marks),
+            "railway_cells": len(feat["railway"]),
+            "rail_station_cells": len(feat["rail_station"]),
+            "tunnel_cells": len(feat["tunnel"]),
+            "powerline_cells": len(feat["powerline"]),
+            "power_plant_cells": len(feat["power_plant"]),
+            "substation_cells": len(feat["substation"]),
+            "airport_cells": len(feat["airport"]),
         },
         "projection": "EPSG:3857 (Web Mercator); pointy-top axial hexes, cx=ox+W*(q+r/2), cy=oy-1.5*radius*r",
         "hex_order": "r outer loop, q inner loop; index = r*width + q",
@@ -1516,17 +2043,66 @@ def build_payload(args):
         "layers": {
             "elevation": {"source": source, "note": note},
             "landcover": lc_info or {"kind": "noise-proxy"},
-            "roads": {"kind": "derived-corridors" if args.roads != "off" else "off",
-                      "note": "道路无公开真实矢量可用（OSM 已按产品决策排除），按地形代价派生"
-                              if args.roads != "off" else "未生成道路"},
+            "roads": _roads_layer(args, net_info, cross_note),
             "hydrology": _hydrology_layer(real_river, lake_share, lc, water_info),
             "settlements": {"kind": "worldcover-builtup" if lc is not None else
-                            ("derived-junctions" if args.roads != "off" else "off")},
+                            ("derived-junctions" if args.roads != "off" or road else "off")},
+            "railway": {"kind": feat_note["railway"],
+                        "note": "无公开真实铁路矢量 ⇒ 按首府/次级聚落 + 河谷低地 + 既有公路走廊派生；"
+                                "渡河只走既有桥位" if feat_note["railway"] == "derived-route"
+                                else "未生成铁路"},
+            "power": {"kind": feat_note["power"],
+                      "note": "无公开真实电力设施矢量 ⇒ 变电站进城镇、电厂挑近水平地、"
+                              "线路按最近节点逐步成网" if feat_note["power"] == "derived-grid"
+                              else "未生成电网"},
+            "tunnels": {"kind": ("natural-earth-road-tunnels+derived-relief"
+                                  if feat_note["tunnels"].get("real")
+                                  else "derived-relief")
+                                  if feat_note["tunnels"] != "off" else "off",
+                        "note": feat_note["tunnels"]},
+            "airports": dict(apt_info or {"kind": "off"},
+                             derived=bool(feat_note["airports"] == "derived")),
         },
     }
     if real_river or lake_share:
         meta["water"] = water_info       # 真实水系溯源：来源、图层、缓冲、河/湖格数
+    if net_info and net_info.get("kind") == "natural-earth-world-roads":
+        meta["road_network"] = net_info  # 真实路网溯源：库路径、RANK、要素数、命名干线
+    meta["nodes"] = [
+        {"q": c[0], "r": c[1], "kind": "power_plant"} for c in sorted(feat["power_plant"])
+    ] + [
+        {"q": c[0], "r": c[1], "kind": "substation"} for c in sorted(feat["substation"])
+    ] + [
+        {"q": c[0], "r": c[1], "kind": "rail_station"} for c in sorted(feat["rail_station"])
+    ] + [
+        {"q": c[0], "r": c[1], "kind": "airport", "grade": g}
+        for c, g in sorted(feat["airport"].items())
+    ]
     return grid, {"meta": meta, "hexes": hexes}
+
+
+def _roads_layer(args, net_info, cross_note=None):
+    """道路层来源：真实路网矢量优先，派生走廊兜底保证渡河点；两者都不开 = off。"""
+    real = net_info or {}
+    is_real = real.get("kind") == "natural-earth-world-roads"
+    if args.roads == "off" and not is_real:
+        return {"kind": "off", "note": "未生成道路"}
+    kinds = ([real.get("kind")] if is_real else []) + (
+        ["derived-corridors"] if args.roads != "off" else [])
+    note = []
+    if is_real:
+        note.append("真实干线公路 %d 格（%d/%d 条要素，RANK %s）"
+                    % (real.get("road_cells", 0), real.get("features_used", 0),
+                       real.get("features_total", 0), real.get("ranks")))
+        if real.get("named_routes"):
+            note.append("命名干线：%s" % ", ".join(real["named_routes"][:8]))
+    if args.roads != "off":
+        note.append("派生走廊补齐渡河点")
+    if cross_note:
+        note.append("渡河点 %d 处（另有 %d 段沿河公路贴水不跨水，不记桥）"
+                    % (cross_note["crossings"], cross_note["bank_runs"]))
+    return {"kind": "+".join(kinds), "note": "；".join(note) or real.get("note", "")}
+
 
 
 def _hydrology_layer(real_river, lake_share, lc, water_info):
@@ -1593,6 +2169,15 @@ def capabilities_payload(dem_tif=None):
     caps["water_present"] = gpkg.is_file()
     caps["water_vector_ok"] = bool(vec_ok and gpkg.is_file())
     caps["water_reason"] = vec_reason or (None if gpkg.is_file() else "水系 gpkg 不存在")
+    # 真实交通矢量：路网 FGDB（从 World_Roads.lpk 解包）+ 机场 shapefile
+    gdb = root / "data" / "gis" / "roads_pkg" / "v10" / "roads.gdb"
+    apt = root / "data" / "airports" / "ne_10m_airports.shp"
+    caps["roads_gdb"] = str(gdb)
+    caps["roads_gdb_present"] = gdb.is_dir()
+    caps["airports_shp"] = str(apt)
+    caps["airports_present"] = apt.is_file()
+    caps["vector_ok"] = bool(vec_ok)
+    caps["vector_reason"] = vec_reason
     return caps
 
 
@@ -1637,7 +2222,15 @@ def main(argv=None):
     p.add_argument("--water-gpkg", dest="water_gpkg", default=None,
                    help="水系 GeoPackage（默认 <repo>/data/water/global_water.gpkg）")
     p.add_argument("--roads", choices=("on", "off"), default="on",
-                   help="道路层（派生走廊）；off 则无道路无桥梁")
+                   help="道路层（派生走廊，负责补齐渡河点）；off 则无派生走廊")
+    p.add_argument("--network", choices=("auto", "off"), default="auto",
+                   help="真实交通矢量层（World_Roads 路网 + NE 机场）：auto=有则用真实道路/隧道/机场")
+    p.add_argument("--roads-gdb", dest="roads_gdb", default=None,
+                   help="真实路网 ESri File Geodatabase（默认 <repo>/data/gis/roads_pkg/v10/roads.gdb）")
+    p.add_argument("--airports-shp", dest="airports_shp", default=None,
+                   help="真实机场矢量（默认 <repo>/data/airports/ne_10m_airports.shp）")
+    p.add_argument("--features", choices=("on", "off"), default="on",
+                   help="地物玩法层（铁路/车站/电网/电厂/变电站/隧道/派生机场）；off 只留地形+道路+水文")
     p.add_argument("--out", default=None, help="输出 JSON（默认 <repo>/data/gis/rhine_5km.json）")
     p.add_argument("--seed", type=int, default=DEFAULT_SEED, help="合成 DEM / 噪声场种子（确定性）")
     p.add_argument("--batch", type=int, default=API_BATCH_SIZE, help="高程 API 每批点数（1..100）")
@@ -1712,10 +2305,14 @@ def main(argv=None):
              payload["meta"]["mercator_ox"], payload["meta"]["mercator_oy"]))
     print("[meta] 对边距 %.1f km（实地）= %.1f km（墨卡托，纬度放大 %.3f）"
           % (args.cell_km, grid.cell_m / 1000.0, grid.scale))
-    print("[meta] elev %.1f–%.1f m / slope %.1f–%.1f deg / river %d / road %d / bridge %d @ %s / city %d"
+    print("[meta] elev %.1f–%.1f m / slope %.1f–%.1f deg / river %d / road %d / bridge %d（渡河 %d 处，沿河段 %d）/ city %d"
           % (st["elev_min"], st["elev_max"], st["slope_min"], st["slope_max"],
              st["river_cells"], st["road_cells"], st["bridge_count"],
-             [(b["q"], b["r"]) for b in payload["meta"]["bridge_hexes"]], st["city_cells"]))
+             st.get("crossing_count", 0), st.get("bank_road_runs", 0), st["city_cells"]))
+    print("[meta] 地物 铁路 %d / 车站 %d / 隧道 %d / 线路 %d / 电厂 %d / 变电站 %d / 机场 %d"
+          % (st["railway_cells"], st["rail_station_cells"], st["tunnel_cells"],
+             st["powerline_cells"], st["power_plant_cells"], st["substation_cells"],
+             st["airport_cells"]))
     print("[meta] terrain = %s" % json.dumps(st["terrain_counts"], ensure_ascii=False))
 
     if fails and not args.allow_invalid:

@@ -60,6 +60,14 @@ Map<String, Map<HexKey, int>> supplyDistances(GameState g) {
       }
     }
     var i = 0;
+    // 夺下的机场 = 前进补给节点：须己方地面部队站在场站格上，且该方仍有航空兵在场维持空运
+    if (g.units.any((u) => u.alive && u.side == side && g.typeOf(u).isAir)) {
+      for (final e in g.cells.entries) {
+        if (e.value.airport < 1 || occupied[e.key] != side || dist.containsKey(e.key)) continue;
+        dist[e.key] = 0;
+        frontier.add(Hex.parse(e.key));
+      }
+    }
     while (i < frontier.length) {
       final cur = frontier[i++];
       final d = dist[cur.key]!;
@@ -95,11 +103,96 @@ Map<String, Map<HexKey, double>> computeSupply(GameState g) {
   final ret = strict ? g.rules.supplyRetention : 0.95;
   dist.forEach((side, m) {
     final r = <HexKey, double>{};
+    final pf = powerFactor(g, side);
     for (final e in m.entries) {
-      r[e.key] = _clamp(math.pow(ret, e.value).toDouble(), 0.05, 1.0);
+      r[e.key] = _clamp(math.pow(ret, e.value).toDouble() * pf, 0.05, 1.0);
     }
     out[side] = r;
   });
+  return out;
+}
+
+/// 唯一占据该格的阵营（有两方混在一起 = 争夺中，返回 null）。
+String? holderAt(GameState g, HexKey key) {
+  String? side;
+  for (final u in g.units) {
+    if (!u.alive || u.pos.key != key) continue;
+    if (side != null && side != u.side) return null;
+    side = u.side;
+  }
+  return side;
+}
+
+/// 电网系数：必须同时掌握「电厂」和「至少一处变电站」才通电（只夺半边不发电），
+/// 掌握的电网节点越多越稳，补给系数最多 +15%。
+double powerFactor(GameState g, String side) {
+  var nodes = 0, held = 0;
+  var plantHeld = false, subHeld = false;
+  for (final e in g.cells.entries) {
+    final c = e.value;
+    if (!c.powerPlant && !c.substation) continue;
+    nodes++;
+    if (holderAt(g, e.key) != side) continue;
+    held++;
+    if (c.powerPlant) {
+      plantHeld = true;
+    } else {
+      subHeld = true;
+    }
+  }
+  if (nodes == 0 || !plantHeld || !subHeld) return 1.0;
+  return 1.0 + 0.15 * held / nodes;
+}
+
+const _nodeLabels = {
+  'power_plant': '发电厂',
+  'substation': '变电站',
+  'airport_major': '干线机场',
+  'airport': '野战机场',
+  'rail_station': '火车站',
+  'city_major': '大城市',
+  'city': '城镇',
+};
+
+/// 该格是要点则返回其类别（电厂 > 变电站 > 机场 > 车站 > 城镇；桥梁另算渡河点）。
+String? nodeKindOf(Cell c) {
+  if (c.powerPlant) return 'power_plant';
+  if (c.substation) return 'substation';
+  if (c.airport >= 2) return 'airport_major';
+  if (c.airport == 1) return 'airport';
+  if (c.railStation) return 'rail_station';
+  if (c.city >= 2) return 'city_major';
+  if (c.city == 1) return 'city';
+  return null;
+}
+
+/// 战场要点清单（纯地理，不含归属 ⇒ 可安全进各方视图）：按类别→坐标排序。
+List<Map<String, dynamic>> objectiveNodes(GameState g) {
+  final out = <Map<String, dynamic>>[];
+  for (final e in g.cells.entries) {
+    final kind = nodeKindOf(e.value);
+    if (kind == null) continue;
+    final h = Hex.parse(e.key);
+    out.add({'key': e.key, 'q': h.q, 'r': h.r, 'kind': kind, 'label': _nodeLabels[kind]});
+  }
+  final order = _nodeLabels.keys.toList();
+  out.sort((a, b) {
+    final d = order.indexOf(a['kind']) - order.indexOf(b['kind']);
+    return d != 0 ? d : (a['key'] as String).compareTo(b['key'] as String);
+  });
+  return out;
+}
+
+/// 要点归属：hexKey → 阵营。争夺中（两方同格）不入表；`onlySide` 用于双盲视图，
+/// 只披露己方占领情况 —— 敌方是否占了某要点属于情报，不能从地形视图里白送。
+Map<String, String> nodeHolders(GameState g, {String? onlySide}) {
+  final out = <String, String>{};
+  for (final e in g.cells.entries) {
+    if (nodeKindOf(e.value) == null) continue;
+    final h = holderAt(g, e.key);
+    if (h == null || (onlySide != null && h != onlySide)) continue;
+    out[e.key] = h;
+  }
   return out;
 }
 

@@ -153,7 +153,7 @@ class WarEvent {
 }
 
 class VictoryCond {
-  final String kind;   // annihilate | capture | survive | reach
+  final String kind;   // annihilate | capture | survive | reach | nodes
   final String? side;  // 达成方
   final String? target;
   final int amount;

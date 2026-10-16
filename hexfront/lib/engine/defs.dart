@@ -65,7 +65,7 @@ class TerrainDef {
       };
 }
 
-/// 六角格上的地形单元：地形类别 + 真实高程 + 道路/河流/桥梁等附加属性。
+/// 六角格上的地形单元：地形类别 + 真实高程 + 道路/河流/桥梁 + 地物（铁路/电网/机场/隧道）。
 class Cell {
   final String terrain; // TerrainDef.id
   final double elev;    // 真实高程（米），无 DEM 时为 0
@@ -74,6 +74,13 @@ class Cell {
   final bool river;
   final bool bridge;    // 该格有桥（可渡河）
   final int city;       // 城镇等级 0..3
+  final bool railway;      // 铁路经过
+  final bool railStation;  // 火车站
+  final bool tunnel;       // 隧道（限行，重型装备代价翻倍）
+  final bool powerline;    // 输电线路
+  final bool powerPlant;   // 发电厂（电网枢纽 + 可夺目标）
+  final bool substation;   // 变电站（电网枢纽 + 可夺目标）
+  final int airport;       // 0 无 / 1 野场 / 2 干线机场（夺下即前进补给节点）
   const Cell({
     required this.terrain,
     this.elev = 0,
@@ -82,6 +89,13 @@ class Cell {
     this.river = false,
     this.bridge = false,
     this.city = 0,
+    this.railway = false,
+    this.railStation = false,
+    this.tunnel = false,
+    this.powerline = false,
+    this.powerPlant = false,
+    this.substation = false,
+    this.airport = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -92,6 +106,13 @@ class Cell {
         'river': river,
         'bridge': bridge,
         'city': city,
+        if (railway) 'railway': railway,
+        if (railStation) 'rail_station': railStation,
+        if (tunnel) 'tunnel': tunnel,
+        if (powerline) 'powerline': powerline,
+        if (powerPlant) 'power_plant': powerPlant,
+        if (substation) 'substation': substation,
+        if (airport > 0) 'airport': airport,
       };
 
   static Cell fromJson(Map<String, dynamic> j) => Cell(
@@ -102,6 +123,13 @@ class Cell {
         river: _b(j, 'river', false),
         bridge: _b(j, 'bridge', false),
         city: _i(j, 'city', 0),
+        railway: _b(j, 'railway', false),
+        railStation: _b(j, 'rail_station', false),
+        tunnel: _b(j, 'tunnel', false),
+        powerline: _b(j, 'powerline', false),
+        powerPlant: _b(j, 'power_plant', false),
+        substation: _b(j, 'substation', false),
+        airport: _i(j, 'airport', 0),
       );
 
   Cell copyWith({String? terrain, bool? bridge, int? city, double? elev}) => Cell(
@@ -112,6 +140,13 @@ class Cell {
         river: river,
         bridge: bridge ?? this.bridge,
         city: city ?? this.city,
+        railway: railway,
+        railStation: railStation,
+        tunnel: tunnel,
+        powerline: powerline,
+        powerPlant: powerPlant,
+        substation: substation,
+        airport: airport,
       );
 }
 

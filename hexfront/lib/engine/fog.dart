@@ -3,6 +3,7 @@
 import 'dart:math' as math;
 import 'defs.dart';
 import 'hex.dart';
+import 'mechanics.dart';
 import 'state.dart';
 
 
@@ -199,6 +200,7 @@ Map<String, dynamic> sideView(GameState g, String side) {
     ..._common(g),
     'own': own.map((u) => _ownUnit(g, u)).toList(),
     'contacts': contacts.map((t) => _contactOf(g, t)).toList(),
+    'node_holders': nodeHolders(g, onlySide: side),
   };
 }
 
@@ -225,6 +227,8 @@ Map<String, dynamic> directorView(GameState g) {
     'kind': 'director',
     ..._common(g),
     'units': all.map((u) => _ownUnit(g, u)).toList(),
+    'node_holders': nodeHolders(g),
+    'power': {for (final s in ['red', 'blue']) s: double.parse(powerFactor(g, s).toStringAsFixed(3))},
     'air_control': g.airControl.entries.map((e) {
       final h = Hex.parse(e.key);
       return {'q': h.q, 'r': h.r, 'v': double.parse(e.value.toStringAsFixed(2))};
@@ -270,6 +274,7 @@ Map<String, dynamic> _common(GameState g) => {
         return c;
       }).toList(),
       'victory': g.victory.map((v) => v.toJson()).toList(),
+      'nodes': objectiveNodes(g),          // 要点地理（城镇/车站/机场/电厂/变电站），不含归属
       'over': g.over, 'winner': g.winner,
       'fog': g.flags['fog'] ?? true,
     };

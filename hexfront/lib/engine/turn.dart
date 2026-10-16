@@ -234,6 +234,10 @@ List<Unit> _movementPhase(
       var step = td.cost[cls] ?? 2.0;
       final cell = g.cellAt(h);
       if (cell.road) step *= 0.65;
+      // 铁路：摩托化/机械化沿铁路线机动更省（与公路叠加 0.65×0.8）；徒步不搭车，不受惠
+      if (cell.railway && (cls == 'motor' || cls == 'mech')) step *= 0.8;
+      // 隧道：单孔限行，重装备过隧道明显变慢
+      if (cell.tunnel) step *= (cls == 'motor' || cls == 'mech') ? 1.5 : 1.2;
       if (cell.river && !cell.bridge) step += 2.0; // 无桥渡河重罚
       if (td.impassable) break;
       if (spent + step > budget) break;
@@ -498,6 +502,14 @@ void _checkVictory(GameState g, void Function(String, String, List<String>) emit
         final holders = g.unitsAt(h).where((u) => u.alive).toList();
         if (holders.length == 1 && holders.first.side == side) {
           _win(g, side, '控制要点 $target', emit);
+          return;
+        }
+        break;
+      case 'nodes':
+        // 同时掌握 amount 处战场要点（城镇/车站/机场/电厂/变电站）⇒ 达成；争夺中不算占
+        final holders = nodeHolders(g, onlySide: side);
+        if (v.amount > 0 && holders.length >= v.amount) {
+          _win(g, side, '掌握 ${holders.length} 处战场要点（目标 ${v.amount}）', emit);
           return;
         }
         break;

@@ -127,9 +127,13 @@ def _read_window(path, bbox, out_shape):
         return arr, meta, lon, lat
 
 
-def _pixel_cells(grid, lon, lat):
-    """像元中心 → 六角格 index（越界的为 -1）。向量化 cube 取整。"""
-    lg, la = np.meshgrid(lon, lat)
+def _coords_to_cells(grid, lon, lat):
+    """
+    WGS84 经纬度数组（任意形状，1-D 点列或 2-D 栅格）→ 六角格 index（越界为 -1）。
+    向量化 cube 取整；栅格与矢量共用同一套约定，二者不会各自漂开。
+    """
+    lg = np.asarray(lon, dtype=float)
+    la = np.asarray(lat, dtype=float)
     mx = lg * HALF_CIRCUMFERENCE_M / 180.0
     my = R_M * np.log(np.tan((90.0 + la) * math.pi / 360.0))
     fr = (grid.mercator_oy - my) / grid.row_step_m
@@ -142,6 +146,18 @@ def _pixel_cells(grid, lon, lat):
     idx = (rr * grid.width + rq).astype(np.int64)
     inside = (rq >= 0) & (rq < grid.width) & (rr >= 0) & (rr < grid.height)
     return idx, inside
+
+
+def _pixel_cells(grid, lon, lat):
+    """像元中心（1-D 经度数组 × 1-D 纬度数组张成的栅格）→ 每像元的格 index。"""
+    lg, la = np.meshgrid(lon, lat)
+    return _coords_to_cells(grid, lg, la)
+
+
+def _cells_from_index(grid, idx, inside):
+    """index 数组 → {(q,r)} 集合（q = i % width，r = i // width，与格网 index 约定一致）。"""
+    keep = idx[inside]
+    return {(int(i) % grid.width, int(i) // grid.width) for i in keep}
 
 
 def _fill_gaps(grid, values):
@@ -339,3 +355,139 @@ def water_by_hex(gpkg: str, grid, bbox=None):
     info["river_cells"] = len(river_cells)
     info["lake_cells"] = len(lake_share)
     return river_cells, lake_share, info
+
+
+# =====================================================================================
+# 真实交通/设施矢量：路网（ESri File Geodatabase）+ 机场（Natural Earth shapefile）
+# =====================================================================================
+
+# World_Roads（Natural Earth 10m，打包在 ESri 的 LPK 里）的 RANK：1 = 高速/国际干线（A、E 路），
+# 2 = 主要公路。默认只取 1：在 2.5 km 格上，鲁尔-莱茵这类都会区取到 RANK 2 会把 43% 的图涂成公路，
+# 「机动脉络」就失去意义；RANK 1 覆盖 28%，仍是真实的高速网。
+ROAD_RANKS = (1,)
+ROAD_COLUMNS = ("ISO_CC", "Name1", "Shield", "TYPE", "RANK", "RD_FEATURE")
+# 线要素按「半个格宽」离散成点再落格：只取端点会漏掉斜穿中间的格。
+LINE_SAMPLE_FRAC = 0.5
+RD_TUNNEL = "tunnel"
+RD_BRIDGE = "bridge"
+AIRPORT_MAJOR = ("major", "large", "international", "primary")
+AIRPORT_COLUMNS = ("name", "type", "scalerank", "iata")
+
+
+def _read_vector(path, bbox, columns):
+    """按 bbox（WGS84 lon/lat）读矢量。File Geodatabase 自带空间索引 ⇒ 全球库取一区是秒级。"""
+    import pyogrio
+    try:
+        return pyogrio.read_dataframe(path, bbox=bbox, columns=list(columns) + ["geometry"])
+    except Exception:
+        return pyogrio.read_dataframe(path, bbox=bbox)   # 源里缺某条列 ⇒ 全列读，调用方按需取
+
+
+def _col(df, name, default=""):
+    """安全取列（字符串化 + 填缺）；源数据的属性完整性不作保证。"""
+    import pandas as pd
+    if name not in df.columns:
+        return pd.Series([default] * len(df), index=df.index)
+    return df[name].fillna(default).astype(str).str.strip()
+
+
+def _line_cells(grid, geoms):
+    """线要素 → 被穿过的格集合。"""
+    import numpy as np
+    import shapely
+    if len(geoms) == 0:
+        return set()
+    tol = grid.hex_width_m * LINE_SAMPLE_FRAC * 180.0 / HALF_CIRCUMFERENCE_M
+    seg = shapely.segmentize(np.asarray(geoms, dtype=object), tol)
+    coords = shapely.get_coordinates(seg)
+    if len(coords) == 0:
+        return set()
+    idx, inside = _coords_to_cells(grid, coords[:, 0], coords[:, 1])
+    return _cells_from_index(grid, idx, inside)
+
+
+def roads_by_hex(gdb: str, grid, bbox=None, ranks=ROAD_RANKS):
+    """
+    真实路网（ESri File Geodatabase，Natural Earth World_Roads）
+      → (road_cells, tunnel_cells, bridge_cells, info)
+
+      · road_cells   ：RANK ∈ ranks 的公路穿过的格
+      · tunnel_cells ：RD_FEATURE = Tunnel 的路段穿过的格（真实隧道）
+      · bridge_cells ：RD_FEATURE = Bridge 的路段穿过的格。仅作溯源计数 —— 引擎的桥位
+        仍以「道路 ∩ 河网」为准，两套口径混用会破坏 bridge ⊆ river 与 道路∩河==桥位 契约。
+    """
+    bbox = tuple(bbox or grid.bbox())
+    if not (os.path.isdir(gdb) or os.path.isfile(gdb)):
+        raise RuntimeError("路网数据不存在：%s" % gdb)
+    df = _read_vector(gdb, bbox, ROAD_COLUMNS)
+    info = {"kind": "natural-earth-world-roads", "db": gdb.replace("\\", "/"),
+            "source": "Natural Earth 10m World_Roads（ESri File Geodatabase, WGS84）",
+            "features_total": int(len(df)), "ranks": list(ranks),
+            "line_sample_m": round(grid.hex_width_m * LINE_SAMPLE_FRAC, 1)}
+    if len(df) == 0:
+        info.update(road_cells=0, note="该范围内无路网要素")
+        return set(), set(), set(), info
+    try:
+        import pandas as pd
+        rk = pd.to_numeric(df["RANK"], errors="coerce").fillna(9).astype(int) \
+            if "RANK" in df.columns else None
+    except Exception:
+        rk = None
+    sub = df if rk is None else df[rk.isin(list(ranks))]
+    feat = _col(df, "RD_FEATURE").str.lower()
+    road_cells = _line_cells(grid, list(sub.geometry.values))
+    tun_cells = _line_cells(grid, list(df.geometry.values[(feat == RD_TUNNEL).values]))
+    br_cells = _line_cells(grid, list(df.geometry.values[(feat == RD_BRIDGE).values]))
+    info.update({
+        "features_used": int(len(sub)),
+        "road_cells": len(road_cells),
+        "real_tunnel_cells": len(tun_cells),
+        "real_bridge_cells": len(br_cells),
+        "named_routes": sorted({v for v in _col(sub, "Name1") if v})[:12],
+        "countries": sorted({v for v in _col(sub, "ISO_CC") if v})[:8],
+    })
+    return road_cells, tun_cells, br_cells, info
+
+
+def airports_by_hex(shp: str, grid, bbox=None):
+    """
+    真实机场点（Natural Earth 10m airports）→ ({(q,r): 等级}, info)。
+    2 = 干线机场（type ∈ AIRPORT_MAJOR），1 = 普通机场；同格多点取高等级。
+    """
+    import numpy as np
+    import shapely
+    bbox = tuple(bbox or grid.bbox())
+    if not os.path.isfile(shp):
+        raise RuntimeError("机场矢量不存在：%s" % shp)
+    df = _read_vector(shp, bbox, AIRPORT_COLUMNS)
+    info = {"kind": "natural-earth-10m-airports", "shp": shp.replace("\\", "/"),
+            "source": "Natural Earth 10m airports（WGS84 点要素）",
+            "features_total": int(len(df))}
+    if len(df) == 0:
+        info.update(airports=0, note="该范围内无真实机场要素")
+        return {}, info
+    coords = shapely.get_coordinates(np.asarray(df.geometry.values, dtype=object))
+    idx, inside = _coords_to_cells(grid, coords[:, 0], coords[:, 1])
+    names, types = list(_col(df, "name")), list(_col(df, "type").str.lower())
+    marks, points = {}, []
+    for k, (i, ok) in enumerate(zip(idx, inside)):
+        if not ok:
+            continue
+        grade = 2 if types[k] in AIRPORT_MAJOR else 1
+        cell = (int(i) % grid.width, int(i) // grid.width)
+        if marks.get(cell, 0) < grade:
+            marks[cell] = grade
+        hit = next((p for p in points if (p["q"], p["r"]) == cell), None)
+        if hit is None:
+            points.append({"q": cell[0], "r": cell[1], "grade": grade,
+                           "name": names[k][:40], "type": types[k],
+                           "lon": round(float(coords[k][0]), 5), "lat": round(float(coords[k][1]), 5)})
+        elif grade > hit["grade"]:
+            hit.update(grade=grade, name=names[k][:40], type=types[k])
+    info.update({
+        "airports": len(marks),
+        "major": sum(1 for v in marks.values() if v == 2),
+        "points": sorted(points, key=lambda p: (-p["grade"], p["r"], p["q"]))[:8],
+    })
+    return marks, info
+
