@@ -214,15 +214,26 @@ public sealed class GameState
             Weathers = new Dictionary<string, WeatherDef>(Weathers),
             ScenarioId = ScenarioId,
             ScenarioName = ScenarioName,
-            CurrentTurn = CurrentTurn,
+            Turn = Turn,
+            MaxTurns = MaxTurns,
+            HourOfDay = HourOfDay,
             Phase = Phase,
             Weather = Weather,
-            Flags = new Dictionary<string, bool>(Flags),
+            WeatherMode = WeatherMode,
+            Over = Over,
+            Flags = new Dictionary<string, object>(Flags),
             VictoryConds = new List<VictoryCond>(VictoryConds),
-            Observations = Observations.ToDictionary(
+            Obs = Obs.ToDictionary(
                 kvp => kvp.Key,
-                kvp => new HashSet<string>(kvp.Value)),
-            EventLog = new List<TurnEvent>(EventLog),
+                kvp => new Dictionary<string, int>(kvp.Value)),
+            Tracks = Tracks.ToDictionary(
+                kvp => kvp.Key,
+                kvp => new Dictionary<string, Track>(kvp.Value)),
+            AirControl = new Dictionary<string, double>(AirControl),
+            Events = new List<WarEvent>(Events),
+            InstanceId = InstanceId,
+            Name = Name,
+            Season = Season,
         };
     }
 }

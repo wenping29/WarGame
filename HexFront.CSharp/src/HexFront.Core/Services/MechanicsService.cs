@@ -82,7 +82,8 @@ public static class MechanicsService
                 // River without bridge/ferry blocks supply (unless strict_supply is off)
                 if (cell.River && !cell.Bridge && !HasFerry(g, neighbor, side))
                 {
-                    if (g.Flags.GetValueOrDefault("strict_supply", false))
+                    var strictFlag = g.Flags.GetValueOrDefault("strict_supply");
+                    if (strictFlag is bool strictBool && strictBool)
                         continue;
                 }
 
@@ -104,7 +105,8 @@ public static class MechanicsService
     /// <summary>Compute supply coefficient R = retention^distance for each cell.</summary>
     public static Dictionary<string, double> ComputeSupply(GameState g, string side)
     {
-        var strict = g.Flags.GetValueOrDefault("strict_supply", false);
+        var strictFlag = g.Flags.GetValueOrDefault("strict_supply");
+        var strict = strictFlag is bool strictBool && strictBool;
         var distances = SupplyDistances(g, side);
         var retention = strict ? g.Rules.SupplyRetention : 0.95;
         var powerFactor = PowerFactor(g, side);

@@ -23,7 +23,7 @@ public static class FogService
         var wx = g.Weathers.GetValueOrDefault(weatherId) ?? new WeatherDef { Id = "clear", Recon = 1.0 };
         var cell = g.GetCell(u.Pos);
         if (cell == null) return 0;
-        var obsTerrain = g.TerrainOf(cell);
+        var obsTerrain = g.TerrainOf(u.Pos);
         
         var r = (1.0 + t.Recon * 0.55) * wx.Recon;
         
@@ -63,14 +63,14 @@ public static class FogService
             if (cell != null && cell.Elev > sight + step)
                 blocking += 1.0;
             
-            var td = g.TerrainOf(cell!);
+            var td = g.TerrainOf(path[i]);
             blocking += td.LosBlock * 0.6;
         }
 
         if (blocking >= 1.6)
             return false;
 
-        var targetTd = g.TerrainOf(toCell);
+        var targetTd = g.TerrainOf(to);
         var dist = from.DistanceTo(to);
         
         if (targetTd.ObsPenalty < 0.6 && dist > 4 && blocking > 0.4)

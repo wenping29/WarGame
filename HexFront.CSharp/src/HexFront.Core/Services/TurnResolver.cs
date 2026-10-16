@@ -32,15 +32,6 @@ public static class TurnResolver
         public int Losses { get; init; }
     }
 
-    /// <summary>War event log entry.</summary>
-    public class WarEvent
-    {
-        public int Turn { get; init; }
-        public string Code { get; init; } = "";
-        public string Text { get; init; } = "";
-        public List<string> Sides { get; init; } = new();
-    }
-
     /// <summary>Resolve a complete turn with orders from all sides.</summary>
     public static TurnReport ResolveTurn(GameState g, Dictionary<string, List<Command>> ordersBySide)
     {
@@ -59,7 +50,8 @@ public static class TurnResolver
         // Phase 0: Validate orders (server authority)
         var accepted = ValidateAllOrders(g, ordersBySide, rejected, Emit);
 
-        var strict = g.Flags.GetValueOrDefault("strict_supply", false);
+        var strictFlag = g.Flags.GetValueOrDefault("strict_supply");
+        var strict = strictFlag is bool strictBool && strictBool;
 
         // Phase 1: Air phase (missions → air combat → air control → ground strike)
         AirPhase(g, accepted, Emit, battles);
