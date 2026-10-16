@@ -179,16 +179,17 @@ def step_build(root, out_tif, cell_deg, workers, total):
     t0 = time.time()
     nbytes = 0
     with rasterio.open(out_tif, "r+") as dst, \
-            concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        for i, (key, res) in enumerate(zip(todo, pool.map(lambda k: fetch_tile(k, cell_deg), todo))):
-            row0, col0, rows, cols, arr = res
-            r1 = max(0, row0)
-            c1 = max(0, col0)
-            sub = arr[r1 - row0: min(rows, grid_h - row0), c1 - col0: min(cols, grid_w - col0)]
-            if sub.size:
-                dst.write(sub, 1, window=Window(c1, r1, sub.shape[1], sub.shape[0]))
+            concurrent.futures.ProcessPoolExecutor(max_workers=workers) as pool:
+        for i, (key, res) in enumerate(pool.map(fetch_job, [(k, cell_deg) for k in todo])):
+            if res is not None:
+                row0, col0, rows, cols, arr = res
+                r1 = max(0, row0)
+                c1 = max(0, col0)
+                sub = arr[r1 - row0: min(rows, grid_h - row0), c1 - col0: min(cols, grid_w - col0)]
+                if sub.size:
+                    dst.write(sub, 1, window=Window(c1, r1, sub.shape[1], sub.shape[0]))
+                nbytes += sub.nbytes
             done.add(key)
-            nbytes += sub.nbytes
             if (i + 1) % 100 == 0 or i + 1 == len(todo):
                 el = time.time() - t0
                 rate = (i + 1) / el if el else 0

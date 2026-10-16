@@ -94,6 +94,20 @@ label>span{color:var(--dim)}
 .budget .over{color:var(--danger)}
 .err-list{color:#f0c9c4; font-size:12px; margin:4px 0; padding-left:0; list-style:none}
 .err-list li{padding:2px 0; border-bottom:1px dashed #5a3330}
+.warn{color:var(--warn)}
+
+/* 向导 · 战场数据（六角格） */
+.gis-box{display:flex; flex-direction:column; gap:6px; background:var(--panel);
+  border:1px solid var(--line); border-radius:6px; padding:12px 14px}
+.gis-box h3{margin:0}
+.pkg-card,.plan-card,.job-card{display:flex; flex-direction:column; gap:8px; margin-top:8px}
+.pkg-card .kv,.plan-card .kv,.job-card .kv{border-top:0; margin-top:0; padding-top:0; min-width:200px; flex:1}
+.chips{display:flex; gap:6px; flex-wrap:wrap}
+.chip{font-family:var(--mono); font-size:11px; padding:4px 7px; white-space:nowrap}
+.chip.rec{border-color:var(--accent); color:var(--accent)}
+.plan-card .why{margin:0 0 0 16px; line-height:1.6}
+.job-log{max-height:150px; overflow:auto; margin:0; font-size:11px; line-height:1.5;
+  background:#0d1216; border:1px solid var(--line); border-radius:4px; padding:8px; white-space:pre-wrap}
 
 /* 终端布局：三栏 */
 .terminal{display:grid; grid-template-columns:minmax(230px,270px) minmax(420px,1fr) minmax(250px,300px); gap:8px; padding:8px; height:100%}

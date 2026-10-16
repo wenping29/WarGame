@@ -453,9 +453,10 @@ function generatePanel(st, ctx) {
     el('div', { class: 'row' }, [
       el('label', {}, [el('span', {}, '六角格对边距（实地 km）'), d.cell]),
       el('button', {
-        class: 'btn btn-sm', disabled: !g.plan,
+        class: 'btn btn-sm',
         onclick: () => {
-          if (!g.plan) return;
+          // 面板是增量重绘的，不能靠 disabled 属性反映方案是否就绪
+          if (!g.plan) return toast(g.planErr || '正在计算格网方案，稍候', 'warn');
           g.cell_km = String(g.plan.recommended.cell_km);
           d.cell.value = g.cell_km;
           schedulePlan(st, ctx);
@@ -493,6 +494,8 @@ function generatePanel(st, ctx) {
   ]);
   paintPlan(st);
   paintProgress(st);
+  // 进入即算一次方案，别让推荐按钮空着等用户敲键盘
+  if (!g.plan && !g.planBusy && gisBbox(g)) schedulePlan(st, ctx);
   return box;
 }
 
@@ -528,17 +531,20 @@ function paintPlan(st) {
     return;
   }
   const rec = p.recommended.cell_km;
+  const activeKm = num(g.cell_km) || rec;
+  const cur = (p.ladder || []).find((c) => c.cell_km === activeKm);
   const chips = (p.ladder || []).map((c) => el('button', {
     class: 'btn btn-sm chip' + (String(c.cell_km) === String(g.cell_km) ? ' btn-1' : '') + (c.cell_km === rec ? ' rec' : ''),
     title: (c.label === 'recommended' ? '推荐' : c.label === 'heavy' ? '格数偏多' : c.label === 'coarse' ? '格数偏少' : ''),
-    onclick: () => { g.cell_km = String(c.cell_km); g.dom.cell.value = g.cell_km; schedulePlan(st, st.ctx || st); },
+    onclick: () => { g.cell_km = String(c.cell_km); g.dom.cell.value = g.cell_km; schedulePlan(st); },
   }, fmtKm(c.cell_km) + ' · ' + c.width + '×' + c.height + ' · ' + c.cells + '格'));
   host.replaceChildren(el('div', { class: 'card plan-card' }, [
     el('div', { class: 'row' }, [
       kv('实地范围', Math.round(p.ground_km[0]) + '×' + Math.round(p.ground_km[1]) + ' km'),
       kv('墨卡托放大', '×' + (Math.round(p.mercator_scale * 1000) / 1000)),
       kv('推荐对边距', fmtKm(rec)),
-      kv('当前格网', (p.current ? p.current.width + '×' + p.current.height + ' = ' + p.current.cells + ' 格' : '未定')),
+      kv('当前格网', cur ? (fmtKm(activeKm) + ' · ' + cur.width + '×' + cur.height + ' = ' + cur.cells + ' 格'
+        + (num(g.cell_km) ? '' : '（用推荐）')) : '未定'),
     ]),
     el('div', { class: 'chips' }, chips),
     el('ul', { class: 'muted small why' }, (p.recommended.reasons || []).map((r) => el('li', {}, r))),
@@ -568,6 +574,7 @@ function paintProgress(st) {
 
 async function startGen(st, ctx) {
   const g = st.gis;
+  if (g.job && (g.job.status === 'running' || g.job.status === 'queued')) return;
   const bb = gisBbox(g);
   if (!bb) return toast('范围框需满足 西<东、南<北', 'err');
   const cell = num(g.cell_km) || (g.plan && g.plan.recommended && g.plan.recommended.cell_km);
@@ -580,7 +587,7 @@ async function startGen(st, ctx) {
   const res = await api.gisStartJob(spec);
   if (res.error) { g.jobErr = res.error; return toast(res.error, 'err'); }
   g.job = res;
-  paintProgress(st);
+  ctx.render(); // 重绘一次：让「生成中…」与禁用态真实生效
   pollJob(st, ctx);
 }
 
@@ -600,6 +607,7 @@ function pollJob(st, ctx) {
       } else {
         toast('生成失败：' + (j.error || '见日志'), 'err');
       }
+      if (g.mode === 'generate' && st.step === 1) ctx.render();
     }
   }, 1500);
 }

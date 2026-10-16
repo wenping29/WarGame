@@ -1,0 +1,9644 @@
+{
+  "meta": {
+    "source": "local-dem-geotiff:global_dem_30s.tif",
+    "source_note": "本地栅格面均值取样 {'out_shape': [71, 105], 'pixels': 7455, 'used_pixels': 4625}（分辨率 0.00833333°）",
+    "bbox": [
+      6.79493,
+      51.287299,
+      7.80507,
+      51.712586
+    ],
+    "center_lonlat": [
+      7.3,
+      51.50043884025838
+    ],
+    "cell_km": 2.0,
+    "width": 22,
+    "height": 27,
+    "mercator_ox": 758014.5671788275,
+    "mercator_oy": 6746468.398006293,
+    "radius_m": 1854.914871244168,
+    "generated_at": "2026-10-16T06:11:54Z",
+    "stats": {
+      "terrain_counts": {
+        "city": 24,
+        "clear": 113,
+        "hills": 45,
+        "mountain": 21,
+        "river": 27,
+        "rough": 12,
+        "woods": 352
+      },
+      "elev_min": 31.8,
+      "elev_max": 475.7,
+      "elev_mean": 125.3,
+      "slope_min": 0.0,
+      "slope_max": 2.6,
+      "slope_mean": 0.37,
+      "relief_min": 5.2,
+      "relief_max": 208.5,
+      "relief_median": 37.6,
+      "river_cells": 27,
+      "road_cells": 44,
+      "bridge_count": 2,
+      "city_cells": 24
+    },
+    "projection": "EPSG:3857 (Web Mercator); pointy-top axial hexes, cx=ox+W*(q+r/2), cy=oy-1.5*radius*r",
+    "hex_order": "r outer loop, q inner loop; index = r*width + q",
+    "seed": 11,
+    "cell_row_spacing_m": 2782.372306866252,
+    "dem_points": 594,
+    "effective_thresholds": {
+      "slope_mountain_deg": 1.4,
+      "slope_hills_deg": 1.3,
+      "slope_median_deg": 0.3,
+      "slope_rel_floor_deg": 0.75,
+      "elev_mountain_m": 251.2,
+      "elev_hills_m": 133.1,
+      "elev_swamp_m": 59.7,
+      "relief_broken_m": 80.0,
+      "relief_hills_m": 95.0,
+      "relief_mountain_m": 160.0
+    },
+    "bridge_hexes": [
+      {
+        "q": 0,
+        "r": 9
+      },
+      {
+        "q": 0,
+        "r": 18
+      }
+    ],
+    "mercator_scale": 1.6064034003549905,
+    "cell_ground_m": 2000.0,
+    "ground_km_east_west": 42.0,
+    "ground_km_north_south": 45.0,
+    "layers": {
+      "elevation": {
+        "source": "local-dem-geotiff:global_dem_30s.tif",
+        "note": "本地栅格面均值取样 {'out_shape': [71, 105], 'pixels': 7455, 'used_pixels': 4625}（分辨率 0.00833333°）"
+      },
+      "landcover": {
+        "kind": "esa-worldcover-v200",
+        "product": "ESA WorldCover 10m 2021",
+        "url_sample": "http://esa-worldcover.s3.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N51E006_Map.tif",
+        "tiles": [
+          "N51E006"
+        ],
+        "cells_with_data": 594,
+        "grid_cells": 594,
+        "legend": {
+          "10": "树覆盖",
+          "20": "稀疏植被",
+          "30": "草地",
+          "40": "耕地",
+          "50": "建筑区",
+          "60": "水体",
+          "70": "永久积雪",
+          "80": "草本沼泽",
+          "90": "苔原/地衣",
+          "100": "红树林",
+          "110": "盐沼"
+        },
+        "terrain_map": {
+          "10": "woods",
+          "20": "rough",
+          "30": "clear",
+          "40": "clear",
+          "50": "city",
+          "60": "water",
+          "70": "rough",
+          "80": "swamp",
+          "90": "rough",
+          "100": "swamp",
+          "110": "swamp"
+        },
+        "samples": {
+          "out_shape": [
+            71,
+            105
+          ],
+          "pixels": 7455
+        }
+      },
+      "roads": {
+        "kind": "derived-corridors",
+        "note": "道路无公开真实矢量可用（OSM 已按产品决策排除），按地形代价派生"
+      },
+      "hydrology": {
+        "kind": "derived-river-band+worldcover-water",
+        "note": "河带由 DEM 谷底最短路派生；湖泊/湿地在有真实覆盖时按占比判定"
+      },
+      "settlements": {
+        "kind": "worldcover-builtup"
+      }
+    }
+  },
+  "hexes": [
+    {
+      "q": 0,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 46.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 52.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 0,
+      "terrain": "clear",
+      "elev": 43.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.429,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 52.8,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 60.2,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 52.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 44.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 42.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 0,
+      "terrain": "river",
+      "elev": 45,
+      "slope": 0.2,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 41,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 0,
+      "terrain": "clear",
+      "elev": 35.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.286,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 34.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 54.8,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 85.5,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 113.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 105.8,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 72,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 49,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 45.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 0,
+      "terrain": "clear",
+      "elev": 50.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.286,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 0,
+      "terrain": "clear",
+      "elev": 52.7,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.429,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 21,
+      "r": 0,
+      "terrain": "woods",
+      "elev": 52.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 1,
+      "terrain": "clear",
+      "elev": 39.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.375,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 1,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 42.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 1,
+      "terrain": "clear",
+      "elev": 39.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 3,
+      "r": 1,
+      "terrain": "clear",
+      "elev": 39.6,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 4,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 43.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 38.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 1,
+      "terrain": "clear",
+      "elev": 36.2,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.375,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 7,
+      "r": 1,
+      "terrain": "river",
+      "elev": 39.1,
+      "slope": 0.1,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 8,
+      "r": 1,
+      "terrain": "clear",
+      "elev": 35.1,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 9,
+      "r": 1,
+      "terrain": "city",
+      "elev": 41.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.875,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 10,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 42,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 54.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 77.5,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 100.1,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 109.2,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 89.6,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 66.1,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 1,
+      "terrain": "clear",
+      "elev": 53.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 18,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 48.2,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 1,
+      "terrain": "clear",
+      "elev": 57.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 20,
+      "r": 1,
+      "terrain": "clear",
+      "elev": 60.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 1.0,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 21,
+      "r": 1,
+      "terrain": "woods",
+      "elev": 59,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 2,
+      "terrain": "woods",
+      "elev": 40,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 2,
+      "terrain": "clear",
+      "elev": 37.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.375,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 2,
+      "r": 2,
+      "terrain": "clear",
+      "elev": 33.6,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 2,
+      "terrain": "clear",
+      "elev": 32.2,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 4,
+      "r": 2,
+      "terrain": "woods",
+      "elev": 31.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 2,
+      "terrain": "clear",
+      "elev": 33,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.375,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 6,
+      "r": 2,
+      "terrain": "river",
+      "elev": 35.4,
+      "slope": 0.1,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 2,
+      "terrain": "woods",
+      "elev": 41.8,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 2,
+      "terrain": "woods",
+      "elev": 46.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 2,
+      "terrain": "woods",
+      "elev": 49.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 2,
+      "terrain": "woods",
+      "elev": 50.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 2,
+      "terrain": "woods",
+      "elev": 62.8,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 2,
+      "terrain": "woods",
+      "elev": 74.1,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 2,
+      "terrain": "woods",
+      "elev": 87.3,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 2,
+      "terrain": "woods",
+      "elev": 116.3,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 2,
+      "terrain": "woods",
+      "elev": 100,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 2,
+      "terrain": "clear",
+      "elev": 75.4,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 17,
+      "r": 2,
+      "terrain": "clear",
+      "elev": 58.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 18,
+      "r": 2,
+      "terrain": "clear",
+      "elev": 50,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 19,
+      "r": 2,
+      "terrain": "clear",
+      "elev": 51.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 20,
+      "r": 2,
+      "terrain": "clear",
+      "elev": 60.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 21,
+      "r": 2,
+      "terrain": "clear",
+      "elev": 64.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.875,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 0,
+      "r": 3,
+      "terrain": "clear",
+      "elev": 46.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.429,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 1,
+      "r": 3,
+      "terrain": "clear",
+      "elev": 39.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.714,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 2,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 41.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 3,
+      "terrain": "clear",
+      "elev": 41.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.714,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 4,
+      "r": 3,
+      "terrain": "city",
+      "elev": 34.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.714,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 5,
+      "r": 3,
+      "terrain": "river",
+      "elev": 34.6,
+      "slope": 0.0,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 42.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 50.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 3,
+      "terrain": "city",
+      "elev": 53.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.857,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 9,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 60.7,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 61,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 63,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 3,
+      "terrain": "clear",
+      "elev": 66,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.571,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 13,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 90.5,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 103,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 3,
+      "terrain": "clear",
+      "elev": 86.5,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 16,
+      "r": 3,
+      "terrain": "clear",
+      "elev": 65.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.429,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 17,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 56.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 55.2,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 3,
+      "terrain": "clear",
+      "elev": 49.1,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.857,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 20,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 48.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 3,
+      "terrain": "woods",
+      "elev": 56.8,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 50.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 1,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 49.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 4,
+      "terrain": "woods",
+      "elev": 61.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 43.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 4,
+      "terrain": "river",
+      "elev": 37.5,
+      "slope": 0.1,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 5,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 38.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.875,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 6,
+      "r": 4,
+      "terrain": "woods",
+      "elev": 44.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 51.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 8,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 68.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.375,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 9,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 74.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 10,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 72.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 11,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 76,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 12,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 78.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 13,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 81.8,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 4,
+      "terrain": "woods",
+      "elev": 77.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 4,
+      "terrain": "woods",
+      "elev": 65.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 56.6,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.5,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 17,
+      "r": 4,
+      "terrain": "woods",
+      "elev": 58.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 56.8,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 19,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 51.6,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 20,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 49.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 21,
+      "r": 4,
+      "terrain": "clear",
+      "elev": 54.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 0,
+      "r": 5,
+      "terrain": "woods",
+      "elev": 63.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 61.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 2,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 48.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.875,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 3,
+      "r": 5,
+      "terrain": "river",
+      "elev": 44.5,
+      "slope": 0.1,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 50,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 5,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 45.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 6,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 53,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 7,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 75.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 8,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 83.2,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.875,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 9,
+      "r": 5,
+      "terrain": "woods",
+      "elev": 84.2,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 5,
+      "terrain": "woods",
+      "elev": 98,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 5,
+      "terrain": "woods",
+      "elev": 97.6,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 98.6,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 13,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 84.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 14,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 71,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 15,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 70.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 5,
+      "terrain": "woods",
+      "elev": 65.5,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 72.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 18,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 69.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.5,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 19,
+      "r": 5,
+      "terrain": "woods",
+      "elev": 59.8,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 5,
+      "terrain": "clear",
+      "elev": 60.6,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.375,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 21,
+      "r": 5,
+      "terrain": "woods",
+      "elev": 50.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 6,
+      "terrain": "clear",
+      "elev": 66.7,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.571,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 1,
+      "r": 6,
+      "terrain": "clear",
+      "elev": 58.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.429,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 6,
+      "terrain": "river",
+      "elev": 53.7,
+      "slope": 0.1,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 57.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 6,
+      "terrain": "clear",
+      "elev": 64.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.429,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 59.3,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 61.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 6,
+      "terrain": "clear",
+      "elev": 75.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.571,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 8,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 86.7,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 82.3,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 6,
+      "terrain": "clear",
+      "elev": 80.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.571,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 11,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 76.4,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 6,
+      "terrain": "clear",
+      "elev": 88.3,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.571,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 13,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 74.3,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 66.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 6,
+      "terrain": "clear",
+      "elev": 64.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.714,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 16,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 65.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 70.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 6,
+      "terrain": "clear",
+      "elev": 75.3,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.429,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 75.3,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 6,
+      "terrain": "woods",
+      "elev": 62.6,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 6,
+      "terrain": "city",
+      "elev": 56.1,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.714,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 0,
+      "r": 7,
+      "terrain": "clear",
+      "elev": 56.3,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.375,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 1,
+      "r": 7,
+      "terrain": "river",
+      "elev": 54,
+      "slope": 0.1,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 64.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 72.2,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 69,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 69.7,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 82.3,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 62.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 61,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 59.7,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 65.3,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 60.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 64.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 62.3,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 7,
+      "terrain": "city",
+      "elev": 59.7,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.75,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 15,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 59.7,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 65.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 7,
+      "terrain": "clear",
+      "elev": 68.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 7,
+      "terrain": "clear",
+      "elev": 78.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 7,
+      "terrain": "clear",
+      "elev": 80.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.375,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 20,
+      "r": 7,
+      "terrain": "clear",
+      "elev": 75.3,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 21,
+      "r": 7,
+      "terrain": "woods",
+      "elev": 59,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 8,
+      "terrain": "river",
+      "elev": 50.9,
+      "slope": 0.1,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 51,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 61.5,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 8,
+      "terrain": "clear",
+      "elev": 71.8,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.333,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 74.8,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 86.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 67.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.556,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 54.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 53.5,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 56.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 8,
+      "terrain": "city",
+      "elev": 55.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.667,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 11,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 56.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 57.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 61.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.556,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 62.6,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 65.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 65.2,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 67.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 8,
+      "terrain": "clear",
+      "elev": 78.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.556,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 19,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 85.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.556,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 8,
+      "terrain": "clear",
+      "elev": 71.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.444,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 8,
+      "terrain": "woods",
+      "elev": 71,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 9,
+      "terrain": "river",
+      "elev": 47.3,
+      "slope": 0.1,
+      "road": true,
+      "river": true,
+      "bridge": true,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 47.7,
+      "slope": 0.1,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 9,
+      "terrain": "city",
+      "elev": 48.7,
+      "slope": 0.3,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.667,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 3,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 52.1,
+      "slope": 0.3,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 51.3,
+      "slope": 0.4,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 48.6,
+      "slope": 0.4,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 48.1,
+      "slope": 0.2,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 49.4,
+      "slope": 0.2,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 58.9,
+      "slope": 0.1,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 50,
+      "slope": 0.1,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 50.6,
+      "slope": 0.0,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 53.9,
+      "slope": 0.2,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 62.7,
+      "slope": 0.1,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 73.6,
+      "slope": 0.2,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 91.9,
+      "slope": 0.4,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 77,
+      "slope": 0.5,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 67.1,
+      "slope": 0.1,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 9,
+      "terrain": "clear",
+      "elev": 71,
+      "slope": 0.2,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.333,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 88.7,
+      "slope": 0.2,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 90.1,
+      "slope": 0.2,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 77.9,
+      "slope": 0.2,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 9,
+      "terrain": "woods",
+      "elev": 77.7,
+      "slope": 0.1,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 10,
+      "terrain": "river",
+      "elev": 45.8,
+      "slope": 0.1,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 39.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 38,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 41.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.556,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 10,
+      "terrain": "city",
+      "elev": 40.2,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.667,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 5,
+      "r": 10,
+      "terrain": "clear",
+      "elev": 39.5,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.556,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 6,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 44.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 42.5,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.556,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 10,
+      "terrain": "city",
+      "elev": 45.5,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.778,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 9,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 54.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.556,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 58.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 75.5,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.556,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 10,
+      "terrain": "clear",
+      "elev": 75.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.444,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 13,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 100.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 112.9,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.556,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 76.2,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 66.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 10,
+      "terrain": "clear",
+      "elev": 69,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.444,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 18,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 86,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 85.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 72.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 10,
+      "terrain": "woods",
+      "elev": 70.2,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 11,
+      "terrain": "river",
+      "elev": 53.4,
+      "slope": 0.4,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 38,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 32.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 11,
+      "terrain": "clear",
+      "elev": 35.9,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.5,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 4,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 39.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 38.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 44.8,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 11,
+      "terrain": "city",
+      "elev": 48.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.625,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 8,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 56.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 70.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 93.8,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 11,
+      "terrain": "clear",
+      "elev": 111.6,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.667,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 12,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 109.4,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 120,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 85.1,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 74.6,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 68.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 11,
+      "terrain": "city",
+      "elev": 75.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.625,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 18,
+      "r": 11,
+      "terrain": "city",
+      "elev": 78.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.75,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 19,
+      "r": 11,
+      "terrain": "city",
+      "elev": 76.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.625,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 20,
+      "r": 11,
+      "terrain": "woods",
+      "elev": 75.6,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 11,
+      "terrain": "clear",
+      "elev": 76.2,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 0,
+      "r": 12,
+      "terrain": "river",
+      "elev": 33.6,
+      "slope": 0.1,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 39.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 41.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 43.9,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 12,
+      "terrain": "city",
+      "elev": 52,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.75,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 5,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 52.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 51,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 58.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 68.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 100.6,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 128.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 12,
+      "terrain": "clear",
+      "elev": 120.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 12,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 123.9,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 99,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 78.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 75.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 12,
+      "terrain": "city",
+      "elev": 82.7,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.75,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 17,
+      "r": 12,
+      "terrain": "city",
+      "elev": 92.3,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.875,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 18,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 92.6,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 107,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 12,
+      "terrain": "woods",
+      "elev": 116.1,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 12,
+      "terrain": "clear",
+      "elev": 122.6,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 0,
+      "r": 13,
+      "terrain": "river",
+      "elev": 42.1,
+      "slope": 0.1,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.714,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 1,
+      "r": 13,
+      "terrain": "clear",
+      "elev": 48.5,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.429,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 45.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 44.6,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 50.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 55,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 55.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 13,
+      "terrain": "clear",
+      "elev": 68.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.571,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 8,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 95.8,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 13,
+      "terrain": "clear",
+      "elev": 126.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.571,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 10,
+      "r": 13,
+      "terrain": "city",
+      "elev": 115,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.667,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 11,
+      "r": 13,
+      "terrain": "clear",
+      "elev": 114.2,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.429,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 101.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 13,
+      "terrain": "city",
+      "elev": 86.2,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.714,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 14,
+      "r": 13,
+      "terrain": "clear",
+      "elev": 99.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.571,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 15,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 97,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 13,
+      "terrain": "clear",
+      "elev": 109.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.571,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 17,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 112,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 120.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 117.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 126,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 13,
+      "terrain": "woods",
+      "elev": 128,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 14,
+      "terrain": "river",
+      "elev": 50.6,
+      "slope": 0.2,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 51.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 52.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 50.5,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 60.2,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 14,
+      "terrain": "city",
+      "elev": 68.2,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.625,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 6,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 69.2,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 14,
+      "terrain": "city",
+      "elev": 84.9,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.75,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 8,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 113.5,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 115.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 101.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 106.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 99,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 117.5,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 118.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 97.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 108.8,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 112.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 119,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 131.4,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 145.8,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 14,
+      "terrain": "woods",
+      "elev": 165,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 15,
+      "terrain": "river",
+      "elev": 61.8,
+      "slope": 0.2,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 83.2,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 76.4,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 79.1,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 15,
+      "terrain": "clear",
+      "elev": 80.4,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.571,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 5,
+      "r": 15,
+      "terrain": "clear",
+      "elev": 83.5,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.429,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 15,
+      "terrain": "city",
+      "elev": 90.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 1.0,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 7,
+      "r": 15,
+      "terrain": "clear",
+      "elev": 109,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.571,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 8,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 120.5,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 95.5,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 98.5,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 126,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 141.6,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 116,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 15,
+      "terrain": "clear",
+      "elev": 103.6,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.429,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 112.1,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 133.3,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 138.4,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 170.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 15,
+      "terrain": "woods",
+      "elev": 187.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 15,
+      "terrain": "clear",
+      "elev": 171.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.571,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 21,
+      "r": 15,
+      "terrain": "clear",
+      "elev": 145.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.429,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 0,
+      "r": 16,
+      "terrain": "river",
+      "elev": 93.7,
+      "slope": 0.2,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 99.3,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 94.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 16,
+      "terrain": "clear",
+      "elev": 100,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.75,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 4,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 107.3,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 110.4,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 116.4,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 131.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 119.1,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 96,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 123.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 117.6,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 16,
+      "terrain": "rough",
+      "elev": 121.6,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.5,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 13,
+      "r": 16,
+      "terrain": "rough",
+      "elev": 108.1,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 16,
+      "terrain": "rough",
+      "elev": 122.3,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 16,
+      "terrain": "hills",
+      "elev": 150.2,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 175.6,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 182,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 173.5,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 139.5,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 16,
+      "terrain": "woods",
+      "elev": 127.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 16,
+      "terrain": "clear",
+      "elev": 120.4,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.375,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 0,
+      "r": 17,
+      "terrain": "river",
+      "elev": 92.4,
+      "slope": 0.1,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 73.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 84.8,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 103.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 121.3,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 140.8,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 148.3,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 138.7,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 91.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 101.3,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 17,
+      "terrain": "city",
+      "elev": 111.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.875,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 11,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 142.3,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 17,
+      "terrain": "hills",
+      "elev": 196.4,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 17,
+      "terrain": "hills",
+      "elev": 200.2,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 206,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 209.6,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 178.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 17,
+      "terrain": "woods",
+      "elev": 133.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 17,
+      "terrain": "clear",
+      "elev": 119.7,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 17,
+      "terrain": "clear",
+      "elev": 129.4,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 17,
+      "terrain": "clear",
+      "elev": 157.4,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 17,
+      "terrain": "clear",
+      "elev": 153.6,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 18,
+      "terrain": "river",
+      "elev": 84.9,
+      "slope": 0.3,
+      "road": true,
+      "river": true,
+      "bridge": true,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 92.6,
+      "slope": 0.5,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 87.9,
+      "slope": 0.2,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 93.9,
+      "slope": 0.3,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 110.5,
+      "slope": 0.5,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 111.2,
+      "slope": 0.6,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 132,
+      "slope": 0.3,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 108.1,
+      "slope": 0.3,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.556,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 111.4,
+      "slope": 0.6,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 123.4,
+      "slope": 0.5,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 123.4,
+      "slope": 0.8,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 18,
+      "terrain": "hills",
+      "elev": 201.5,
+      "slope": 0.8,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 222,
+      "slope": 0.4,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 194.4,
+      "slope": 0.3,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 185.4,
+      "slope": 0.7,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 171.5,
+      "slope": 0.6,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 138.9,
+      "slope": 0.3,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.556,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 18,
+      "terrain": "clear",
+      "elev": 114.9,
+      "slope": 0.1,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.333,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 18,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 133.2,
+      "slope": 0.6,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 18,
+      "terrain": "woods",
+      "elev": 168.1,
+      "slope": 0.3,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 18,
+      "terrain": "clear",
+      "elev": 181.4,
+      "slope": 0.4,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.444,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 18,
+      "terrain": "clear",
+      "elev": 164.9,
+      "slope": 0.7,
+      "road": true,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.333,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 0,
+      "r": 19,
+      "terrain": "river",
+      "elev": 85.4,
+      "slope": 0.5,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 127,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 92.1,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 94.3,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 87.6,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 109.1,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 107.1,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 156.6,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 172.1,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 117.6,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 176.6,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 19,
+      "terrain": "hills",
+      "elev": 210.3,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 19,
+      "terrain": "hills",
+      "elev": 154.3,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 145.1,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 19,
+      "terrain": "city",
+      "elev": 116.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.667,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 15,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 115,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 121.1,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 19,
+      "terrain": "hills",
+      "elev": 145.1,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 19,
+      "terrain": "hills",
+      "elev": 197.9,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 19,
+      "terrain": "clear",
+      "elev": 185.3,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 20,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 195.6,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.833,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 19,
+      "terrain": "woods",
+      "elev": 205.9,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 20,
+      "terrain": "river",
+      "elev": 114.4,
+      "slope": 0.7,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 143,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 101.8,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 20,
+      "terrain": "clear",
+      "elev": 95.6,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.556,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 4,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 146.1,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 174.5,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 164.5,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 196.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 172.2,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 134.5,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 20,
+      "terrain": "rough",
+      "elev": 117.8,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 20,
+      "terrain": "rough",
+      "elev": 110.2,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.556,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 105.2,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 131.1,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 129.6,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 143,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 20,
+      "terrain": "hills",
+      "elev": 179.5,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 20,
+      "terrain": "hills",
+      "elev": 216.4,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 247.8,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.889,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 247.3,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 254.8,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 20,
+      "terrain": "woods",
+      "elev": 229,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.778,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 21,
+      "terrain": "river",
+      "elev": 145.2,
+      "slope": 0.3,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 136.4,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 154.5,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 21,
+      "terrain": "hills",
+      "elev": 161.1,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 174.5,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 166.9,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 200.5,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 189.9,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 181.6,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 21,
+      "terrain": "hills",
+      "elev": 179.5,
+      "slope": 1.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 21,
+      "terrain": "rough",
+      "elev": 122.4,
+      "slope": 1.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.375,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 21,
+      "terrain": "hills",
+      "elev": 159.4,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 21,
+      "terrain": "rough",
+      "elev": 143.2,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.625,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 13,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 159.9,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 142.1,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 142.8,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 192.2,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 222.4,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 213.5,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 21,
+      "terrain": "woods",
+      "elev": 234.1,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 21,
+      "terrain": "hills",
+      "elev": 265.4,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 21,
+      "terrain": "mountain",
+      "elev": 271.6,
+      "slope": 1.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 22,
+      "terrain": "river",
+      "elev": 144.1,
+      "slope": 0.3,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 22,
+      "terrain": "woods",
+      "elev": 151.6,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 22,
+      "terrain": "woods",
+      "elev": 181,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 22,
+      "terrain": "woods",
+      "elev": 202.7,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 22,
+      "terrain": "clear",
+      "elev": 180.7,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.375,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 5,
+      "r": 22,
+      "terrain": "woods",
+      "elev": 202.7,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 22,
+      "terrain": "woods",
+      "elev": 228.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 22,
+      "terrain": "woods",
+      "elev": 214.4,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 22,
+      "terrain": "woods",
+      "elev": 217.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 22,
+      "terrain": "hills",
+      "elev": 218.9,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.5,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 10,
+      "r": 22,
+      "terrain": "hills",
+      "elev": 217.1,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 22,
+      "terrain": "hills",
+      "elev": 196.4,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 22,
+      "terrain": "city",
+      "elev": 128,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 2,
+      "lc": {
+        "class": 50,
+        "share": 0.875,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 13,
+      "r": 22,
+      "terrain": "woods",
+      "elev": 170.3,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 22,
+      "terrain": "woods",
+      "elev": 165.7,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 22,
+      "terrain": "woods",
+      "elev": 146.3,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 22,
+      "terrain": "woods",
+      "elev": 188,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 22,
+      "terrain": "hills",
+      "elev": 158.4,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 22,
+      "terrain": "hills",
+      "elev": 189.5,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 22,
+      "terrain": "hills",
+      "elev": 277.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 22,
+      "terrain": "mountain",
+      "elev": 347.6,
+      "slope": 1.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 22,
+      "terrain": "hills",
+      "elev": 399.6,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 23,
+      "terrain": "river",
+      "elev": 192.2,
+      "slope": 0.7,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 23,
+      "terrain": "woods",
+      "elev": 189.8,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 23,
+      "terrain": "woods",
+      "elev": 237.6,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 23,
+      "terrain": "woods",
+      "elev": 228.4,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 23,
+      "terrain": "clear",
+      "elev": 216.2,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.571,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 5,
+      "r": 23,
+      "terrain": "woods",
+      "elev": 234,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 23,
+      "terrain": "clear",
+      "elev": 229.4,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 40,
+        "share": 0.429,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 7,
+      "r": 23,
+      "terrain": "woods",
+      "elev": 206.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 23,
+      "terrain": "woods",
+      "elev": 190,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 23,
+      "terrain": "woods",
+      "elev": 170,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 23,
+      "terrain": "hills",
+      "elev": 158.2,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.571,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 11,
+      "r": 23,
+      "terrain": "hills",
+      "elev": 227.4,
+      "slope": 1.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 23,
+      "terrain": "rough",
+      "elev": 165.4,
+      "slope": 1.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 23,
+      "terrain": "hills",
+      "elev": 196.5,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 23,
+      "terrain": "rough",
+      "elev": 219.5,
+      "slope": 1.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 23,
+      "terrain": "rough",
+      "elev": 195.5,
+      "slope": 1.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 23,
+      "terrain": "rough",
+      "elev": 219,
+      "slope": 1.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 23,
+      "terrain": "mountain",
+      "elev": 263.2,
+      "slope": 1.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 23,
+      "terrain": "mountain",
+      "elev": 312.4,
+      "slope": 1.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 23,
+      "terrain": "hills",
+      "elev": 318.5,
+      "slope": 1.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 23,
+      "terrain": "hills",
+      "elev": 428,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 23,
+      "terrain": "woods",
+      "elev": 404.1,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 24,
+      "terrain": "river",
+      "elev": 208.5,
+      "slope": 0.2,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 24,
+      "terrain": "woods",
+      "elev": 225.9,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 24,
+      "terrain": "clear",
+      "elev": 247.4,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.5,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 3,
+      "r": 24,
+      "terrain": "woods",
+      "elev": 244.9,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 24,
+      "terrain": "woods",
+      "elev": 254.8,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 24,
+      "terrain": "woods",
+      "elev": 244.4,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 24,
+      "terrain": "woods",
+      "elev": 211.6,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 24,
+      "terrain": "hills",
+      "elev": 192.4,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 24,
+      "terrain": "hills",
+      "elev": 235.6,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 24,
+      "terrain": "mountain",
+      "elev": 251.9,
+      "slope": 1.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 24,
+      "terrain": "mountain",
+      "elev": 278.6,
+      "slope": 1.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 24,
+      "terrain": "mountain",
+      "elev": 278.9,
+      "slope": 1.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 24,
+      "terrain": "mountain",
+      "elev": 273.2,
+      "slope": 1.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 24,
+      "terrain": "hills",
+      "elev": 241.2,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 24,
+      "terrain": "hills",
+      "elev": 329.4,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 24,
+      "terrain": "mountain",
+      "elev": 318.1,
+      "slope": 1.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 24,
+      "terrain": "mountain",
+      "elev": 366.9,
+      "slope": 1.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 24,
+      "terrain": "hills",
+      "elev": 291.4,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 24,
+      "terrain": "mountain",
+      "elev": 375.9,
+      "slope": 1.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 24,
+      "terrain": "mountain",
+      "elev": 426.6,
+      "slope": 1.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.625,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 20,
+      "r": 24,
+      "terrain": "woods",
+      "elev": 417.6,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 24,
+      "terrain": "woods",
+      "elev": 446.9,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 25,
+      "terrain": "river",
+      "elev": 236,
+      "slope": 0.3,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 25,
+      "terrain": "woods",
+      "elev": 255.8,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 25,
+      "terrain": "woods",
+      "elev": 256.8,
+      "slope": 0.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 25,
+      "terrain": "woods",
+      "elev": 283.2,
+      "slope": 0.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 25,
+      "terrain": "woods",
+      "elev": 260.9,
+      "slope": 0.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.667,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 5,
+      "r": 25,
+      "terrain": "woods",
+      "elev": 247.2,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.5,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 25,
+      "terrain": "hills",
+      "elev": 233.7,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 25,
+      "terrain": "hills",
+      "elev": 298.6,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 25,
+      "terrain": "hills",
+      "elev": 285.7,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 25,
+      "terrain": "hills",
+      "elev": 332,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.75,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 25,
+      "terrain": "hills",
+      "elev": 358.6,
+      "slope": 1.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 25,
+      "terrain": "mountain",
+      "elev": 336.8,
+      "slope": 1.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 25,
+      "terrain": "mountain",
+      "elev": 273.7,
+      "slope": 1.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 25,
+      "terrain": "mountain",
+      "elev": 299.4,
+      "slope": 1.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 25,
+      "terrain": "woods",
+      "elev": 319.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 25,
+      "terrain": "hills",
+      "elev": 377.4,
+      "slope": 1.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 16,
+      "r": 25,
+      "terrain": "mountain",
+      "elev": 383.4,
+      "slope": 1.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 25,
+      "terrain": "hills",
+      "elev": 257.9,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 25,
+      "terrain": "mountain",
+      "elev": 358.3,
+      "slope": 2.1,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 25,
+      "terrain": "hills",
+      "elev": 415.9,
+      "slope": 1.0,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 25,
+      "terrain": "hills",
+      "elev": 434,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.875,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 25,
+      "terrain": "woods",
+      "elev": 475.7,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.625,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 0,
+      "r": 26,
+      "terrain": "river",
+      "elev": 258.9,
+      "slope": 0.3,
+      "road": false,
+      "river": true,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 1,
+      "r": 26,
+      "terrain": "woods",
+      "elev": 272.7,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 2,
+      "r": 26,
+      "terrain": "clear",
+      "elev": 261,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.429,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 3,
+      "r": 26,
+      "terrain": "woods",
+      "elev": 249.4,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 4,
+      "r": 26,
+      "terrain": "clear",
+      "elev": 248.1,
+      "slope": 0.3,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 50,
+        "share": 0.429,
+        "terrain": "city"
+      }
+    },
+    {
+      "q": 5,
+      "r": 26,
+      "terrain": "woods",
+      "elev": 265.8,
+      "slope": 0.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 6,
+      "r": 26,
+      "terrain": "woods",
+      "elev": 240.2,
+      "slope": 1.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 7,
+      "r": 26,
+      "terrain": "woods",
+      "elev": 268.5,
+      "slope": 0.8,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 8,
+      "r": 26,
+      "terrain": "hills",
+      "elev": 314.7,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 9,
+      "r": 26,
+      "terrain": "woods",
+      "elev": 377,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.714,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 10,
+      "r": 26,
+      "terrain": "woods",
+      "elev": 403,
+      "slope": 1.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 11,
+      "r": 26,
+      "terrain": "mountain",
+      "elev": 368.7,
+      "slope": 2.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 12,
+      "r": 26,
+      "terrain": "hills",
+      "elev": 249,
+      "slope": 0.7,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 13,
+      "r": 26,
+      "terrain": "woods",
+      "elev": 336.7,
+      "slope": 0.4,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.571,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 14,
+      "r": 26,
+      "terrain": "hills",
+      "elev": 334.5,
+      "slope": 1.2,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 15,
+      "r": 26,
+      "terrain": "hills",
+      "elev": 432.3,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 30,
+        "share": 0.571,
+        "terrain": "clear"
+      }
+    },
+    {
+      "q": 16,
+      "r": 26,
+      "terrain": "mountain",
+      "elev": 357.9,
+      "slope": 2.6,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 17,
+      "r": 26,
+      "terrain": "rough",
+      "elev": 248.7,
+      "slope": 1.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 0.857,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 18,
+      "r": 26,
+      "terrain": "mountain",
+      "elev": 334,
+      "slope": 1.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 19,
+      "r": 26,
+      "terrain": "mountain",
+      "elev": 376.2,
+      "slope": 1.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 20,
+      "r": 26,
+      "terrain": "hills",
+      "elev": 442.3,
+      "slope": 0.9,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    },
+    {
+      "q": 21,
+      "r": 26,
+      "terrain": "woods",
+      "elev": 448.8,
+      "slope": 0.5,
+      "road": false,
+      "river": false,
+      "bridge": false,
+      "city": 0,
+      "lc": {
+        "class": 10,
+        "share": 1.0,
+        "terrain": "woods"
+      }
+    }
+  ]
+}

@@ -165,7 +165,8 @@ class GisService {
     }
     try {
       final r = await Process.run(exe, [scriptPath, '--capabilities'],
-          workingDirectory: repoRoot.path, environment: _env, runInShell: Platform.isWindows);
+          workingDirectory: repoRoot.path, environment: _env,
+          runInShell: Platform.isWindows, stdoutEncoding: utf8, stderrEncoding: utf8);
       final line = _findLine(r.stdout as String, '##CAP## ');
       if (line == null) throw GisError('能力探测无输出：${(r.stderr as String).split('\n').last}');
       final m = Map<String, dynamic>.from(jsonDecode(line) as Map);
@@ -199,7 +200,8 @@ class GisService {
     final args = [scriptPath, '--plan', '--bbox', ...bbox.map((v) => _num(v))];
     if (cellKm != null) args.addAll(['--cell-km', _num(cellKm)]);
     final r = await Process.run(exe, args,
-        workingDirectory: repoRoot.path, environment: _env, runInShell: Platform.isWindows);
+        workingDirectory: repoRoot.path, environment: _env, runInShell: Platform.isWindows,
+        stdoutEncoding: utf8, stderrEncoding: utf8);
     final line = _findLine(r.stdout as String, '##PLAN## ');
     if (line == null) throw GisError('方案计算失败：${(r.stderr as String).trim().split('\n').last}');
     final m = Map<String, dynamic>.from(jsonDecode(line) as Map);
