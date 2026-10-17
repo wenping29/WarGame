@@ -63,6 +63,22 @@
           }
         }
       },
+      "Swashbuckle.AspNetCore.SwaggerUI/10.3.0": {
+        "type": "package",
+        "compile": {
+          "lib/net10.0/Swashbuckle.AspNetCore.SwaggerUI.dll": {
+            "related": ".pdb;.xml"
+          }
+        },
+        "runtime": {
+          "lib/net10.0/Swashbuckle.AspNetCore.SwaggerUI.dll": {
+            "related": ".pdb;.xml"
+          }
+        },
+        "frameworkReferences": [
+          "Microsoft.AspNetCore.App"
+        ]
+      },
       "HexFront.Core/1.0.0": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v10.0",
@@ -148,6 +164,27 @@
         "projnet.nuspec"
       ]
     },
+    "Swashbuckle.AspNetCore.SwaggerUI/10.3.0": {
+      "sha512": "3qcin6S55lsFTsWf0vQO3P0bFc0tvk2EOkH+6wgJF9UQUk1WqsDUPEkexQE9Ievc+3zTPoYds9BTlvPMRbmkcQ==",
+      "type": "package",
+      "path": "swashbuckle.aspnetcore.swaggerui/10.3.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "lib/net10.0/Swashbuckle.AspNetCore.SwaggerUI.dll",
+        "lib/net10.0/Swashbuckle.AspNetCore.SwaggerUI.pdb",
+        "lib/net10.0/Swashbuckle.AspNetCore.SwaggerUI.xml",
+        "lib/net8.0/Swashbuckle.AspNetCore.SwaggerUI.dll",
+        "lib/net8.0/Swashbuckle.AspNetCore.SwaggerUI.pdb",
+        "lib/net8.0/Swashbuckle.AspNetCore.SwaggerUI.xml",
+        "lib/net9.0/Swashbuckle.AspNetCore.SwaggerUI.dll",
+        "lib/net9.0/Swashbuckle.AspNetCore.SwaggerUI.pdb",
+        "lib/net9.0/Swashbuckle.AspNetCore.SwaggerUI.xml",
+        "package-readme.md",
+        "swashbuckle.aspnetcore.swaggerui.10.3.0.nupkg.sha512",
+        "swashbuckle.aspnetcore.swaggerui.nuspec"
+      ]
+    },
     "HexFront.Core/1.0.0": {
       "type": "project",
       "path": "../HexFront.Core/HexFront.Core.csproj",
@@ -157,7 +194,8 @@
   "projectFileDependencyGroups": {
     "net10.0": [
       "HexFront.Core >= 1.0.0",
-      "Microsoft.AspNetCore.OpenApi >= 10.0.13"
+      "Microsoft.AspNetCore.OpenApi >= 10.0.13",
+      "Swashbuckle.AspNetCore.SwaggerUI >= 10.3.0"
     ]
   },
   "packageFolders": {
@@ -211,6 +249,10 @@
           "Microsoft.AspNetCore.OpenApi": {
             "target": "Package",
             "version": "[10.0.13, )"
+          },
+          "Swashbuckle.AspNetCore.SwaggerUI": {
+            "target": "Package",
+            "version": "[10.3.0, )"
           }
         },
         "imports": [

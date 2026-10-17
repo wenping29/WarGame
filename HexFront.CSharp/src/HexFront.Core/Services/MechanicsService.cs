@@ -27,7 +27,7 @@ public static class MechanicsService
         foreach (var u in g.Units.Where(u => u.Side == side && u.Alive))
         {
             var type = g.TypeOf(u);
-            if (!type.IsAir && (u.UnitType == "logistics" || u.UnitType == "depot"))
+            if (!type.IsAir && type.SupplySource)
             {
                 sources.Add(u.Pos);
             }
@@ -325,5 +325,70 @@ public static class MechanicsService
         }
 
         return result;
+    }
+
+    // ─────────── Dart fog.dart/mechanics.dart view-shape helpers ───────────
+
+    private static readonly (string Kind, string Label)[] NodeKindOrder =
+    {
+        ("power_plant", "发电厂"),
+        ("substation", "变电站"),
+        ("airport_major", "干线机场"),
+        ("airport", "野战机场"),
+        ("rail_station", "火车站"),
+        ("city_major", "大城市"),
+        ("city", "城镇"),
+    };
+
+    /// <summary>该格是要点则返回类别（电厂 &gt; 变电站 &gt; 机场 &gt; 车站 &gt; 城镇）。</summary>
+    public static string? NodeKindOf(Cell c)
+    {
+        if (c.PowerPlant) return "power_plant";
+        if (c.Substation) return "substation";
+        if (c.Airport >= 2) return "airport_major";
+        if (c.Airport == 1) return "airport";
+        if (c.RailStation) return "rail_station";
+        if (c.City >= 2) return "city_major";
+        if (c.City == 1) return "city";
+        return null;
+    }
+
+    public static string? NodeLabel(string? kind) =>
+        kind == null ? null : NodeKindOrder.FirstOrDefault(n => n.Kind == kind).Label;
+
+    /// <summary>战场要点清单（纯地理，不含归属）：{key,q,r,kind,label}，按类别→坐标排序。</summary>
+    public static List<Dictionary<string, object?>> ObjectiveNodesGeo(GameState g)
+    {
+        var order = NodeKindOrder.Select(n => n.Kind).ToList();
+        var outList = new List<(string Key, int Q, int R, string Kind, string Label)>();
+        foreach (var (key, cell) in g.Cells)
+        {
+            var kind = NodeKindOf(cell);
+            if (kind == null) continue;
+            var h = Hex.Parse(key);
+            outList.Add((key, h.Q, h.R, kind, NodeLabel(kind)!));
+        }
+        return outList
+            .OrderBy(x => order.IndexOf(x.Kind))
+            .ThenBy(x => x.Key)
+            .Select(x => new Dictionary<string, object?>
+            {
+                ["key"] = x.Key, ["q"] = x.Q, ["r"] = x.R, ["kind"] = x.Kind, ["label"] = x.Label,
+            })
+            .ToList();
+    }
+
+    /// <summary>要点归属：hexKey → 阵营。onlySide 用于双盲视图，只披露己方占领。</summary>
+    public static Dictionary<string, string> NodeHoldersByHex(GameState g, string? onlySide = null)
+    {
+        var outMap = new Dictionary<string, string>();
+        foreach (var (key, cell) in g.Cells)
+        {
+            if (NodeKindOf(cell) == null) continue;
+            var holder = HolderAt(g, Hex.Parse(key));
+            if (holder == null || (onlySide != null && holder != onlySide)) continue;
+            outMap[key] = holder;
+        }
+        return outMap;
     }
 }

@@ -85,7 +85,7 @@ public static class ScenarioService
     public class UnitDeployment
     {
         public string Id { get; init; } = "";
-        public string Type { get; init; } = "infantry";
+        public string Type { get; init; } = "rifle";
         public string Side { get; init; } = "red";
         public int Q { get; init; }
         public int R { get; init; }
@@ -221,6 +221,9 @@ public static class ScenarioService
                 Airborne = false,
                 Mission = "none",
                 FortLevel = 0,
+                Training = unitType.TrainingDefault,
+                Experience = unitType.ExpDefault,
+                IsHQ = unitType.IsHQ,
             };
 
             g.Units.Add(u);
@@ -368,6 +371,9 @@ public static class ScenarioService
                         Airborne = false,
                         Mission = "none",
                         FortLevel = entry.Fort,
+                        Training = t.TrainingDefault,
+                        Experience = t.ExpDefault,
+                        IsHQ = t.IsHQ,
                     });
                 }
             }

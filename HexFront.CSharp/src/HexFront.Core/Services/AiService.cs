@@ -87,8 +87,8 @@ public static class AiService
     /// <summary>Decide best action for a unit based on situation.</summary>
     private static string DecideAction(GameState g, Unit u, UnitTypeDef type, Difficulty difficulty)
     {
-        var enemies = FindNearbyEnemies(g, u, type.Recon * 3);
-        var friends = FindNearbyFriends(g, u, type.Recon * 2);
+        var enemies = FindNearbyEnemies(g, u, (int)(type.Recon * 3));
+        var friends = FindNearbyFriends(g, u, (int)(type.Recon * 2));
 
         // Critical supply/fuel - rest or retreat
         if (u.Food < 0.3 || u.Fuel < 0.2)
@@ -101,8 +101,8 @@ public static class AiService
         // Enemies nearby and can attack
         if (enemies.Count > 0 && type.Firepower > 0)
         {
-            // Artillery prefers fire over direct attack
-            if (type.Id == "artillery")
+            // Indirect-fire units (arty/mlrs) prefer fire over direct attack
+            if (type.Range > 0)
                 return "fire";
             
             // Attack if we have advantage

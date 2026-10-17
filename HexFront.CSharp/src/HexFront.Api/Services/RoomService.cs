@@ -381,6 +381,14 @@ public sealed class RoomService
             return;
         }
 
+        bool over;
+        lock (room.GameLock) over = room.Game.Over;
+        if (over)
+        {
+            await conn.SendAsync(ErrorPayload("推演已结束"));
+            return;
+        }
+
         var replace = GetBool(root, "replace", false);
         var cmds = new List<Command>();
         if (root.TryGetProperty("commands", out var arr) && arr.ValueKind == JsonValueKind.Array)
@@ -392,19 +400,24 @@ public sealed class RoomService
             }
         }
 
-        List<CommandError> errors;
-        List<Command> draft;
         lock (room.GameLock)
         {
             var list = room.Drafts[side];
             if (replace) list.Clear();
             list.AddRange(cmds);
-            draft = list.Select(c => c.Clone()).ToList();
-            errors = CommandValidator.ValidateOrders(room.Game, side, draft);
+            var draft = list.Select(c => c.Clone()).ToList();
+            var errors = CommandValidator.ValidateOrders(room.Game, side, draft);
+            // Dart submitOrders：新指令到达即撤销本方准备态
+            room.Ready[side] = false;
+            room.LastErrors[side] = errors.Select(e => new Dictionary<string, object?>
+            {
+                ["unit"] = e.UnitId,
+                ["reason"] = e.Reason,
+                ["message"] = e.Message,
+            }).ToList();
         }
 
-        await conn.SendAsync(BuildState(room, conn.Role));
-        await BroadcastStateToDirector(room);
+        await BroadcastAll(room);
     }
 
     private async Task HandleReady(Room room, WsConn conn, JsonElement root)
@@ -434,6 +447,8 @@ public sealed class RoomService
     private async Task ResolveTurnAsync(Room room)
     {
         TurnResolver.TurnReport report;
+        List<Dictionary<string, object?>> rejectedAll;
+        var rejectedAllList = new List<Dictionary<string, object?>>();
         lock (room.GameLock)
         {
             var orders = new Dictionary<string, List<Command>>
@@ -452,6 +467,21 @@ public sealed class RoomService
             room.Ready["red"] = false;
             room.Ready["blue"] = false;
 
+            // 被拒指令按归属方进入 last_errors（红方只能看到自己的错误）
+            foreach (var s in Sides) room.LastErrors[s] = new List<Dictionary<string, object?>>();
+            foreach (var e in report.Rejected)
+            {
+                var map = new Dictionary<string, object?>
+                {
+                    ["unit"] = e.UnitId,
+                    ["reason"] = e.Reason,
+                    ["message"] = e.Message,
+                };
+                rejectedAllList.Add(map);
+                var side = room.Game.FindUnit(e.UnitId)?.Side;
+                if (side is "red" or "blue") room.LastErrors[side].Add(map);
+            }
+
             room.Frames.Add(new Dictionary<string, object?>
             {
                 ["turn"] = room.Game.Turn - 1,
@@ -469,23 +499,27 @@ public sealed class RoomService
                 }).ToList(),
             });
         }
-
-        var eventsPayload = new Dictionary<string, object?>
-        {
-            ["type"] = "events",
-            ["events"] = EventsToMaps(report.Events),
-            ["rejected"] = report.Rejected.Select(e => new Dictionary<string, object?>
-            {
-                ["unit"] = e.UnitId,
-                ["reason"] = e.Reason,
-                ["message"] = e.Message,
-            }).ToList(),
-        };
+        rejectedAll = rejectedAllList;
 
         foreach (var c in room.Slots.Values.ToArray())
         {
             if (!c.IsOpen) continue;
-            await c.SendAsync(eventsPayload);
+            var visible = VisibleEvents(room, c.Role, report.Events).ToList();
+            var rejected = c.Role switch
+            {
+                "director" => rejectedAll,
+                "spectator" => new List<Dictionary<string, object?>>(),
+                _ => room.LastErrors.TryGetValue(c.Role, out var errs) ? errs : new List<Dictionary<string, object?>>(),
+            };
+            if (visible.Count > 0 || rejected.Count > 0)
+            {
+                await c.SendAsync(new Dictionary<string, object?>
+                {
+                    ["type"] = "events",
+                    ["events"] = EventsToMaps(visible),
+                    ["rejected"] = rejected,
+                });
+            }
             await c.SendAsync(BuildState(room, c.Role));
         }
     }
@@ -505,7 +539,7 @@ public sealed class RoomService
             {
                 ["type"] = "saved",
                 ["turn"] = meta.Turn,
-                ["instance"] = room.Game.InstanceId,
+                ["instance"] = meta.Id, // 与存档列表的 instance 同为可载入的 12 位 id
                 ["meta"] = new Dictionary<string, object?>
                 {
                     ["id"] = meta.Id,
@@ -604,11 +638,17 @@ public sealed class RoomService
 
         if (newEvents != null)
         {
-            await BroadcastAll(room, new Dictionary<string, object?>
+            foreach (var c in room.Slots.Values.ToArray())
             {
-                ["type"] = "events",
-                ["events"] = EventsToMaps(newEvents),
-            });
+                if (!c.IsOpen) continue;
+                var visible = VisibleEvents(room, c.Role, newEvents).ToList();
+                if (visible.Count == 0) continue;
+                await c.SendAsync(new Dictionary<string, object?>
+                {
+                    ["type"] = "events",
+                    ["events"] = EventsToMaps(visible),
+                });
+            }
         }
         await BroadcastAll(room);
     }
@@ -619,13 +659,15 @@ public sealed class RoomService
     {
         lock (room.GameLock)
         {
+            var g = room.Game;
+            var omniscient = FlagBool(g, "spectator_omniscient", false);
             Dictionary<string, object?> view = role switch
             {
-                "director" => FogService.DirectorView(room.Game),
-                "spectator" => FlagBool(room.Game, "spectator_omniscient", false)
-                    ? FogService.DirectorView(room.Game)
-                    : FogService.SpectatorView(room.Game),
-                _ => FogService.SideView(room.Game, role),
+                "director" => WithDirectorExtras(room, FogService.DirectorView(g)),
+                "spectator" => omniscient
+                    ? FogService.DirectorView(g)
+                    : FogService.SpectatorView(g),
+                _ => WithSideExtras(room, role, FogService.SideView(g, role)),
             };
 
             List<Dictionary<string, object?>>? draftMaps = null;
@@ -638,11 +680,11 @@ public sealed class RoomService
             {
                 ["type"] = "state",
                 ["view"] = view,
-                ["turn"] = room.Game.Turn,
-                ["over"] = room.Game.Over,
-                ["winner"] = room.Game.Winner,
-                ["scenario"] = room.Game.ScenarioId,
-                ["events"] = EventsToMaps(room.Game.Events.TakeLast(80).ToList()),
+                ["turn"] = g.Turn,
+                ["over"] = g.Over,
+                ["winner"] = g.Winner,
+                ["scenario"] = g.ScenarioId,
+                ["events"] = EventsToMaps(VisibleEvents(room, role, g.Events.TakeLast(200)).ToList()),
                 ["pending"] = new Dictionary<string, object?>
                 {
                     ["red"] = room.Drafts["red"].Count,
@@ -656,6 +698,54 @@ public sealed class RoomService
                 ["draft"] = draftMaps,
             };
         }
+    }
+
+    /// <summary>导演部视图附加：双方已受领指令、准备态、被拒错误、AI 托管标记（对齐 room.dart viewFor）。</summary>
+    private Dictionary<string, object?> WithDirectorExtras(Room room, Dictionary<string, object?> view)
+    {
+        view["orders"] = new Dictionary<string, object?>
+        {
+            ["red"] = room.Drafts["red"].Select(CommandToMap).ToList(),
+            ["blue"] = room.Drafts["blue"].Select(CommandToMap).ToList(),
+        };
+        view["ready"] = new Dictionary<string, object?>
+        {
+            ["red"] = room.Ready["red"],
+            ["blue"] = room.Ready["blue"],
+        };
+        view["last_errors"] = new Dictionary<string, object?>
+        {
+            ["red"] = room.LastErrors["red"],
+            ["blue"] = room.LastErrors["blue"],
+        };
+        view["ai"] = new Dictionary<string, object?>
+        {
+            ["red"] = room.AiRed,
+            ["blue"] = room.AiBlue,
+        };
+        view["spectator_omniscient"] = FlagBool(room.Game, "spectator_omniscient", false);
+        return view;
+    }
+
+    private Dictionary<string, object?> WithSideExtras(Room room, string side, Dictionary<string, object?> view)
+    {
+        view["draft"] = room.Drafts[side].Select(CommandToMap).ToList();
+        view["ready"] = room.Ready[side];
+        view["errors"] = room.LastErrors[side];
+        view["ai_managed"] = side == "red" ? room.AiRed : room.AiBlue;
+        return view;
+    }
+
+    /// <summary>事件按可见阵营过滤（导演部全收；观战按 spectator 标记或全知；红蓝仅本方相关）。</summary>
+    private IEnumerable<WarEvent> VisibleEvents(Room room, string role, IEnumerable<WarEvent> events)
+    {
+        var omniscient = FlagBool(room.Game, "spectator_omniscient", false);
+        return events.Where(e => role switch
+        {
+            "director" => true,
+            "spectator" => omniscient || e.Sides.Contains("spectator"),
+            _ => e.Sides.Contains(role),
+        });
     }
 
     private async Task BroadcastAll(Room room, Dictionary<string, object?>? extra = null)
@@ -866,6 +956,11 @@ public sealed class RoomService
         public ConcurrentDictionary<string, WsConn> Slots { get; init; } = new(); // role → conn
         public Dictionary<string, List<Command>> Drafts { get; init; } = new();
         public Dictionary<string, bool> Ready { get; init; } = new();
+        public Dictionary<string, List<Dictionary<string, object?>>> LastErrors { get; init; } = new()
+        {
+            ["red"] = new(),
+            ["blue"] = new(),
+        };
         public List<Dictionary<string, object?>> Frames { get; init; } = new();
         public bool AiRed { get; set; }
         public bool AiBlue { get; set; }

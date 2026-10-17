@@ -36,3 +36,4 @@ D:\Project\wargame\HexFront.CSharp\src\HexFront.Api\obj\Debug\net10.0\refint\Hex
 D:\Project\wargame\HexFront.CSharp\src\HexFront.Api\obj\Debug\net10.0\HexFront.Api.pdb
 D:\Project\wargame\HexFront.CSharp\src\HexFront.Api\obj\Debug\net10.0\HexFront.Api.genruntimeconfig.cache
 D:\Project\wargame\HexFront.CSharp\src\HexFront.Api\obj\Debug\net10.0\ref\HexFront.Api.dll
+D:\Project\wargame\HexFront.CSharp\src\HexFront.Api\bin\Debug\net10.0\Swashbuckle.AspNetCore.SwaggerUI.dll

@@ -515,7 +515,7 @@ public static class TurnResolver
         if (def.Morale < 20)
         {
             def.Status = UnitStatus.Routed;
-            emit("rout", $"{def.Id} 溃退", new List<string> { def.Side });
+            emit("rout", $"{def.Id} 溃退", new List<string> { def.Side, "spectator" });
         }
 
         CheckDestroy(g, atk, emit);

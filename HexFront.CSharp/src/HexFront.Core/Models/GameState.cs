@@ -41,6 +41,11 @@ public sealed class Unit
     public double Fuel { get; set; }              // 0.0-1.0 fuel level
     public double Food { get; set; }              // 0.0-1.0 food supply
     public double SupplyRate { get; set; }        // Current supply rate (0-1)
+    public double Training { get; set; } = 60;    // 0-100 (Dart Unit.training)
+    public double Experience { get; set; } = 40;  // 0-100 (Dart Unit.experience)
+    public bool IsHQ { get; set; }
+    public string? CommanderName { get; set; }
+    public double CommanderQuality { get; set; } = 0.5;
     public int Casualties { get; set; }           // Total casualties taken
     public bool Alive => Personnel > 0;
     public bool Routed => Morale <= 0;

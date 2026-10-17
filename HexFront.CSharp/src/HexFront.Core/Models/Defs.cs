@@ -26,25 +26,29 @@ public sealed class UnitTypeDef
     public string Id { get; init; } = "";
     public string Label { get; init; } = "";
     public string Cls { get; init; } = ""; // foot/horse/motor/mech/air/structure
-    public int Firepower { get; init; }
-    public int Protection { get; init; }
-    public int Mobility { get; init; }
-    public int Recon { get; init; }
-    public int Load { get; init; }
+    public double Firepower { get; init; }
+    public double Protection { get; init; }
+    public double Mobility { get; init; }
+    public double Recon { get; init; }
+    public double Load { get; init; }
     public double Consumption { get; init; }
     public int Personnel { get; init; }
     public bool IsHQ { get; init; }
     public bool SupplySource { get; init; }
     public bool IsAir => Cls == "air";
-    public string AirRole { get; init; } = ""; // fighter/strike/transport (for air units)
+    public bool IsStructure => Cls == "structure";
+    public string AirRole { get; init; } = "none"; // none/fighter/strike/recon
     public int AirRange { get; init; }          // air unit operational radius (hexes)
     public double AntiAir { get; init; }         // anti-air fire strength
-    public int Range { get; init; }              // indirect-fire range (hexes)
+    public int Range { get; init; }              // indirect-fire range (hexes), 0 = direct
+    public double TrainingDefault { get; init; } = 60;
+    public double ExpDefault { get; init; } = 40;
+    public Dictionary<string, double> Counters { get; init; } = new(); // target type -> multiplier
     public double Points { get; init; }
     public List<EquipmentItem> Equipment { get; init; } = new();
-    
-    /// <summary>Mobility penalty based on terrain and status.</summary>
-    public double MobilityPenalty() => 1.0; // Simplified, can be expanded
+
+    /// <summary>负荷惩罚：装备越重越慢（Dart mobilityPenalty）。</summary>
+    public double MobilityPenalty() => Math.Clamp(1.0 - 0.06 * (Load - 1.0), 0.6, 1.0);
 }
 
 public sealed class EquipmentItem
@@ -62,7 +66,10 @@ public sealed class WeatherDef
     public string Label { get; init; } = "";
     public double Mobility { get; init; } = 1.0;
     public double Recon { get; init; } = 1.0;
-    public double Fire { get; init; } = 1.0;
+    public double Combat { get; init; } = 1.0;
+    public double Attrition { get; init; } = 1.0;
+    public double Supply { get; init; } = 1.0;
+    public int Visibility { get; init; } = 10;
 }
 
 // ─────────────── Rules ───────────────
@@ -78,6 +85,13 @@ public sealed class Rules
     public double FoodPerTurn { get; init; } = 0.05;
     public double SupplyCrit { get; init; } = 0.3;
     public int TurnHours { get; init; } = 4;
+
+    // Fog / observation parameters (Dart Rules defaults)
+    public double LosElevStep { get; init; } = 60.0;
+    public int ExposureE1 { get; init; } = 1;
+    public int ExposureE2 { get; init; } = 3;
+    public int ExposureE3 { get; init; } = 6;
+    public int StaleTurns { get; init; } = 4;
 }
 
 // ─────────────── Day Phase ───────────────

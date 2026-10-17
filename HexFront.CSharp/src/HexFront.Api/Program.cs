@@ -15,6 +15,12 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    // Swagger UI reads the OpenAPI document produced by AddOpenApi()/MapOpenApi().
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/openapi/v1.json", "HexFront API v1");
+        options.RoutePrefix = "swagger";
+    });
 }
 
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });

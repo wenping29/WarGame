@@ -238,8 +238,8 @@ public static class CommandValidator
     {
         var t = g.TypeOf(u);
 
-        // Only artillery can do indirect fire
-        if (t.Id != "artillery" && t.Id != "mlrs")
+        // Only units with indirect-fire range (arty/mlrs) can zone fire
+        if (t.Range <= 0)
         {
             errs.Add(new CommandError(c.UnitId, "not_artillery", "非炮兵单位不可间接火力覆盖"));
             return;

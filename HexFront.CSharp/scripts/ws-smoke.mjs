@@ -57,7 +57,7 @@ log('   director units:', (dirState0.view.units || []).length, 'starting turn', 
 const red = await connect(`?room=${room}&role=red&token=&name=redterm`);
 log('2. red joined');
 const [redState] = await red.waitFor('state');
-const own = redState.view.units || [];
+const own = redState.view.own || [];
 if (redState.view.kind !== 'side' || own.length === 0) fail('red side view invalid: ' + redState.view.kind + ' units=' + own.length);
 log('   red side view: turn', redState.turn, 'own units', own.length);
 red.send({ type: 'orders', replace: true, commands: [{ op: 'rest', unit: own[0].id }] });
@@ -69,16 +69,19 @@ log('3. order accepted, pending=', JSON.stringify(pend.pending), 'draft len', pe
 // 3. blue joins with React-format orders
 const blue = await connect(`?room=${room}&role=blue`);
 const [blueState] = await blue.waitFor('state');
-const bOwn = blueState.view.units || [];
+const bOwn = blueState.view.own || [];
 blue.send({ type: 'orders', replace: true, commands: [{ op: 'rest', unitId: bOwn[0].id, path: [] }] });
 await sleep(300);
 log('4. blue side view units', bOwn.length, 'react-format order sent');
 
 // 4. resolve via director
+const statesBefore = dir.msgs.filter(m => m.type === 'state').length;
 const eventsBefore = dir.msgs.filter(m => m.type === 'events').length;
 dir.send({ type: 'resolve' });
 const [ev] = await dir.waitFor('events', 1, 15000);
-const turnNow = dir.msgs.filter(m => m.type === 'state').pop().turn;
+// resolve broadcasts events then a fresh state; wait for the new state (post-resolve)
+const sArr = await dir.waitFor('state', statesBefore + 1, 8000);
+const turnNow = sArr[sArr.length - 1].turn;
 log('5. resolved: events', ev.events.length, 'rejected', ev.rejected.length, 'new turn', turnNow);
 if (turnNow !== turn0 + 1) fail(`expected turn ${turn0} -> ${turn0 + 1}, got ${turnNow}`);
 
