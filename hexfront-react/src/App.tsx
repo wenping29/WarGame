@@ -6,6 +6,7 @@ import SideView from './pages/SideView'
 import DirectorView from './pages/DirectorView'
 import SpectatorView from './pages/SpectatorView'
 import Layout from './components/Layout'
+import ToastContainer from './components/Toast'
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
           <Route path="/spectator" element={<SpectatorView />} />
         </Routes>
       </Layout>
+      <ToastContainer />
     </BrowserRouter>
   )
 }
