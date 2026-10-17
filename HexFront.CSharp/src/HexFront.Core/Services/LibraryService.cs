@@ -250,18 +250,25 @@ public static class LibraryService
         ["sandstorm"] = new WeatherDef { Id = "sandstorm", Label = "沙尘", Mobility = 0.8, Recon = 0.5, Combat = 0.9, Attrition = 1.2, Supply = 0.9, Visibility = 2 },
     };
 
-    /// <summary>Default rules configuration (values aligned with Dart Rules defaults).</summary>
-    public static readonly Rules DEFAULT_RULES = new Rules
+    /// <summary>
+    /// 出厂规则：数值全部落在 Rules/CombatParams 的初始化器上，
+    /// 剧本 rules / rules.combat 块按同名键覆盖（§7 调参不改码）。
+    /// </summary>
+    public static readonly Rules DEFAULT_RULES = new Rules();
+
+    /// <summary>
+    /// 天气马尔科夫链：当前天气 → [后继天气, 概率]，每行概率合计 1。
+    /// 键必须与 WEATHER_JSON 同源，历史上这里写过库里没有的 cloudy，导致演变静默降级成 clear。
+    /// </summary>
+    public static readonly Dictionary<string, (string Id, double P)[]> WEATHER_CHAIN = new()
     {
-        MaxTurns = 14,
-        MpBase = 1.0,
-        SupplyRetention = 0.85,
-        FatigueMarch = 2.0,
-        FatigueCombat = 1.0,
-        MoraleLossRouted = 20.0,
-        FoodPerTurn = 0.05,
-        SupplyCrit = 0.4,
-        TurnHours = 6,
+        ["clear"] = new[] { ("clear", 0.62), ("overcast", 0.28), ("rain", 0.07), ("fog", 0.03) },
+        ["overcast"] = new[] { ("overcast", 0.5), ("clear", 0.22), ("rain", 0.2), ("fog", 0.05), ("storm", 0.03) },
+        ["rain"] = new[] { ("rain", 0.4), ("overcast", 0.3), ("storm", 0.15), ("clear", 0.15) },
+        ["storm"] = new[] { ("storm", 0.3), ("rain", 0.45), ("overcast", 0.25) },
+        ["snow"] = new[] { ("snow", 0.6), ("overcast", 0.3), ("clear", 0.1) },
+        ["fog"] = new[] { ("fog", 0.35), ("overcast", 0.35), ("clear", 0.3) },
+        ["sandstorm"] = new[] { ("sandstorm", 0.35), ("clear", 0.45), ("overcast", 0.2) },
     };
 
     /// <summary>Get terrain definition by ID (Dart fallback: void).</summary>

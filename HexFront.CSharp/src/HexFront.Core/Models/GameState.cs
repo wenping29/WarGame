@@ -50,7 +50,6 @@ public sealed class Unit
     public double CommanderQuality { get; set; } = 0.5;
     public int Casualties { get; set; }           // Total casualties taken
     public bool Alive => Personnel > 0;
-    public bool Routed => Morale <= 0;
     public UnitStatus Status { get; set; } = UnitStatus.Ready;
     public bool HasMoved { get; set; }
     public bool HasFired { get; set; }

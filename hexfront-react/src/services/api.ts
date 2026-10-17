@@ -65,10 +65,13 @@ export interface SaveInfo {
   scenario: string
   scenario_name?: string
   last_turn: number
+  max_turns?: number
+  seed?: number
   created_at: string
-  weather?: string
-  unit_count?: number
-  file_size?: number
+  updated_at?: string
+  turns_recorded?: number
+  snapshot_turn?: number
+  description?: string
 }
 
 export interface RoomInfo {
@@ -87,6 +90,8 @@ export interface RoomInfo {
   ai: Record<string, boolean>
   created_at: string
   fog: boolean
+  seed?: number
+  fingerprint?: string
   width: number
   height: number
 }
@@ -129,9 +134,17 @@ export const api = {
   validate: (scenario: string, overrides: Record<string, unknown>) =>
     post<ValidateResult>('/validate', { scenario, overrides }),
   createInstance: (body: CreateInstanceBody) =>
-    post<{ code?: string; instance?: string; room?: RoomInfo; error?: string; errors?: string[] }>('/instances', body),
+    post<{ code?: string; instance?: string; seed?: number; room?: RoomInfo; error?: string; errors?: string[] }>('/instances', body),
   loadSave: (instance: string) =>
-    post<{ code?: string; resumed_turn?: number; room?: RoomInfo; error?: string }>('/saves/load', { instance }),
+    post<{
+      code?: string
+      resumed_turn?: number
+      replayed_turns?: number[]
+      fingerprint?: string
+      replay_warnings?: string[]
+      room?: RoomInfo
+      error?: string
+    }>('/saves/load', { instance }),
   gisCapabilities: (refresh?: boolean) =>
     get<Record<string, unknown>>('/gis/capabilities' + (refresh ? '?refresh=1' : '')),
   gisPlan: (bbox: [number, number, number, number], cellKm?: number) =>

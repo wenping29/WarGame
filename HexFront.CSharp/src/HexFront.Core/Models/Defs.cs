@@ -76,15 +76,15 @@ public sealed class WeatherDef
 
 public sealed class Rules
 {
-    public int MaxTurns { get; init; } = 14;
+    public int MaxTurns { get; init; } = 20;
     public double MpBase { get; init; } = 1.0;
-    public double SupplyRetention { get; init; } = 0.95;
-    public double FatigueMarch { get; init; } = 1.0;
+    public double SupplyRetention { get; init; } = 0.85;
+    public double FatigueMarch { get; init; } = 2.0;
     public double FatigueCombat { get; init; } = 1.0;
     public double MoraleLossRouted { get; init; } = 20.0;
     public double FoodPerTurn { get; init; } = 0.05;
-    public double SupplyCrit { get; init; } = 0.3;
-    public int TurnHours { get; init; } = 4;
+    public double SupplyCrit { get; init; } = 0.4;
+    public int TurnHours { get; init; } = 6;
 
     // Fog / observation parameters (Dart Rules defaults)
     public double LosElevStep { get; init; } = 60.0;
@@ -92,6 +92,84 @@ public sealed class Rules
     public int ExposureE2 { get; init; } = 3;
     public int ExposureE3 { get; init; } = 6;
     public int StaleTurns { get; init; } = 4;
+
+    /// <summary>战力链全部系数：剧本 rules.combat 块可逐个覆盖，调参不改码（§7）。</summary>
+    public CombatParams Combat { get; init; } = new();
+}
+
+/// <summary>
+/// CF 因子乘积链与交战裁决的全部系数（§7「战力影响链」、doc M6「战报可解释各系数贡献」）。
+/// 刻意做成数据而不是常量：战斗手感要能只用剧本 rules.combat 就调得动。
+/// </summary>
+public sealed class CombatParams
+{
+    public double AmmoPerAttack { get; init; } = 0.12;
+    public double RoutMorale { get; init; } = 25;
+    public double RoutRecover { get; init; } = 45;
+    public double FortBonus { get; init; } = 0.15;
+    public double AirGroundPenalty { get; init; } = 0.75;
+    public double CommanderRadius { get; init; } = 8;
+    public double NoiseAmp { get; init; } = 0.15;
+    public double AmmoMinCf { get; init; } = 0.3;
+
+    // K_supply：宽松档只削到 0.6，strict_supply 打开才掉到 0.25
+    public double SupplyCfBase { get; init; } = 0.6;
+    public double SupplyCfSpan { get; init; } = 0.4;
+    public double SupplyCfBaseStrict { get; init; } = 0.25;
+    public double SupplyCfSpanStrict { get; init; } = 0.75;
+
+    // K_morale
+    public double MoraleCfBase { get; init; } = 0.5;
+    public double MoraleCfSpan { get; init; } = 0.7;
+    public double MoraleCfMin { get; init; } = 0.4;
+    public double MoraleCfMax { get; init; } = 1.2;
+
+    // K_personnel
+    public double PersonnelCfBase { get; init; } = 0.75;
+    public double PersonnelCfTraining { get; init; } = 0.0025;
+    public double PersonnelCfExperience { get; init; } = 0.0015;
+
+    // K_commander
+    public double CommanderGainBase { get; init; } = 0.9;
+    public double CommanderGainSpan { get; init; } = 0.25;
+    public double CommanderLostline { get; init; } = 0.8;
+    public double CommanderQualityBase { get; init; } = 0.6;
+    public double CommanderQualitySpan { get; init; } = 0.8;
+    public double CommanderHqSelfBase { get; init; } = 0.5;
+    public double CommanderHqSelfSpan { get; init; } = 0.5;
+    public double CommanderBudgetMin { get; init; } = 0.6;
+    public double CommanderBudgetMax { get; init; } = 1.15;
+
+    // K_air：暴露度 = 1 - 地形防御·0.25 - 工事·0.12，惩罚封底 0.4
+    public double AirExposureTerrain { get; init; } = 0.25;
+    public double AirExposureFort { get; init; } = 0.12;
+    public double AirExposureMin { get; init; } = 0.15;
+    public double AirExposureMax { get; init; } = 1.0;
+    public double AirPenaltyFloor { get; init; } = 0.4;
+    public double AirControlDeadband { get; init; } = 0.0;
+
+    // 交战损失：守方按 CF 比放大、攻方按 CF 比倒数缩小，各自封顶
+    public double DefLossCoef { get; init; } = 0.055;
+    public double DefLossCeil { get; init; } = 0.34;
+    public double AtkLossCoef { get; init; } = 0.03;
+    public double AtkLossCeil { get; init; } = 0.2;
+    public double LossMinFrac { get; init; } = 0.005;
+    public double MinCf { get; init; } = 0.01;
+
+    // 守方士气跌落：基础 + 损失份额斜率 − 工事安慰项
+    public double MoraleHitBase { get; init; } = 6;
+    public double MoraleHitSpan { get; init; } = 18;
+    public double MoraleHitLossScale { get; init; } = 4;
+    public double MoraleHitFortPerLevel { get; init; } = 4;
+    public double MoraleHitMin { get; init; } = 2;
+    public double MoraleHitMax { get; init; } = 40;
+    public double AtkMoraleLoss { get; init; } = 3;
+    public double AtkMoraleGain { get; init; } = 2;
+    public double AtkMoraleGainRatio { get; init; } = 2;
+
+    // 季节消耗：冬 / 秋雨加重战损
+    public double SeasonWinterAttrition { get; init; } = 1.25;
+    public double SeasonAutumnAttrition { get; init; } = 1.08;
 }
 
 // ─────────────── Day Phase ───────────────

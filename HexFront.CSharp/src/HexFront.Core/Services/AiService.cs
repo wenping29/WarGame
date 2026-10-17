@@ -143,7 +143,7 @@ public static class AiService
         if (enemies.Count == 0) return null;
 
         // Select weakest enemy or highest priority target
-        var target = SelectBestTarget(enemies, difficulty);
+        var target = SelectBestTarget(g.Rng, enemies, difficulty);
         if (target == null) return null;
 
         return new Command

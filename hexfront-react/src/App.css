@@ -620,6 +620,17 @@ label{display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--
 .ready-yes{color:var(--accent); font-weight:700;}
 .mini{font-size:11px; color:var(--dim);}
 
+/* 战报战力链：逐个因子一格，增益绿、减损红、中性灰 */
+.frow{display:flex; flex-wrap:wrap; gap:3px; align-items:center; margin-top:4px;}
+.flab{font-family:var(--mono); font-size:10px; color:var(--dim); width:14px;}
+.fcell{
+  font-size:10px; padding:1px 4px; border:1px solid var(--line); border-radius:3px;
+  color:var(--dim); background:var(--panel2);
+}
+.fcell.up{color:#8fd6a4; border-color:#437050;}
+.fcell.dn{color:#f0b3a8; border-color:#7a423c;}
+.fsum{font-size:10px; font-family:var(--mono); color:var(--fg); margin-left:2px;}
+
 .scrub{display:flex; align-items:center; gap:8px; padding:6px;}
 .scrub input[type=range]{flex:1;}
 

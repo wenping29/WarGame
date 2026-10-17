@@ -1,157 +1,378 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using HexFront.Core.Models;
 
 namespace HexFront.Core.Services;
 
 /// <summary>
-/// Persistent save/load system for game states.
-/// Handles serialization, metadata management, and save file organization.
+/// 副本存档（§12.1）：一个实例一个目录，删目录即清空副本，不需要中心索引。
+/// meta.json 记种子与进度，init.json 存开局全量，turns.jsonl 追加每回合双盲指令，
+/// snapshot_t&lt;N&gt;.json 每 K 个已结算回合落一次全量快照；载入 = 最新快照 + 重放尾部指令。
 /// </summary>
 public static class StoreService
 {
-    private const string SaveExtension = ".json";
-    private const string MetadataFile = "saves.json";
+    /// <summary>全量快照周期（已结算回合数）。</summary>
+    public const int SnapshotEveryTurns = 3;
 
-    /// <summary>Save metadata entry.</summary>
-    public class SaveMetadata
-    {
-        public string Id { get; init; } = "";
-        public string Name { get; init; } = "";
-        public string? Description { get; init; }
-        public DateTime SavedAt { get; init; }
-        public int Turn { get; init; }
-        public string Weather { get; init; } = "";
-        public int UnitCount { get; init; }
-        public long FileSize { get; init; }
-    }
+    private const string MetaFileName = "meta.json";
+    private const string InitFileName = "init.json";
+    private const string TurnsFileName = "turns.jsonl";
+    private const string SnapshotPrefix = "snapshot_t";
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions IndentedOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         WriteIndented = true,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    /// <summary>Save game state to file with metadata.</summary>
-    public static SaveMetadata SaveGame(GameState g, string name, string? description, string saveDirectory)
+    // jsonl 一行一条，绝不能缩进
+    private static readonly JsonSerializerOptions CompactOptions = new()
     {
-        Directory.CreateDirectory(saveDirectory);
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        WriteIndented = false,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
 
-        var id = Guid.NewGuid().ToString("N")[..12]; // Short GUID
-        var filename = $"{id}{SaveExtension}";
-        var filepath = Path.Combine(saveDirectory, filename);
+    /// <summary>meta.json 内容。</summary>
+    public sealed class SaveMetadata
+    {
+        [JsonPropertyName("instance")] public string Instance { get; set; } = "";
+        [JsonPropertyName("scenario")] public string Scenario { get; set; } = "";
+        public string ScenarioName { get; set; } = "";
+        public string Name { get; set; } = "";
+        public uint Seed { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
 
-        // Serialize game state
-        var json = JsonSerializer.Serialize(g, JsonOptions);
-        File.WriteAllText(filepath, json);
+        /// <summary>已结算到的回合号（0 = 刚开局）。</summary>
+        public int LastTurn { get; set; }
+        public int MaxTurns { get; set; }
+        public string? Description { get; set; }
 
-        // Create metadata
-        var metadata = new SaveMetadata
+        /// <summary>创建时提交的覆盖层原样留档（审阅/what-if 分岐要用）。</summary>
+        public JsonElement? Overrides { get; set; }
+
+        /// <summary>turns.jsonl 行数，列表接口现算，不落盘。</summary>
+        [JsonIgnore] public int TurnsRecorded { get; set; }
+
+        /// <summary>最新快照对应的已结算回合号。</summary>
+        [JsonIgnore] public int SnapshotTurn { get; set; }
+    }
+
+    /// <summary>turns.jsonl 里的一条回合记录：双盲指令 + 结算元数据 + 前后指纹。</summary>
+    public sealed class TurnRecord
+    {
+        public int Turn { get; set; }
+        public DateTime At { get; set; }
+        public string ResolvedBy { get; set; } = "auto";
+
+        /// <summary>
+        /// 结算开始前的随机源状态。AI 代管方补令本身也抽随机数，重放只跑指令不跑补令，
+        /// 不把这里拨回去，续跑的随机流就会少几抽，从第一次抖动开始分叉。
+        /// </summary>
+        public uint? RngAtResolve { get; set; }
+
+        public List<Command> Red { get; set; } = new();
+        public List<Command> Blue { get; set; } = new();
+        public List<RejectedOrder> Rejected { get; set; } = new();
+        public string FpBefore { get; set; } = "";
+        public string FpAfter { get; set; } = "";
+    }
+
+    /// <summary>被拒指令（与 WS 的 rejected 条目同键）。</summary>
+    public sealed class RejectedOrder
+    {
+        [JsonPropertyName("unit")] public string Unit { get; set; } = "";
+        [JsonPropertyName("reason")] public string Reason { get; set; } = "";
+        [JsonPropertyName("message")] public string Message { get; set; } = "";
+
+        public static RejectedOrder From(CommandError e) =>
+            new() { Unit = e.UnitId, Reason = e.Reason, Message = e.Message };
+    }
+
+    /// <summary>载入结果：状态、所用快照回合、重放的尾部回合数、指纹对不上的回合。</summary>
+    public sealed record LoadOutcome(
+        GameState Game,
+        int SnapshotTurn,
+        List<int> ReplayedTurns,
+        List<string> FingerprintMismatches);
+
+    // ==================== 写入 ====================
+
+    /// <summary>开局落盘：写 meta.json，init.json 只在缺失时写（初始快照不可变）。</summary>
+    public static SaveMetadata WriteInit(
+        GameState g, string? name, string? description, string saveDirectory,
+        JsonElement? overrides = null)
+    {
+        var dir = InstanceDirectory(saveDirectory, g.InstanceId);
+        Directory.CreateDirectory(dir);
+
+        var now = DateTime.UtcNow;
+        var meta = ReadMetaFrom(dir, g.InstanceId) ?? new SaveMetadata { Instance = g.InstanceId, CreatedAt = now };
+        meta.Instance = g.InstanceId;
+        meta.Name = string.IsNullOrWhiteSpace(name) ? g.ScenarioName : name.Trim();
+        meta.Description = description;
+        meta.Scenario = g.ScenarioId;
+        meta.ScenarioName = g.ScenarioName;
+        meta.Seed = g.Seed;
+        meta.MaxTurns = g.MaxTurns;
+        meta.Overrides = overrides;
+        meta.LastTurn = Math.Max(meta.LastTurn, g.Turn - 1);
+        meta.UpdatedAt = now;
+
+        var initPath = Path.Combine(dir, InitFileName);
+        if (!File.Exists(initPath)) WriteJson(initPath, g);
+        WriteJson(Path.Combine(dir, MetaFileName), meta);
+        return meta;
+    }
+
+    /// <summary>追加一条回合记录。同回合及之后的旧记录会被剔除（分岐重算后不留脏尾部）。</summary>
+    public static void AppendTurn(string instance, TurnRecord record, string saveDirectory)
+    {
+        var dir = InstanceDirectory(saveDirectory, instance);
+        Directory.CreateDirectory(dir);
+        var file = Path.Combine(dir, TurnsFileName);
+
+        var lines = new List<string>();
+        if (File.Exists(file))
         {
-            Id = id,
-            Name = name,
-            Description = description,
-            SavedAt = DateTime.UtcNow,
-            Turn = g.Turn,
-            Weather = g.Weather ?? "clear",
-            UnitCount = g.Units.Count(u => u.Alive),
-            FileSize = new FileInfo(filepath).Length,
-        };
-
-        // Update metadata index
-        UpdateMetadataIndex(saveDirectory, metadata);
-
-        return metadata;
+            foreach (var line in File.ReadAllLines(file))
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try
+                {
+                    using var doc = JsonDocument.Parse(line);
+                    var turn = doc.RootElement.GetProperty("turn").GetInt32();
+                    if (turn < record.Turn) lines.Add(line);
+                }
+                catch
+                {
+                    // 坏行直接丢弃：留着它，重放会在错误的位置续跑
+                }
+            }
+        }
+        lines.Add(JsonSerializer.Serialize(record, CompactOptions));
+        File.WriteAllLines(file, lines);
     }
 
-    /// <summary>Load game state from save ID.</summary>
-    public static GameState LoadGame(string id, string saveDirectory)
+    /// <summary>该已结算回合是否该落全量快照。</summary>
+    public static bool ShouldSnapshot(int resolvedTurn, bool over) =>
+        over || resolvedTurn % SnapshotEveryTurns == 0;
+
+    /// <summary>落全量快照 snapshot_t&lt;已结算回合&gt;.json 并刷新 meta。</summary>
+    public static SaveMetadata WriteSnapshot(
+        GameState g, string saveDirectory, string? name = null, string? description = null)
     {
-        var filepath = GetSavePath(id, saveDirectory);
-        if (!File.Exists(filepath))
-            throw new FileNotFoundException($"Save not found: {id}");
+        var dir = InstanceDirectory(saveDirectory, g.InstanceId);
+        Directory.CreateDirectory(dir);
 
-        var json = File.ReadAllText(filepath);
-        var g = JsonSerializer.Deserialize<GameState>(json, JsonOptions);
+        var resolvedTurn = Math.Max(0, g.Turn - 1);
+        var initPath = Path.Combine(dir, InitFileName);
+        if (!File.Exists(initPath)) WriteJson(initPath, g);
+        WriteJson(Path.Combine(dir, $"{SnapshotPrefix}{resolvedTurn}.json"), g);
 
-        return g ?? throw new InvalidOperationException("Failed to deserialize save");
+        var meta = EnsureMeta(dir, g);
+        meta.LastTurn = Math.Max(meta.LastTurn, resolvedTurn);
+        meta.SnapshotTurn = Math.Max(meta.SnapshotTurn, resolvedTurn);
+        if (!string.IsNullOrWhiteSpace(name)) meta.Name = name;
+        if (description != null) meta.Description = description;
+        meta.UpdatedAt = DateTime.UtcNow;
+        WriteJson(Path.Combine(dir, MetaFileName), meta);
+        return meta;
     }
 
-    /// <summary>List all saved games with metadata.</summary>
+    // ==================== 读取 ====================
+
+    /// <summary>meta.json；缺字段时用状态补齐，坏文件当没有。</summary>
+    public static SaveMetadata? ReadMeta(string instance, string saveDirectory)
+    {
+        var dir = InstanceDirectory(saveDirectory, SafeInstance(instance));
+        return Directory.Exists(dir) ? ReadMetaFrom(dir, instance) : null;
+    }
+
+    /// <summary>列出全部副本（按创建时间倒序）。</summary>
     public static List<SaveMetadata> ListSaves(string saveDirectory)
     {
-        var indexPath = Path.Combine(saveDirectory, MetadataFile);
-        if (!File.Exists(indexPath))
-            return new List<SaveMetadata>();
+        var outList = new List<SaveMetadata>();
+        if (!Directory.Exists(saveDirectory)) return outList;
 
-        var json = File.ReadAllText(indexPath);
-        var saves = JsonSerializer.Deserialize<List<SaveMetadata>>(json, JsonOptions);
+        foreach (var dir in Directory.GetDirectories(saveDirectory))
+        {
+            var instance = Path.GetFileName(dir);
+            var meta = ReadMetaFrom(dir, instance);
+            if (meta == null) continue; // 没有 meta.json 的目录不是副本
+            meta.TurnsRecorded = CountTurnLines(dir);
+            meta.SnapshotTurn = LatestSnapshotTurn(dir);
+            outList.Add(meta);
+        }
 
-        return saves ?? new List<SaveMetadata>();
+        outList.Sort((a, b) => string.CompareOrdinal(b.CreatedAt.ToString("o"), a.CreatedAt.ToString("o")));
+        return outList;
     }
 
-    /// <summary>Delete a saved game.</summary>
-    public static void DeleteSave(string id, string saveDirectory)
+    /// <summary>载入：最新快照（无快照回退 init.json）+ 重放其后指令记录。</summary>
+    public static LoadOutcome Load(string instance, string saveDirectory)
     {
-        var filepath = GetSavePath(id, saveDirectory);
-        if (File.Exists(filepath))
-            File.Delete(filepath);
+        var dir = InstanceDirectory(saveDirectory, SafeInstance(instance));
+        var (state, snapshotTurn) = ReadLatestState(dir, instance);
+        var replayed = new List<int>();
+        var mismatches = new List<string>();
 
-        // Remove from metadata index
-        var indexPath = Path.Combine(saveDirectory, MetadataFile);
-        if (File.Exists(indexPath))
+        foreach (var record in ReadTurnRecords(dir).Where(r => r.Turn > snapshotTurn))
         {
-            var json = File.ReadAllText(indexPath);
-            var saves = JsonSerializer.Deserialize<List<SaveMetadata>>(json, JsonOptions) ?? new List<SaveMetadata>();
-            saves = saves.Where(s => s.Id != id).ToList();
+            if (record.RngAtResolve is uint rngAtResolve) state.RngState = rngAtResolve;
+            if (record.FpBefore.Length > 0 && state.Fingerprint() != record.FpBefore)
+                mismatches.Add($"回合 {record.Turn}: 起点指纹 存档 {record.FpBefore} ≠ 重放 {state.Fingerprint()}");
 
-            var newJson = JsonSerializer.Serialize(saves, JsonOptions);
-            File.WriteAllText(indexPath, newJson);
+            var orders = new Dictionary<string, List<Command>>
+            {
+                ["red"] = record.Red,
+                ["blue"] = record.Blue,
+            };
+            var report = TurnResolver.ResolveTurn(state, orders);
+            replayed.Add(record.Turn);
+            if (record.FpAfter.Length > 0 && report.FingerprintAfter != record.FpAfter)
+                mismatches.Add($"回合 {record.Turn}: 终点指纹 存档 {record.FpAfter} ≠ 重放 {report.FingerprintAfter}");
+        }
+
+        return new LoadOutcome(state, snapshotTurn, replayed, mismatches);
+    }
+
+    /// <summary>只要状态的重载（调用方不关心重放细节时用）。</summary>
+    public static GameState LoadGame(string instance, string saveDirectory) =>
+        Load(instance, saveDirectory).Game;
+
+    public static List<TurnRecord> ReadTurnRecords(string instance, string saveDirectory) =>
+        ReadTurnRecords(InstanceDirectory(saveDirectory, SafeInstance(instance)));
+
+    /// <summary>删副本 = 删目录。</summary>
+    public static void DeleteSave(string instance, string saveDirectory)
+    {
+        var dir = InstanceDirectory(saveDirectory, SafeInstance(instance));
+        if (Directory.Exists(dir)) Directory.Delete(dir, true);
+    }
+
+    // ==================== 内部 ====================
+
+    /// <summary>实例 id 直接当目录名用，先挡住 ../ 与非法字符（id 来自客户端）。</summary>
+    private static string SafeInstance(string instance)
+    {
+        if (string.IsNullOrWhiteSpace(instance) || instance.Contains("..", StringComparison.Ordinal)
+            || instance.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            throw new ArgumentException($"非法实例 id: {instance}");
+        return instance;
+    }
+
+    private static string InstanceDirectory(string saveDirectory, string instance) =>
+        Path.Combine(saveDirectory, instance);
+
+    private static SaveMetadata? ReadMetaFrom(string dir, string instance)
+    {
+        var file = Path.Combine(dir, MetaFileName);
+        if (!File.Exists(file)) return null;
+        try
+        {
+            var meta = JsonSerializer.Deserialize<SaveMetadata>(File.ReadAllText(file), IndentedOptions);
+            if (meta == null) return null;
+            if (string.IsNullOrEmpty(meta.Instance)) meta.Instance = instance;
+            return meta;
+        }
+        catch
+        {
+            return null;
         }
     }
 
-    /// <summary>Get save file path by ID.</summary>
-    private static string GetSavePath(string id, string saveDirectory)
-    {
-        return Path.Combine(saveDirectory, $"{id}{SaveExtension}");
-    }
-
-    /// <summary>Update or add metadata entry to index.</summary>
-    private static void UpdateMetadataIndex(string saveDirectory, SaveMetadata newEntry)
-    {
-        var indexPath = Path.Combine(saveDirectory, MetadataFile);
-        var saves = new List<SaveMetadata>();
-
-        if (File.Exists(indexPath))
+    private static SaveMetadata EnsureMeta(string dir, GameState g) =>
+        ReadMetaFrom(dir, g.InstanceId) ?? new SaveMetadata
         {
-            var json = File.ReadAllText(indexPath);
-            saves = JsonSerializer.Deserialize<List<SaveMetadata>>(json, JsonOptions) ?? new List<SaveMetadata>();
+            Instance = g.InstanceId,
+            Name = g.Name,
+            Scenario = g.ScenarioId,
+            ScenarioName = g.ScenarioName,
+            Seed = g.Seed,
+            MaxTurns = g.MaxTurns,
+            CreatedAt = DateTime.UtcNow,
+        };
+
+    private static (GameState, int) ReadLatestState(string dir, string instance)
+    {
+        var bestTurn = -1;
+        string? bestPath = null;
+        if (Directory.Exists(dir))
+        {
+            foreach (var file in Directory.GetFiles(dir, SnapshotPrefix + "*.json"))
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+                if (!int.TryParse(name[SnapshotPrefix.Length..], NumberStyles.None,
+                        CultureInfo.InvariantCulture, out var turn)) continue;
+                if (turn > bestTurn) { bestTurn = turn; bestPath = file; }
+            }
         }
 
-        // Add new entry (no updates, always append)
-        saves.Add(newEntry);
+        bestPath ??= Path.Combine(dir, InitFileName);
+        if (!File.Exists(bestPath))
+            throw new FileNotFoundException($"存档不存在: {instance}");
 
-        // Sort by date descending
-        saves = saves.OrderByDescending(s => s.SavedAt).ToList();
-
-        var newJson = JsonSerializer.Serialize(saves, JsonOptions);
-        File.WriteAllText(indexPath, newJson);
+        try
+        {
+            var g = JsonSerializer.Deserialize<GameState>(File.ReadAllText(bestPath), IndentedOptions);
+            if (g == null) throw new InvalidOperationException("存档解析失败");
+            return (g, Math.Max(0, bestTurn));
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException($"存档损坏: {instance}（{ex.Message}）", ex);
+        }
     }
 
-    /// <summary>Export save to JSON string (for sharing/backup).</summary>
-    public static string ExportSave(GameState g)
+    private static int LatestSnapshotTurn(string dir)
     {
-        return JsonSerializer.Serialize(g, JsonOptions);
+        var best = 0;
+        foreach (var file in Directory.GetFiles(dir, SnapshotPrefix + "*.json"))
+        {
+            var name = Path.GetFileNameWithoutExtension(file);
+            if (int.TryParse(name[SnapshotPrefix.Length..], NumberStyles.None,
+                    CultureInfo.InvariantCulture, out var turn) && turn > best) best = turn;
+        }
+        return best;
     }
 
-    /// <summary>Import save from JSON string.</summary>
-    public static GameState ImportSave(string json)
+    private static int CountTurnLines(string dir)
     {
-        var g = JsonSerializer.Deserialize<GameState>(json, JsonOptions);
-        return g ?? throw new InvalidOperationException("Invalid save data");
+        var file = Path.Combine(dir, TurnsFileName);
+        if (!File.Exists(file)) return 0;
+        return File.ReadLines(file).Count(l => !string.IsNullOrWhiteSpace(l));
     }
+
+    private static List<TurnRecord> ReadTurnRecords(string dir)
+    {
+        var file = Path.Combine(dir, TurnsFileName);
+        var outList = new List<TurnRecord>();
+        if (!File.Exists(file)) return outList;
+
+        foreach (var line in File.ReadAllLines(file))
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            try
+            {
+                var rec = JsonSerializer.Deserialize<TurnRecord>(line, CompactOptions);
+                if (rec != null) outList.Add(rec);
+            }
+            catch
+            {
+                // 单行损坏不影响其余回合重放
+            }
+        }
+        return outList;
+    }
+
+    private static void WriteJson(string path, object value) =>
+        File.WriteAllText(path, JsonSerializer.Serialize(value, IndentedOptions));
 }

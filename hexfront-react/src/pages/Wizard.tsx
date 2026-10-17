@@ -256,7 +256,7 @@ export default function Wizard() {
     if (Object.keys(overrides).length) b.overrides = overrides
     const res = await api.createInstance(b)
     if (res.code) {
-      toast('副本已创建 · 房间 ' + res.code)
+      toast(`副本已创建 · 房间 ${res.code} · 种子 ${res.seed ?? '?'}`)
       navigate(`/room/${res.code}/director`)
     } else {
       toast(res.error || res.errors?.join(';') || '创建失败', 'err')

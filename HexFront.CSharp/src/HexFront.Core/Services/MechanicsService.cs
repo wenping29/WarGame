@@ -13,119 +13,121 @@ namespace HexFront.Core.Services;
 /// </summary>
 public static class MechanicsService
 {
-    /// <summary>Multi-source BFS: compute distance from each cell to nearest supply source.</summary>
-    /// <param name="g">Game state with units and grid</param>
-    /// <param name="side">Which side's supply sources to use</param>
-    /// <returns>Dict of hex key → distance (-1 if unreachable)</returns>
-    public static Dictionary<string, int> SupplyDistances(GameState g, string side)
+    /// <summary>
+    /// 季节消耗系数：剧本 clock.season 写中文（冬/寒、秋/雨）时加重战损，其余为 1。
+    /// 系数在 rules.combat 里可改，不在代码里写死。
+    /// </summary>
+    public static double SeasonAttrition(GameState g)
     {
-        var dist = new Dictionary<string, int>();
-        var frontier = new Queue<Hex>();
-        
-        // Find all supply sources for this side (logistics units, airports, depots)
-        var sources = new List<Hex>();
-        foreach (var u in g.Units.Where(u => u.Side == side && u.Alive))
-        {
-            var type = g.TypeOf(u);
-            if (!type.IsAir && type.SupplySource)
-            {
-                sources.Add(u.Pos);
-            }
-            // Airports act as supply nodes when air units are present
-            if (type.IsAir)
-            {
-                var cell = g.GetCell(u.Pos);
-                if (cell != null && cell.Airport > 0)
-                {
-                    // Check if ground unit holds this airport
-                    var holder = HolderAt(g, u.Pos);
-                    if (holder == side)
-                    {
-                        sources.Add(u.Pos);
-                    }
-                }
-            }
-        }
-
-        // Initialize BFS
-        foreach (var src in sources)
-        {
-            var key = src.Key;
-            if (!dist.ContainsKey(key))
-            {
-                dist[key] = 0;
-                frontier.Enqueue(src);
-            }
-        }
-
-        // BFS expansion
-        while (frontier.Count > 0)
-        {
-            var cur = frontier.Dequeue();
-            var curDist = dist[cur.Key];
-
-            foreach (var neighbor in cur.Neighbors())
-            {
-                var nKey = neighbor.Key;
-                if (dist.ContainsKey(nKey))
-                    continue;
-
-                // Enemy-occupied cells block supply
-                var cell = g.GetCell(neighbor);
-                if (cell == null)
-                    continue;
-
-                var occupier = OccupierAt(g, neighbor);
-                if (occupier != null && occupier != side)
-                    continue;
-
-                // River without bridge/ferry blocks supply (unless strict_supply is off)
-                if (cell.River && !cell.Bridge && !HasFerry(g, neighbor, side))
-                {
-                    var strictFlag = g.Flags.GetValueOrDefault("strict_supply");
-                    if (strictFlag is bool strictBool && strictBool)
-                        continue;
-                }
-
-                dist[nKey] = curDist + 1;
-                frontier.Enqueue(neighbor);
-            }
-        }
-
-        // Mark unreachable cells
-        foreach (var h in g.Grid.AllCells())
-        {
-            if (!dist.ContainsKey(h.Key))
-                dist[h.Key] = -1;
-        }
-
-        return dist;
+        var cf = g.Rules.Combat;
+        var season = g.Season ?? "";
+        if (season.Contains('冬') || season.Contains('寒')) return cf.SeasonWinterAttrition;
+        if (season.Contains('秋') || season.Contains('雨')) return cf.SeasonAutumnAttrition;
+        return 1.0;
     }
 
-    /// <summary>Compute supply coefficient R = retention^distance for each cell.</summary>
-    public static Dictionary<string, double> ComputeSupply(GameState g, string side)
+    /// <summary>
+    /// 天气演变：fixed/director 由剧本或导演部锁定不动，其余按 WEATHER_CHAIN 逐回合转移一次。
+    /// 只抽一列随机数（nextDouble），抽数固定才能让重放落在同一条链上。
+    /// </summary>
+    public static string EvolveWeather(GameState g)
     {
-        var strictFlag = g.Flags.GetValueOrDefault("strict_supply");
-        var strict = strictFlag is bool strictBool && strictBool;
-        var distances = SupplyDistances(g, side);
-        var retention = strict ? g.Rules.SupplyRetention : 0.95;
-        var powerFactor = PowerFactor(g, side);
-        var result = new Dictionary<string, double>();
+        var mode = g.WeatherMode ?? "director";
+        if (mode is "fixed" or "director") return g.Weather ?? "clear";
 
-        foreach (var kvp in distances)
+        var current = g.Weather ?? "clear";
+        var row = LibraryService.WEATHER_CHAIN.GetValueOrDefault(current)
+                  ?? LibraryService.WEATHER_CHAIN["clear"];
+
+        var roll = g.Rng.NextDouble();
+        foreach (var (id, p) in row)
         {
-            if (kvp.Value >= 0)
+            roll -= p;
+            if (roll <= 0) return id;
+        }
+        return row[^1].Id;
+    }
+
+    /// <summary>
+    /// 多源加权松弛（SPFA）：每格到最近补给源的路径代价。
+    /// 补给源 = 辎重/仓库类（SupplySource）与一切固定设施（cls=structure）；
+    /// 夺下的机场是前进补给节点 —— 须该方仍有存活航空兵维持空运、且场站格由己方地面部队占据，距离记 0。
+    /// 敌占格断链；水系格（含河流）在无桥且无己方部队渡过时按 3 倍代价绕行，而不是硬阻断。
+    /// 不可达格不入表：调用方按宽松默认 0.7 处理，不能写死下限让无源阵营整体挨饿。
+    /// </summary>
+    /// <returns>side → hexKey → 路径代价（仅红/蓝/中立）</returns>
+    public static Dictionary<string, Dictionary<string, int>> SupplyDistances(GameState g)
+    {
+        var ground = GroundHolders(g);
+        var outMap = new Dictionary<string, Dictionary<string, int>>();
+
+        foreach (var side in new[] { "red", "blue", "neutral" })
+        {
+            var dist = new Dictionary<string, int>();
+            var frontier = new List<Hex>();
+
+            foreach (var u in g.Units)
             {
-                var supply = Math.Pow(retention, kvp.Value) * powerFactor;
-                result[kvp.Key] = Math.Max(0.05, Math.Min(1.0, supply));
+                if (!u.Alive || u.Side != side) continue;
+                var t = g.TypeOf(u);
+                if (!t.SupplySource && t.Cls != "structure") continue;
+                if (dist.ContainsKey(u.Pos.Key)) continue;
+                dist[u.Pos.Key] = 0;
+                frontier.Add(u.Pos);
             }
-            else
+
+            if (g.Units.Any(u => u.Alive && u.Side == side && g.TypeOf(u).IsAir))
             {
-                result[kvp.Key] = 0.05; // Unreachable cells get minimum supply
+                foreach (var (key, cell) in g.Cells)
+                {
+                    if (cell.Airport < 1 || dist.ContainsKey(key)) continue;
+                    if (ground.GetValueOrDefault(key) != side) continue;
+                    dist[key] = 0;
+                    frontier.Add(Hex.Parse(key));
+                }
             }
+
+            var i = 0;
+            while (i < frontier.Count)
+            {
+                var cur = frontier[i++];
+                var d = dist[cur.Key];
+                foreach (var n in cur.Neighbors())
+                {
+                    if (!g.Cells.ContainsKey(n.Key)) continue;
+                    var occ = ground.GetValueOrDefault(n.Key);
+                    if (occ != null && occ != side) continue; // 敌占格断链
+                    var nd = d + (g.TerrainOf(n).Water && !Crossable(g, n, side) ? 3 : 1);
+                    if (dist.TryGetValue(n.Key, out var old) && old <= nd) continue;
+                    dist[n.Key] = nd;
+                    frontier.Add(n);
+                }
+            }
+
+            outMap[side] = dist;
         }
 
-        return result;
+        return outMap;
+    }
+
+    /// <summary>补给系数 R = retention^dist × 电网系数，保底 0.05。</summary>
+    public static Dictionary<string, Dictionary<string, double>> ComputeSupply(GameState g)
+    {
+        var strict = FogService.FlagBool(g, "strict_supply", false);
+        var dist = SupplyDistances(g);
+        var ret = strict ? g.Rules.SupplyRetention : 0.95;
+        var outMap = new Dictionary<string, Dictionary<string, double>>();
+
+        foreach (var (side, m) in dist)
+        {
+            var pf = PowerFactor(g, side);
+            var r = new Dictionary<string, double>();
+            foreach (var (key, d) in m)
+                r[key] = Math.Clamp(Math.Pow(ret, d) * pf, 0.05, 1.0);
+            outMap[side] = r;
+        }
+
+        return outMap;
     }
 
     /// <summary>
@@ -193,138 +195,96 @@ public static class MechanicsService
         return outMap;
     }
 
-    /// <summary>Power factor: held plant + substations boost supply retention.</summary>
-    /// <returns>Multiplier in range [1.0, 1.15]</returns>
+    /// <summary>
+    /// 电网系数：必须同时掌握「电厂」和「至少一处变电站」才通电（只夺半边不发电），
+    /// 掌握的电网节点越多越稳，红利 1.0 + 0.15 × held/nodes（自然封顶 +15%）。
+    /// </summary>
     public static double PowerFactor(GameState g, string side)
     {
-        var plants = 0;
-        var heldPlants = 0;
-        var substations = 0;
-        var heldSubstations = 0;
+        var holders = HoldersByHex(g);
+        var nodes = 0;
+        var held = 0;
+        var plantHeld = false;
+        var subHeld = false;
 
-        foreach (var h in g.Grid.AllCells())
+        foreach (var (key, cell) in g.Cells)
         {
-            var cell = g.GetCell(h);
-            if (cell == null) continue;
+            if (!cell.PowerPlant && !cell.Substation) continue;
+            nodes++;
+            if (holders.GetValueOrDefault(key) != side) continue;
+            held++;
+            if (cell.PowerPlant) plantHeld = true;
+            else subHeld = true;
+        }
 
-            if (cell.PowerPlant)
+        if (nodes == 0 || !plantHeld || !subHeld) return 1.0;
+        return 1.0 + 0.15 * held / nodes;
+    }
+
+    /// <summary>
+    /// 逐格唯一占据方（一切存活单位）：两方同格 = 争夺中，不入表 ⇒ 不算占。
+    /// 要点归属与电网系数共用这一份口径，一次算好复用，别每格重扫单位表。
+    /// </summary>
+    public static Dictionary<string, string> HoldersByHex(GameState g)
+    {
+        var first = new Dictionary<string, string>();
+        var contested = new HashSet<string>();
+
+        foreach (var u in g.Units)
+        {
+            if (!u.Alive) continue;
+            var key = u.Pos.Key;
+            if (contested.Contains(key)) continue;
+            if (first.TryGetValue(key, out var side))
             {
-                plants++;
-                if (HolderAt(g, h) == side)
-                    heldPlants++;
+                if (side != u.Side)
+                {
+                    contested.Add(key);
+                    first.Remove(key);
+                }
+                continue;
             }
+            first[key] = u.Side;
+        }
 
-            if (cell.Substation)
+        return first;
+    }
+
+    /// <summary>逐格唯一地面占据方（不含航空兵）：过境飞机既不占地也不断敌补给。</summary>
+    public static Dictionary<string, string> GroundHolders(GameState g)
+    {
+        var first = new Dictionary<string, string>();
+        var contested = new HashSet<string>();
+
+        foreach (var u in g.Units)
+        {
+            if (!u.Alive || g.TypeOf(u).IsAir) continue;
+            var key = u.Pos.Key;
+            if (contested.Contains(key)) continue;
+            if (first.TryGetValue(key, out var side))
             {
-                substations++;
-                if (HolderAt(g, h) == side)
-                    heldSubstations++;
+                if (side != u.Side)
+                {
+                    contested.Add(key);
+                    first.Remove(key);
+                }
+                continue;
             }
+            first[key] = u.Side;
         }
 
-        if (plants == 0)
-            return 1.0; // No power infrastructure
-
-        // Factor = 1.0 + 0.15 × (held_nodes / total_nodes), capped at 1.15
-        var totalNodes = plants + substations;
-        var heldNodes = heldPlants + heldSubstations;
-        
-        if (totalNodes == 0)
-            return 1.0;
-
-        return Math.Min(1.15, 1.0 + 0.15 * heldNodes / totalNodes);
+        return first;
     }
 
-    /// <summary>Determine which side currently holds a hex (based on unit presence).</summary>
-    public static string? HolderAt(GameState g, Hex h)
+    /// <summary>
+    /// 该水系格对本方是否可渡：有桥，或己方部队已在格上（架浮桥/夺渡口）。
+    /// 不可渡不阻断，只按 3 倍代价绕行 —— 后勤可以绕，但不能无视河。
+    /// </summary>
+    private static bool Crossable(GameState g, Hex h, string side)
     {
-        var sides = new HashSet<string>();
-        foreach (var u in g.Units.Where(u => u.Alive && u.Pos.Equals(h)))
-        {
-            sides.Add(u.Side);
-        }
-
-        if (sides.Count == 0)
-            return null;
-        if (sides.Count == 1)
-            return sides.First();
-        
-        // Contested: return null or last mover? For now, contested = no holder
-        return null;
-    }
-
-    /// <summary>Find occupier of a hex (for supply blocking logic).</summary>
-    private static string? OccupierAt(GameState g, Hex h)
-    {
-        // Non-air units occupy their hex
-        var groundUnits = g.Units.Where(u => u.Alive && u.Pos.Equals(h) && !g.TypeOf(u).IsAir).ToList();
-        
-        if (groundUnits.Count == 0)
-            return null;
-        if (groundUnits.Count == 1)
-            return groundUnits[0].Side;
-        
-        // Multiple sides = contested
-        var sides = groundUnits.Select(u => u.Side).Distinct().ToList();
-        return sides.Count == 1 ? sides[0] : null;
-    }
-
-    /// <summary>Check if a hex has ferry/bridge capability for a given side.</summary>
-    private static bool HasFerry(GameState g, Hex h, string side)
-    {
-        // Engineering units can create ferries
-        foreach (var u in g.Units.Where(u => u.Alive && u.Side == side && u.Pos.Equals(h)))
-        {
-            if (u.UnitType == "engineer")
-                return true;
-        }
-        return false;
-    }
-
-    /// <summary>Objective nodes: extract from cell metadata or scenario config.</summary>
-    public static List<(Hex Pos, string Name, int Amount)> ObjectiveNodes(GameState g)
-    {
-        var nodes = new List<(Hex, string, int)>();
-        
-        foreach (var h in g.Grid.AllCells())
-        {
-            var cell = g.GetCell(h);
-            if (cell == null) continue;
-
-            // City cells with level > 0 are objective nodes
-            if (cell.City > 0)
-            {
-                var amount = cell.City; // 1 = minor, 2 = major
-                var name = $"City_{h.Q}_{h.R}"; // TODO: Load from scenario config
-                nodes.Add((h, name, amount));
-            }
-        }
-
-        return nodes;
-    }
-
-    /// <summary>Node holders per side: returns side → list of node names held.</summary>
-    public static Dictionary<string, List<string>> NodeHolders(GameState g, string? onlySide = null)
-    {
-        var sides = onlySide != null ? new[] { onlySide } : new[] { "red", "blue", "neutral" };
-        var result = new Dictionary<string, List<string>>();
-
-        foreach (var side in sides)
-        {
-            result[side] = new List<string>();
-        }
-
-        var nodes = ObjectiveNodes(g);
-        foreach (var (pos, name, _) in nodes)
-        {
-            var holder = HolderAt(g, pos);
-            if (holder != null && result.ContainsKey(holder))
-            {
-                result[holder].Add(name);
-            }
-        }
-
-        return result;
+        var c = g.GetCell(h);
+        if (c != null && c.Bridge) return true;
+        return g.Units.Any(u => u.Alive && u.Side == side && u.Pos == h);
     }
 
     // ─────────── Dart fog.dart/mechanics.dart view-shape helpers ───────────
@@ -378,14 +338,15 @@ public static class MechanicsService
             .ToList();
     }
 
-    /// <summary>要点归属：hexKey → 阵营。onlySide 用于双盲视图，只披露己方占领。</summary>
+    /// <summary>要点归属：hexKey → 阵营（争夺中不入表）。onlySide 用于双盲视图，只披露己方占领。</summary>
     public static Dictionary<string, string> NodeHoldersByHex(GameState g, string? onlySide = null)
     {
+        var holders = HoldersByHex(g);
         var outMap = new Dictionary<string, string>();
         foreach (var (key, cell) in g.Cells)
         {
             if (NodeKindOf(cell) == null) continue;
-            var holder = HolderAt(g, Hex.Parse(key));
+            var holder = holders.GetValueOrDefault(key);
             if (holder == null || (onlySide != null && holder != onlySide)) continue;
             outMap[key] = holder;
         }

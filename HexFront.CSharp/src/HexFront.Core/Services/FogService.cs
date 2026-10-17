@@ -478,8 +478,11 @@ public static class FogService
 
     private static double R2(double v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);
 
-    /// <summary>Read a boolean flag from GameState.Flags, tolerant of boxed types.</summary>
-    private static bool FlagBool(GameState g, string key, bool fallback)
+    /// <summary>
+    /// 读 GameState.Flags 里的布尔开关，容忍存档回读时的 JsonElement 装箱。
+    /// 快照里的 flags 是 JsonElement 而不是 bool，所以全引擎只能经这里取值。
+    /// </summary>
+    public static bool FlagBool(GameState g, string key, bool fallback)
     {
         var raw = g.Flags.GetValueOrDefault(key);
         if (raw == null) return fallback;

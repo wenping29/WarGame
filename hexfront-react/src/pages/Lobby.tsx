@@ -91,7 +91,9 @@ export default function Lobby() {
   const loadSave = async (s: SaveInfo) => {
     const res = await api.loadSave(s.instance)
     if (res.code) {
-      toast('已载入房间 ' + res.code)
+      const replayed = res.replayed_turns?.length ?? 0
+      toast(`已载入房间 ${res.code}${replayed ? ` · 重放 ${replayed} 回合` : ''}`)
+      if (res.replay_warnings?.length) toast(`重放指纹与存档不符：${res.replay_warnings[0]}`, 'err')
       navigate(`/room/${res.code}/director`)
     } else {
       toast(res.error || '载入失败', 'err')
@@ -249,8 +251,8 @@ export default function Lobby() {
                 <div className="sub">
                   {s.scenario_name || s.scenario}
                   {' · '}{new Date(s.created_at).toLocaleString('zh-CN')}
-                  {s.unit_count ? ` · 单位 ${s.unit_count}` : ''}
-                  {s.weather ? ` · ${s.weather}` : ''}
+                  {s.seed !== undefined ? ` · 种子 ${s.seed}` : ''}
+                  {s.turns_recorded ? ` · 已记 ${s.turns_recorded} 回合` : ''}
                 </div>
                 <div className="foot">
                   <button className="btn btn-sm btn-primary" onClick={() => loadSave(s)}>

@@ -47,7 +47,9 @@ export default function Home() {
   const loadSave = async (s: SaveInfo) => {
     const res = await api.loadSave(s.instance)
     if (res.code) {
-      toast(`已载入房间 ${res.code}（回合 ${res.resumed_turn}）`)
+      const replayed = res.replayed_turns?.length ?? 0
+      toast(`已载入房间 ${res.code}（回合 ${res.resumed_turn}${replayed ? ` · 重放 ${replayed} 回合` : ''}）`)
+      if (res.replay_warnings?.length) toast(`重放指纹与存档不符：${res.replay_warnings[0]}`, 'err')
       navigate(`/room/${res.code}/director`)
     } else {
       toast(res.error || '载入失败', 'err')

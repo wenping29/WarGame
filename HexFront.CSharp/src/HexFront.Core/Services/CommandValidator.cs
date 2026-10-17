@@ -16,12 +16,17 @@ public enum CommandOp
     Rest,
     AirMission,
     Halt,
+    /// <summary>线上写了个引擎不认的动作名；原样回给玩家 unknown_op，不能悄悄吞掉或降级成 halt。</summary>
+    Unknown,
 }
 
 /// <summary>Player command issued to a unit.</summary>
+[System.Text.Json.Serialization.JsonConverter(typeof(CommandWire.WireConverter))]
 public sealed class Command
 {
     public CommandOp Op { get; init; }
+    /// <summary>线上原始动作名（仅 Op==Unknown 时用于回显与排错）。</summary>
+    public string? OpRaw { get; init; }
     public string UnitId { get; init; } = "";
     public List<Hex> Path { get; init; } = new();      // For move: continuous adjacent path
     public string? Target { get; init; }                // For attack: enemy unit ID
@@ -56,8 +61,7 @@ public static class CommandValidator
     public static List<CommandError> ValidateOrders(GameState g, string side, List<Command> orders)
     {
         var errs = new List<CommandError>();
-        var fogOn = g.Flags.GetValueOrDefault("fog", true);
-        
+
         // Observed enemy units (E1+ exposure) that can be targeted
         var observed = GetObservedEnemies(g, side);
         var usedUnits = new HashSet<string>();
@@ -85,8 +89,9 @@ public static class CommandValidator
                 continue;
             }
 
-            // Routed units can only rest
-            if (u.Routed && c.Op != CommandOp.Rest)
+            // Routed units can only rest —— 溃退是结算落到 Status 上的状态，
+            // 不能用 morale<=0 代理：士气见底不等于已经溃退，代理会让残兵连休整令都下不了。
+            if (u.Status == UnitStatus.Routed && c.Op != CommandOp.Rest)
             {
                 errs.Add(new CommandError(c.UnitId, "routed", "溃退中只能休整"));
                 continue;
@@ -115,7 +120,7 @@ public static class CommandValidator
                     // No additional validation needed
                     break;
                 default:
-                    errs.Add(new CommandError(c.UnitId, "unknown_op", $"未知指令 {c.Op}"));
+                    errs.Add(new CommandError(c.UnitId, "unknown_op", $"未知指令 {CommandWire.OpEcho(c)}"));
                     break;
             }
         }
@@ -160,17 +165,10 @@ public static class CommandValidator
         {
             var h = c.Path[i];
 
-            // Out of bounds
-            if (!g.Grid.Contains(h))
+            // 以格集为准：数据包可能切掉边角，Grid 矩形内也可能有境外 void 格
+            if (!g.Cells.ContainsKey(h.Key))
             {
                 errs.Add(new CommandError(c.UnitId, "out_of_map", "路径越界"));
-                return;
-            }
-
-            var cell = g.GetCell(h);
-            if (cell == null)
-            {
-                errs.Add(new CommandError(c.UnitId, "out_of_map", "路径经过无效格子"));
                 return;
             }
 
@@ -182,8 +180,11 @@ public static class CommandValidator
                 return;
             }
 
-            // Enemy-occupied hex (must fight first)
-            var enemies = g.Units.Where(o => o.Alive && o.Side != side && o.Pos.Equals(h)).ToList();
+            // Enemy-occupied hex (must fight first). 只有地面占领才拦路 ——
+            // 敌方航空兵过境既不构成物理阻挡，也在迷雾里看不见，拿来拒玩家的移动令不公平。
+            var enemies = g.Units
+                .Where(o => o.Alive && o.Side != side && o.Pos == h && !g.TypeOf(o).IsAir)
+                .ToList();
             if (enemies.Any())
             {
                 errs.Add(new CommandError(c.UnitId, "blocked", "路径穿过敌方占据格，需先交战"));
@@ -213,11 +214,7 @@ public static class CommandValidator
         }
 
         // Fog of war: target must be observed (E1+)
-        if (observed.Contains(target.Id))
-        {
-            // Target is observable
-        }
-        else
+        if (!observed.Contains(target.Id))
         {
             errs.Add(new CommandError(c.UnitId, "not_observed", "目标未被侦察到，不可下令攻击"));
             return;
@@ -225,8 +222,8 @@ public static class CommandValidator
 
         // Check range
         var dist = u.Pos.DistanceTo(target.Pos);
-        var reach = t.IsAir ? 6 : (t.Firepower > 0 ? 2 : 1); // Simplified range logic
-        
+        var reach = AttackReach(t);
+
         if (dist > reach)
         {
             errs.Add(new CommandError(c.UnitId, "out_of_range", $"目标超出射程（{dist} > {reach}）"));
@@ -246,19 +243,17 @@ public static class CommandValidator
         }
 
         // Zone must be valid
-        if (c.Zone == null || !g.Grid.Contains(c.Zone.Value))
+        if (c.Zone == null || !g.Cells.ContainsKey(c.Zone.Value.Key))
         {
             errs.Add(new CommandError(c.UnitId, "bad_zone", "火力目标格无效"));
             return;
         }
 
-        // Check range
+        // 多给 1 格余量：炮兵按射界边缘覆盖预判集结地是常规用法，精度降级在结算里扣
         var dist = u.Pos.DistanceTo(c.Zone.Value);
-        var range = 5; // Artillery range
-        
-        if (dist > range)
+        if (dist > t.Range + 1)
         {
-            errs.Add(new CommandError(c.UnitId, "out_of_range", "超出射程"));
+            errs.Add(new CommandError(c.UnitId, "out_of_range", $"超出射程（{dist} > {t.Range + 1}）"));
             return;
         }
 
@@ -279,18 +274,16 @@ public static class CommandValidator
         // If mission is specified, zone must be valid
         if (c.Mission != "none")
         {
-            if (c.Zone == null || !g.Grid.Contains(c.Zone.Value))
+            if (c.Zone == null || !g.Cells.ContainsKey(c.Zone.Value.Key))
             {
                 errs.Add(new CommandError(c.UnitId, "bad_zone", "任务区无效"));
                 return;
             }
 
             var dist = u.Pos.DistanceTo(c.Zone.Value);
-            var range = 8; // Air unit operational radius
-            
-            if (dist > range)
+            if (dist > t.AirRange)
             {
-                errs.Add(new CommandError(c.UnitId, "out_of_range", "任务区超出作战半径"));
+                errs.Add(new CommandError(c.UnitId, "out_of_range", $"任务区超出作战半径（{dist} > {t.AirRange}）"));
                 return;
             }
         }
@@ -307,31 +300,32 @@ public static class CommandValidator
         return true;
     }
 
-    /// <summary>Get set of enemy unit IDs that are observed (E1+ exposure) by a side.</summary>
+    /// <summary>
+    /// 已暴露（E1+）的敌方单位 id 集合 —— 只有它们能被下攻击令（doc §3.4）。
+    /// 读 tracks 而不是当场重算观测：玩家看到的是上一阶段刷新出来的航迹，
+    /// 拿"这一回合刚移动出去的瞬时观测"去允许打看不见的目标，等于把迷雾删了。
+    /// 明牌（fog=false）时全员可打，与 sideView 实时合成 E3 接触的口径一致。
+    /// </summary>
     private static HashSet<string> GetObservedEnemies(GameState g, string side)
     {
-        var observed = new HashSet<string>();
-        
-        // In fog mode, only units in observed hexes are visible
-        if (g.Obs.TryGetValue(side, out var obsPts))
-        {
-            foreach (var enemy in g.Units.Where(u => u.Alive && u.Side != side && u.Side != "neutral"))
-            {
-                if (obsPts.TryGetValue(enemy.Pos.Key, out var pts) && pts >= 1)
-                {
-                    observed.Add(enemy.Id);
-                }
-            }
-        }
-        else
-        {
-            // No fog: all enemies are observable
-            foreach (var enemy in g.Units.Where(u => u.Alive && u.Side != side && u.Side != "neutral"))
-            {
-                observed.Add(enemy.Id);
-            }
-        }
+        var enemies = g.Units.Where(u => u.Alive && u.Side != side && u.Side != "neutral");
+        if (!FogService.FlagBool(g, "fog", true))
+            return new HashSet<string>(enemies.Select(u => u.Id));
 
+        var observed = new HashSet<string>();
+        if (!g.Tracks.TryGetValue(side, out var tracks)) return observed;
+        foreach (var (unitId, t) in tracks)
+        {
+            if (t.Level < g.Rules.ExposureE1) continue;
+            observed.Add(unitId);
+        }
         return observed;
     }
+
+    /// <summary>
+    /// 攻击射程：航空兵按作战半径，炮兵/反坦克炮等间接火力按自身射程，其余近战 1 格。
+    /// 一律取自兵种表，不能写死 —— 剧本用 unit_type_defs 覆盖射程要立刻生效。
+    /// </summary>
+    private static int AttackReach(UnitTypeDef t) =>
+        t.IsAir ? t.AirRange : (t.Range > 0 ? t.Range : 1);
 }

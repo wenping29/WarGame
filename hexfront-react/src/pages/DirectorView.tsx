@@ -3,15 +3,26 @@
  * 数据全部来自服务端 director 视图；last_errors 是 JSON 字符串数组，渲染前解析。
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import HexMap, { type MapUnit } from '../components/HexMap'
 import { useRoom } from '../room/RoomSocket'
 import { useUnitTypes, useWeatherList } from '../room/useUnitFull'
-import type { WireCommand, WireDirectorView, WireUnit } from '../room/protocol'
+import type { Frame, WireCommand, WireDirectorView, WireFactors, WireUnit } from '../room/protocol'
 import { play } from '../services/sound'
 
 const CLS_LABEL: Record<string, string> = {
   foot: '徒步', motor: '轮式', mech: '装甲', air: '航空', structure: '固定设施',
+}
+
+/// 因子链展示顺序与命名（doc §7 战力影响链，逐项解释贡献）
+const FACTOR_LABEL: Array<[keyof WireFactors, string]> = [
+  ['base', '火力'], ['terrain', '地形'], ['fort', '工事'], ['strength', '编制'],
+  ['supply', '补给'], ['morale', '士气'], ['personnel', '兵员'], ['commander', '指挥'],
+  ['weather', '天候'], ['air', '制空'], ['counter', '相克'], ['ammo', '弹药'],
+]
+
+const BATTLE_KIND: Record<string, string> = {
+  combat: '突击', encounter: '遭遇', fire: '炮击', air: '空袭', strike: '打击',
 }
 
 const hhmm = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`
@@ -28,6 +39,15 @@ export default function DirectorView() {
 
   const units = view?.units ?? []
   const cfMax = Math.max(0.001, ...units.map(u => cfIndex(u, typeMap)))
+
+  const turn = view?.turn ?? 0
+  const askedTurn = useRef(-1)
+  // 因子链只随回放帧下发（服务端结算仅推 events/state），回合推进后补取一次帧
+  useEffect(() => {
+    if (askedTurn.current === turn) return
+    askedTurn.current = turn
+    room.requestFrames()
+  }, [turn, room])
 
   const mapUnits: MapUnit[] = units.map(u => {
     const full = typeMap[u.type]?.personnel ?? 0
@@ -197,6 +217,8 @@ export default function DirectorView() {
           </div>
         </div>
 
+        <BattleReport frames={room.frames} />
+
         <div className="panel grow">
           <h3>事件日志</h3>
           <div className="scroll">
@@ -308,5 +330,49 @@ function Toggle({ label, on, onChange }: { label: string; on: boolean; onChange:
     <button className={`btn btn-sm${on ? ' btn-primary' : ''}`} onClick={() => onChange(!on)}>
       {(on ? '● ' : '○ ') + label}
     </button>
+  )
+}
+
+/// 战报：取最近一帧的交战，逐因子解释 CF 从哪来（doc M6「战报可解释各系数贡献」）
+function BattleReport({ frames }: { frames: Frame[] }) {
+  const frame = [...frames].reverse().find(f => (f.battles?.length ?? 0) > 0)
+  const battles = frame?.battles ?? []
+
+  return (
+    <div className="panel">
+      <h3>战报 · 战力链{frame ? ` · 第 ${frame.turn} 回合` : ''}</h3>
+      <div className="scroll" style={{ maxHeight: 220 }}>
+        {battles.length === 0 ? (
+          <div className="muted small">（暂无交战记录，结算后显示各因子贡献）</div>
+        ) : battles.map((b, i) => (
+          <div key={i} className="ordbox">
+            <div className="o">
+              <span className="mono">{b.atk} → {b.def}</span>
+              <span>{BATTLE_KIND[b.kind] || b.kind}{b.routed ? ' · 守方溃退' : ''}</span>
+            </div>
+            <div className="mini">CF {b.atk_cf.toFixed(1)} : {b.def_cf.toFixed(1)} · 损 {b.atk_loss} / {b.def_loss}</div>
+            <FactorRow label="攻" f={b.factors_atk} />
+            <FactorRow label="守" f={b.factors_def} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function FactorRow({ label, f }: { label: string; f: WireFactors }) {
+  return (
+    <div className="frow">
+      <span className="flab">{label}</span>
+      {FACTOR_LABEL.map(([key, text]) => {
+        const v = f[key] ?? 1
+        return (
+          <span key={key} className={`fcell${v > 1.001 ? ' up' : v < 0.999 ? ' dn' : ''}`} title={`${text} ×${v.toFixed(3)}`}>
+            {text} {v.toFixed(2)}
+          </span>
+        )
+      })}
+      <b className="fsum">={f.cf.toFixed(1)}</b>
+    </div>
   )
 }

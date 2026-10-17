@@ -138,10 +138,12 @@ public class GameController : ControllerBase
         if (errs.Count > 0 && !Bool(body, "force", false))
             return BadRequestDict("剧本/覆盖校验未通过", errs);
 
+        // 不传 seed 就用当前秒数：同 seed + 同指令序列必然同结果，复现一局只要抄下这里回给的 seed
+        var seed = UInt(body, "seed", (uint)(DateTimeOffset.UtcNow.ToUnixTimeSeconds() & uint.MaxValue));
         GameState g;
         try
         {
-            g = ScenarioService.CreateGameState(cfg, _rooms.GisDirectory);
+            g = ScenarioService.CreateGameState(cfg, _rooms.GisDirectory, seed);
         }
         catch (Exception ex)
         {
@@ -155,11 +157,10 @@ public class GameController : ControllerBase
         var name = Str(body, "name");
         var code = _rooms.CreateRoomFromState(g, name, Bool(body, "ai_red"), Bool(body, "ai_blue"));
 
-        string? saveId = null;
         try
         {
-            var meta = StoreService.SaveGame(g, name ?? g.ScenarioName, $"scenario:{cfg.Id}", _rooms.SaveDirectory);
-            saveId = meta.Id;
+            StoreService.WriteInit(g, name, Str(body, "description"), _rooms.SaveDirectory,
+                BodyOverrides(body));
         }
         catch (Exception ex)
         {
@@ -169,7 +170,8 @@ public class GameController : ControllerBase
         return Ok(new Dictionary<string, object?>
         {
             ["code"] = code,
-            ["instance"] = saveId ?? g.InstanceId,
+            ["instance"] = g.InstanceId,
+            ["seed"] = g.Seed,
             ["room"] = _rooms.PublicInfo(code),
         });
     }
@@ -183,21 +185,34 @@ public class GameController : ControllerBase
         if (string.IsNullOrEmpty(id))
             return BadRequestDict("缺少 instance", null);
 
-        GameState g;
+        StoreService.LoadOutcome loaded;
         try
         {
-            g = StoreService.LoadGame(id, _rooms.SaveDirectory);
+            // 最新快照 + 重放尾部指令：重放走的是同一个种子随机源，所以续局结果与不中断时一致
+            loaded = StoreService.Load(id, _rooms.SaveDirectory);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequestDict(ex.Message, null);
         }
         catch (Exception)
         {
             return NotFoundDict("存档不存在或损坏");
         }
 
+        var g = loaded.Game;
+        if (loaded.FingerprintMismatches.Count > 0)
+            _logger.LogWarning("存档 {Instance} 重放指纹不一致：{Detail}", id, string.Join("; ", loaded.FingerprintMismatches));
+
         var code = _rooms.CreateRoomFromState(g);
         return Ok(new Dictionary<string, object?>
         {
             ["code"] = code,
             ["resumed_turn"] = g.Turn,
+            ["snapshot_turn"] = loaded.SnapshotTurn,
+            ["replayed_turns"] = loaded.ReplayedTurns,
+            ["fingerprint"] = g.Fingerprint(),
+            ["replay_warnings"] = loaded.FingerprintMismatches,
             ["room"] = _rooms.PublicInfo(code),
         });
     }
@@ -305,23 +320,22 @@ public class GameController : ControllerBase
     private List<Dictionary<string, object?>> ListSaveSummaries()
     {
         var outList = new List<Dictionary<string, object?>>();
-        foreach (var m in StoreService.ListSaves(_rooms.SaveDirectory)
-                     .OrderByDescending(x => x.SavedAt))
+        foreach (var m in StoreService.ListSaves(_rooms.SaveDirectory))
         {
-            string? scenario = m.Description?.StartsWith("scenario:") == true
-                ? m.Description[("scenario:".Length)..]
-                : null;
             outList.Add(new Dictionary<string, object?>
             {
-                ["instance"] = m.Id,
+                ["instance"] = m.Instance,
                 ["name"] = m.Name,
-                ["scenario"] = scenario,
-                ["scenario_name"] = scenario,
-                ["last_turn"] = m.Turn,
-                ["created_at"] = m.SavedAt.ToString("o"),
-                ["weather"] = m.Weather,
-                ["unit_count"] = m.UnitCount,
-                ["file_size"] = m.FileSize,
+                ["scenario"] = m.Scenario,
+                ["scenario_name"] = m.ScenarioName,
+                ["last_turn"] = m.LastTurn,
+                ["max_turns"] = m.MaxTurns,
+                ["seed"] = m.Seed,
+                ["created_at"] = m.CreatedAt.ToString("o"),
+                ["updated_at"] = m.UpdatedAt.ToString("o"),
+                ["turns_recorded"] = m.TurnsRecorded,
+                ["snapshot_turn"] = m.SnapshotTurn,
+                ["description"] = m.Description,
             });
         }
         return outList;
@@ -472,6 +486,10 @@ public class GameController : ControllerBase
 
     private static bool Bool(Dictionary<string, JsonElement> b, string k, bool def = false) =>
         b.TryGetValue(k, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : def;
+
+    /// <summary>无符号整数入参（种子）；负数或超范围当没传，交给默认值。</summary>
+    private static uint UInt(Dictionary<string, JsonElement> b, string k, uint def) =>
+        b.TryGetValue(k, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetUInt32(out var n) ? n : def;
 
     private static List<JsonElement> Dump<T>(IEnumerable<T> items) =>
         items.Select(i => JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(i, LibJson))).ToList();

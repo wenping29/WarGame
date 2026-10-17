@@ -22,7 +22,7 @@ public static class TurnResolver
         public string FingerprintAfter { get; init; } = "";
     }
 
-    /// <summary>Battle record for combat logging.</summary>
+    /// <summary>Battle record for combat logging：战报要能逐因子解释贡献（doc M6 验收）。</summary>
     public class BattleRecord
     {
         public int Turn { get; init; }
@@ -30,6 +30,13 @@ public static class TurnResolver
         public string Attacker { get; init; } = "";
         public string Defender { get; init; } = "";
         public int Losses { get; init; }
+        public int AtkLoss { get; init; }
+        public int DefLoss { get; init; }
+        public double AtkCf { get; init; }
+        public double DefCf { get; init; }
+        public bool Routed { get; init; }
+        public CombatFactors FactorsAtk { get; init; } = new();
+        public CombatFactors FactorsDef { get; init; } = new();
     }
 
     /// <summary>Resolve a complete turn with orders from all sides.</summary>
@@ -50,8 +57,8 @@ public static class TurnResolver
         // Phase 0: Validate orders (server authority)
         var accepted = ValidateAllOrders(g, ordersBySide, rejected, Emit);
 
-        var strictFlag = g.Flags.GetValueOrDefault("strict_supply");
-        var strict = strictFlag is bool strictBool && strictBool;
+        // flags 回读自存档时是 JsonElement，只能经 FlagBool 取；这里取错会让 K_supply 档位静默失效
+        var strict = FogService.FlagBool(g, "strict_supply", false);
 
         // Phase 1: Air phase (missions → air combat → air control → ground strike)
         AirPhase(g, accepted, Emit, battles);
@@ -66,18 +73,17 @@ public static class TurnResolver
         var moved = MovementPhase(g, accepted, Emit);
 
         // Phase 4b: Encounters (moving into unknown enemy hex)
-        Encounters(g, moved, Emit, battles);
+        Encounters(g, moved, strict, Emit, battles);
 
         // Phase 5: Combat
-        CombatPhase(g, accepted, Emit, battles);
+        CombatPhase(g, accepted, strict, Emit, battles);
 
         // Phase 6: Recovery & attrition
         RecoveryPhase(g, Emit, strict);
 
         // Phase 7: State advancement
         g.HourOfDay = (g.HourOfDay + g.Rules.TurnHours) % 24;
-        if (g.WeatherMode != "director")
-            g.Weather = EvolveWeather(g);
+        g.Weather = MechanicsService.EvolveWeather(g);
         g.Turn += 1;
 
         CheckVictory(g, Emit);
@@ -283,11 +289,7 @@ public static class TurnResolver
 
     private static void ResolveSupply(GameState g, bool strict, Action<string, string, List<string>> emit)
     {
-        var supplyBySide = new Dictionary<string, Dictionary<string, double>>
-        {
-            ["red"] = MechanicsService.ComputeSupply(g, "red"),
-            ["blue"] = MechanicsService.ComputeSupply(g, "blue"),
-        };
+        var supplyBySide = MechanicsService.ComputeSupply(g);
 
         foreach (var u in g.Units)
         {
@@ -331,6 +333,7 @@ public static class TurnResolver
         var moved = new List<Unit>();
         var wx = g.WeatherOf();
         var day = DayPhase.FromHours(g.HourOfDay);
+        var cf = g.Rules.Combat;
 
         var plan = accepted.Values
             .SelectMany(orders => orders.Where(c => c.Op == CommandOp.Move))
@@ -344,14 +347,14 @@ public static class TurnResolver
 
             var t = g.TypeOf(u);
             var cls = t.Cls == "air" ? "mech" : t.Cls;
-            var hq = CommanderFactor(g, u);
+            var hq = CombatChain.CommanderFactor(g, u);
 
             var budget = t.Mobility * g.Rules.MpBase * t.MobilityPenalty() * wx.Mobility * day.Recon;
             if (u.Fuel <= 0.01 && (cls == "motor" || cls == "mech")) budget *= 0.25;
             if (u.Fatigue > 70) budget *= 0.7;
             if (u.FortLevel > 0) budget *= 0.8; // Abandon fortifications
-            // 指挥官系数只在 [0.6,1.15] 内缩放，预算本身按 Dart 语义取整（不是把预算夹到 1.15）
-            budget = Math.Round(budget * Clamp(hq, 0.6, 1.15));
+            // 指挥链系数只在 [0.6,1.15] 区间内缩放机动预算（取整的是预算，不是把预算夹到上限）
+            budget = Math.Round(budget * Clamp(hq, cf.CommanderBudgetMin, cf.CommanderBudgetMax));
 
             var spent = 0.0;
             var cur = u.Pos;
@@ -411,7 +414,7 @@ public static class TurnResolver
 
     // ==================== Phase 4b: Encounters ====================
 
-    private static void Encounters(GameState g, List<Unit> moved,
+    private static void Encounters(GameState g, List<Unit> moved, bool strict,
         Action<string, string, List<string>> emit, List<BattleRecord> battles)
     {
         foreach (var u in moved)
@@ -419,30 +422,17 @@ public static class TurnResolver
             var enemies = g.UnitsAt(u.Pos).Where(e => e.Side != u.Side && e.Alive).ToList();
             if (enemies.Count == 0) continue;
 
-            // Encounter combat: defender advantage
             foreach (var e in enemies)
             {
-                var res = ResolveCombat(g, u, e, isEncounter: true);
-                ApplyCombatLoss(g, u, res.DefLoss, e, res.AtkLoss, emit);
-
-                battles.Add(new BattleRecord
-                {
-                    Turn = g.Turn,
-                    Kind = "encounter",
-                    Attacker = u.Id,
-                    Defender = e.Id,
-                    Losses = res.AtkLoss + res.DefLoss,
-                });
-
-                emit("encounter", $"遭遇战 @({u.Pos.Q},{u.Pos.R})：{u.Id} ↔ {e.Id}",
-                    new List<string> { u.Side, e.Side, "spectator" });
+                if (!u.Alive || !e.Alive) continue;
+                ApplyClash(g, u, e, encounter: true, strict, emit, battles);
             }
         }
     }
 
     // ==================== Phase 5: Combat ====================
 
-    private static void CombatPhase(GameState g, Dictionary<string, List<Command>> accepted,
+    private static void CombatPhase(GameState g, Dictionary<string, List<Command>> accepted, bool strict,
         Action<string, string, List<string>> emit, List<BattleRecord> battles)
     {
         var attacks = accepted.Values
@@ -456,75 +446,65 @@ public static class TurnResolver
             var def = g.FindUnit(c.Target ?? "");
             if (atk == null || def == null || !atk.Alive || !def.Alive) continue;
 
-            var res = ResolveCombat(g, atk, def);
-            ApplyCombatLoss(g, atk, res.DefLoss, def, res.AtkLoss, emit);
-
-            battles.Add(new BattleRecord
-            {
-                Turn = g.Turn,
-                Kind = "combat",
-                Attacker = atk.Id,
-                Defender = def.Id,
-                Losses = res.AtkLoss + res.DefLoss,
-            });
-
-            emit("combat", $"战斗：{atk.Id} → {def.Id}",
-                new List<string> { atk.Side, def.Side, "spectator" });
+            ApplyClash(g, atk, def, encounter: false, strict, emit, battles);
         }
     }
 
-    private static (int AtkLoss, int DefLoss) ResolveCombat(GameState g, Unit atk, Unit def, bool isEncounter = false)
+    /// <summary>
+    /// 一次交战的落状态：CF 链裁决 → 人员/弹药/疲劳/士气 → 溃退与战报。
+    /// 遭遇战守方占优用临时工事级表达（+1 后立刻还原），不为它另开一条损失公式。
+    /// </summary>
+    private static void ApplyClash(GameState g, Unit atk, Unit def, bool encounter, bool strict,
+        Action<string, string, List<string>> emit, List<BattleRecord> battles)
     {
-        var atkType = g.TypeOf(atk);
-        var defType = g.TypeOf(def);
-        var defTerrain = g.TerrainOf(def.Pos);
+        var cf = g.Rules.Combat;
+        if (encounter) def.FortLevel += 1;
 
-        var atkPower = atkType.Firepower * atk.Morale / 100.0 * atk.Personnel * atk.Ammo;
-        var defPower = defType.Protection * def.Morale / 100.0 * def.Personnel * (1.0 + defTerrain.Defense * 0.2);
+        var res = CombatChain.ResolveClash(g, atk, def, strict);
 
-        if (isEncounter) defPower *= 1.3; // Defender advantage
+        var aLoss = Math.Min(atk.Personnel, res.AtkLoss);
+        var dLoss = Math.Min(def.Personnel, res.DefLoss);
+        atk.Personnel -= aLoss;
+        def.Personnel -= dLoss;
+        atk.Casualties += aLoss;
+        def.Casualties += dLoss;
 
-        var ratio = atkPower / Math.Max(1, defPower);
+        atk.Ammo = Clamp(atk.Ammo - cf.AmmoPerAttack, 0, 1);
+        atk.Fatigue = Clamp(atk.Fatigue + g.Rules.FatigueCombat * 4, 0, 100);
+        def.Fatigue = Clamp(def.Fatigue + g.Rules.FatigueCombat * 3, 0, 100);
+        def.Morale = res.DefMoraleAfter;
+        atk.Morale = res.AtkMoraleAfter;
+        atk.HasFired = true;
 
-        int atkLoss, defLoss;
-        if (ratio > 2.0)
-        {
-            atkLoss = (int)(atk.Personnel * 0.05);
-            defLoss = (int)(def.Personnel * 0.25);
-        }
-        else if (ratio > 1.0)
-        {
-            atkLoss = (int)(atk.Personnel * 0.1);
-            defLoss = (int)(def.Personnel * 0.2);
-        }
-        else
-        {
-            atkLoss = (int)(atk.Personnel * 0.15);
-            defLoss = (int)(def.Personnel * 0.1);
-        }
+        if (encounter) def.FortLevel = Math.Max(0, def.FortLevel - 1);
 
-        return (atkLoss, defLoss);
-    }
+        var sides = new List<string> { atk.Side, def.Side, "spectator" };
+        var text = encounter
+            ? $"遭遇战 @({atk.Pos.Q},{atk.Pos.R})：{atk.Id} ↔ {def.Id}，守方 -{dLoss} / 攻方 -{aLoss}（{CombatChain.CfSummary(res.AtkCf, res.DefCf)}）"
+            : $"{atk.Id} 攻击 {def.Id}：守方 -{dLoss} / 攻方 -{aLoss}（{CombatChain.CfSummary(res.AtkCf, res.DefCf)}）";
+        emit(encounter ? "encounter" : "combat", text, sides);
 
-    private static void ApplyCombatLoss(GameState g, Unit atk, int atkLoss, Unit def, int defLoss,
-        Action<string, string, List<string>> emit)
-    {
-        atk.Personnel -= atkLoss;
-        atk.Casualties += atkLoss;
-        atk.Morale = Clamp(atk.Morale - atkLoss * 0.1, 0, 100);
-
-        def.Personnel -= defLoss;
-        def.Casualties += defLoss;
-        def.Morale = Clamp(def.Morale - defLoss * 0.15, 0, 100);
-
-        if (def.Morale < 20)
-        {
-            def.Status = UnitStatus.Routed;
+        if (res.DefRouted && def.Alive)
             emit("rout", $"{def.Id} 溃退", new List<string> { def.Side, "spectator" });
-        }
 
-        CheckDestroy(g, atk, emit);
+        battles.Add(new BattleRecord
+        {
+            Turn = g.Turn,
+            Kind = encounter ? "encounter" : "combat",
+            Attacker = atk.Id,
+            Defender = def.Id,
+            Losses = aLoss + dLoss,
+            AtkLoss = aLoss,
+            DefLoss = dLoss,
+            AtkCf = res.AtkCf,
+            DefCf = res.DefCf,
+            Routed = res.DefRouted,
+            FactorsAtk = res.FactorsAtk,
+            FactorsDef = res.FactorsDef,
+        });
+
         CheckDestroy(g, def, emit);
+        CheckDestroy(g, atk, emit);
     }
 
     // ==================== Phase 6: Recovery ====================
@@ -551,7 +531,7 @@ public static class TurnResolver
             }
 
             // Routed units may rally
-            if (u.Status == UnitStatus.Routed && u.Morale > 30)
+            if (u.Status == UnitStatus.Routed && u.Morale > g.Rules.Combat.RoutRecover)
             {
                 u.Status = UnitStatus.Ready;
                 emit("rally", $"{u.Id} 重新集结", new List<string> { u.Side });
@@ -601,9 +581,9 @@ public static class TurnResolver
 
     private static void CheckHoldVictory(GameState g, VictoryCond vc, Action<string, string, List<string>> emit)
     {
-        var holders = MechanicsService.NodeHolders(g);
-        var redNodes = holders.GetValueOrDefault("red", new List<string>()).Count;
-        var blueNodes = holders.GetValueOrDefault("blue", new List<string>()).Count;
+        var holders = MechanicsService.NodeHoldersByHex(g);
+        var redNodes = holders.Count(h => h.Value == "red");
+        var blueNodes = holders.Count(h => h.Value == "blue");
 
         if (redNodes >= vc.RedHoldCount)
         {
@@ -621,9 +601,9 @@ public static class TurnResolver
 
     private static void CheckNodeVictory(GameState g, VictoryCond vc, Action<string, string, List<string>> emit)
     {
-        var holders = MechanicsService.NodeHolders(g);
-        var redNodes = holders.GetValueOrDefault("red", new List<string>()).Count;
-        var blueNodes = holders.GetValueOrDefault("blue", new List<string>()).Count;
+        var holders = MechanicsService.NodeHoldersByHex(g);
+        var redNodes = holders.Count(h => h.Value == "red");
+        var blueNodes = holders.Count(h => h.Value == "blue");
 
         if (redNodes > blueNodes)
         {
@@ -648,25 +628,6 @@ public static class TurnResolver
             u.Status = UnitStatus.Destroyed;
             emit("destroyed", $"{u.Id} 被歼灭", new List<string> { u.Side, "spectator" });
         }
-    }
-
-    private static double CommanderFactor(GameState g, Unit u)
-    {
-        // Simplified: base 1.0, could be enhanced with commander quality
-        return 1.0;
-    }
-
-    private static string EvolveWeather(GameState g)
-    {
-        // Simple weather evolution: stay the same or shift one step
-        var weathers = new[] { "clear", "cloudy", "rain", "storm", "fog", "snow" };
-        var currentIdx = Array.IndexOf(weathers, g.Weather ?? "clear");
-        if (currentIdx < 0) currentIdx = 0;
-
-        var change = g.Rng.NextInt(-1, 1); // -1, 0, or +1
-        var newIdx = Clamp(currentIdx + change, 0, weathers.Length - 1);
-
-        return weathers[newIdx];
     }
 
     private static T Clamp<T>(T value, T min, T max) where T : IComparable<T>

@@ -179,13 +179,45 @@ export interface ServerMsg {
   [k: string]: unknown
 }
 
+/** CF 战力链逐项贡献（doc §7），与后端 CombatFactors.ToMap() 同序。 */
+export interface WireFactors {
+  base: number
+  terrain: number
+  fort: number
+  strength: number
+  supply: number
+  morale: number
+  personnel: number
+  commander: number
+  weather: number
+  air: number
+  counter: number
+  ammo: number
+  cf: number
+}
+
+/** 一回合内的一次交战裁决；因子链让战报能解释「为什么打不动」。 */
+export interface WireBattle {
+  turn: number
+  kind: string
+  atk: string
+  def: string
+  atk_loss: number
+  def_loss: number
+  atk_cf: number
+  def_cf: number
+  factors_atk: WireFactors
+  factors_def: WireFactors
+  routed: boolean
+}
+
 export interface Frame {
   turn: number
   hour: number
   weather: string
   director: WireDirectorView
   events: WireEvent[]
-  battles: Array<Record<string, unknown>>
+  battles: WireBattle[]
 }
 
 export interface SavedMsg {

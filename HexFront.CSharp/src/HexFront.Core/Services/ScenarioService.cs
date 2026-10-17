@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using HexFront.Core.Geometry;
 using HexFront.Core.Models;
 
@@ -32,6 +33,13 @@ public static class ScenarioService
         public WeatherCfg? Weather { get; init; }
         public ClockCfg? Clock { get; init; }
         public Dictionary<string, SideConfig>? Sides { get; init; }
+
+        /// <summary>
+        /// 剧本 rules 块（snake_case 键，可含 combat 子块）：出厂默认之上的数值覆盖。
+        /// 刻意保留原始 JsonElement 而不是直接反序列化成 Rules，合并要走 <see cref="MergeRules"/>，
+        /// 这样逐层覆盖时缺键仍继承默认。
+        /// </summary>
+        public Dictionary<string, JsonElement>? Rules { get; init; }
     }
 
     /// <summary>Map environment spec from scenario "environment" block.</summary>
@@ -147,8 +155,41 @@ public static class ScenarioService
         }
     }
 
+    private static readonly JsonSerializerOptions RulesJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    /// <summary>
+    /// 把剧本 rules 块叠加到出厂默认之上：只改出现的键，缺键继承默认，未知键忽略（§7「全系数外置可配，调参不改码」）。
+    /// 走 JsonNode 逐层合并而不是直接反序列化，未来加一层「副本级覆盖」也不用改这段。
+    /// </summary>
+    public static Rules MergeRules(Rules baseRules, IReadOnlyDictionary<string, JsonElement>? block)
+    {
+        if (block is null || block.Count == 0) return baseRules;
+
+        var root = JsonSerializer.SerializeToNode(baseRules, RulesJsonOptions)!.AsObject();
+        foreach (var (key, value) in block)
+            Overlay(root, key, value);
+
+        return root.Deserialize<Rules>(RulesJsonOptions) ?? baseRules;
+    }
+
+    private static void Overlay(JsonObject target, string key, JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Object && target[key] is JsonObject child)
+        {
+            foreach (var p in value.EnumerateObject())
+                Overlay(child, p.Name, p.Value);
+            return;
+        }
+        target[key] = JsonNode.Parse(value.GetRawText());
+    }
+
     /// <summary>Create a GameState from scenario config. gisDir enables loading the referenced hex package.</summary>
-    public static GameState CreateGameState(ScenarioConfig config, string? gisDir = null)
+    public static GameState CreateGameState(ScenarioConfig config, string? gisDir = null,
+        uint seed = 42, string? instanceId = null)
     {
         var (grid, cells) = LoadGisCells(config.GisPackage, gisDir)
             ?? BuildProceduralGrid(config.Environment ?? new EnvSpec());
@@ -170,7 +211,7 @@ public static class ScenarioService
             WeatherMode = config.Weather?.Mode ?? config.WeatherMode,
             Over = false,
             Winner = null,
-            Rules = LibraryService.DEFAULT_RULES,
+            Rules = MergeRules(LibraryService.DEFAULT_RULES, config.Rules),
             Flags = config.Flags ?? new Dictionary<string, object>(),
             VictoryConds = new List<VictoryCond>(),
             Units = new List<Unit>(),
@@ -178,7 +219,12 @@ public static class ScenarioService
             Tracks = new Dictionary<string, Dictionary<string, Track>>(),
             AirControl = new Dictionary<string, double>(),
             Events = new List<WarEvent>(),
+            Seed = seed,
+            InstanceId = instanceId ?? Guid.NewGuid().ToString("N")[..12],
         };
+
+        // Rng 是只读属性、构造时先落在 0，种子只能在初始化器之后灌进去：整局随机流都从这一个起点起算
+        g.RngState = seed;
 
         // Parse victory conditions
         foreach (var vc in config.VictoryConds)

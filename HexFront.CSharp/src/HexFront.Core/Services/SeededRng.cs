@@ -3,7 +3,7 @@ using System;
 namespace HexFront.Core.Services;
 
 /// <summary>
-/// 确定性随机源：mulberry32。状态是 uint 且可序列化，所以存档续跑不会破坏一致性。
+/// 确定性随机源：状态是 uint 且可序列化，所以存档续跑不会破坏一致性。
 /// 全引擎只用这一个实例（GameState.Rng），任何 new Random() 都会让同种子对拍失效。
 /// </summary>
 public sealed class SeededRng
@@ -24,6 +24,7 @@ public sealed class SeededRng
         {
             _state += 0x6D2B79F5;
             var t = _state;
+            // 两处乘法的右操作数都用原始 t（对齐 rng.dart），不是 JS mulberry32 那种已覆写的 t
             t = (t ^ (t >> 15)) * (t | 1);
             t ^= t + ((t ^ (t >> 7)) * (t | 61));
             return t ^ (t >> 14);

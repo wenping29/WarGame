@@ -37,7 +37,7 @@ public sealed class RoomService
         _scenarioDir = Environment.GetEnvironmentVariable("HF_SCENARIO_DIR")
             ?? Path.Combine(root, "data", "scenarios");
         _saveDir = Environment.GetEnvironmentVariable("HF_SAVE_DIR")
-            ?? Path.Combine(root, "saves");
+            ?? Path.Combine(root, "data", "saves"); // §12.1：副本存档落在 data/saves/<实例>/
         _gisDir = Path.Combine(root, "data", "gis");
     }
 
@@ -124,6 +124,8 @@ public sealed class RoomService
                 ["ai"] = new Dictionary<string, object?> { ["red"] = room.AiRed, ["blue"] = room.AiBlue },
                 ["created_at"] = room.CreatedAt.ToString("o"),
                 ["fog"] = FlagBool(g, "fog", true),
+                ["seed"] = g.Seed,
+                ["fingerprint"] = g.Fingerprint(),
                 ["width"] = g.Width,
                 ["height"] = g.Height,
             };
@@ -406,7 +408,7 @@ public sealed class RoomService
         {
             foreach (var el in arr.EnumerateArray())
             {
-                var cmd = ParseCommand(el);
+                var cmd = CommandWire.FromJson(el); // 宽松：unit/unitId、[[q,r]]/{q,r} 都收
                 if (cmd != null) cmds.Add(cmd);
             }
         }
@@ -546,6 +548,8 @@ public sealed class RoomService
                 ["blue"] = room.Drafts["blue"].Select(c => c.Clone()).ToList(),
             };
 
+            // AI 补令本身也抽随机数：记下结算起点的随机源状态，重放才能拨回同一位置
+            var rngAtResolve = room.Game.RngState;
             report = TurnResolver.ResolveTurn(room.Game, orders);
             room.Drafts["red"].Clear();
             room.Drafts["blue"].Clear();
@@ -574,15 +578,10 @@ public sealed class RoomService
                 ["weather"] = room.Game.Weather,
                 ["director"] = FogService.DirectorView(room.Game),
                 ["events"] = EventsToMaps(report.Events),
-                ["battles"] = report.Battles.Select(b => new Dictionary<string, object?>
-                {
-                    ["turn"] = b.Turn,
-                    ["kind"] = b.Kind,
-                    ["attacker"] = b.Attacker,
-                    ["defender"] = b.Defender,
-                    ["losses"] = b.Losses,
-                }).ToList(),
+                ["battles"] = report.Battles.Select(BattleToMap).ToList(),
             });
+
+            PersistTurn(room, byRole, rngAtResolve, orders, report);
         }
         rejectedAll = rejectedAllList;
 
@@ -609,32 +608,65 @@ public sealed class RoomService
         }
     }
 
+    /// <summary>结算落盘：指令记录每回合必写，全量快照每 K 回合或终局一次。写盘失败只告警，不打断已算完的回合。</summary>
+    private void PersistTurn(
+        Room room, string byRole, uint rngAtResolve,
+        Dictionary<string, List<Command>> orders, TurnResolver.TurnReport report)
+    {
+        var resolvedTurn = room.Game.Turn - 1;
+        try
+        {
+            StoreService.AppendTurn(room.Game.InstanceId, new StoreService.TurnRecord
+            {
+                Turn = resolvedTurn,
+                At = DateTime.UtcNow,
+                ResolvedBy = byRole,
+                RngAtResolve = rngAtResolve,
+                Red = orders["red"],
+                Blue = orders["blue"],
+                Rejected = report.Rejected.Select(StoreService.RejectedOrder.From).ToList(),
+                FpBefore = report.FingerprintBefore,
+                FpAfter = report.FingerprintAfter,
+            }, _saveDir);
+
+            if (StoreService.ShouldSnapshot(resolvedTurn, room.Game.Over))
+                StoreService.WriteSnapshot(room.Game, _saveDir, room.InstanceName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "回合 {Turn} 落盘失败（副本 {Instance}）", resolvedTurn, room.Game.InstanceId);
+        }
+    }
+
     private async Task HandleSave(Room room, WsConn conn, JsonElement root)
     {
-        string name = GetStr(root, "name") ?? $"room {room.Code}";
+        string? name = GetStr(root, "name");
         string? desc = GetStr(root, "description");
         try
         {
             StoreService.SaveMetadata meta;
             lock (room.GameLock)
             {
-                meta = StoreService.SaveGame(room.Game, name, desc, _saveDir);
+                // 手动存档 = 给同一副本再落一张全量快照，实例 id 不变，可反复覆盖
+                meta = StoreService.WriteSnapshot(room.Game, _saveDir,
+                    name ?? room.InstanceName, desc);
             }
             await BroadcastAll(room, new Dictionary<string, object?>
             {
                 ["type"] = "saved",
-                ["turn"] = meta.Turn,
-                ["instance"] = meta.Id, // 与存档列表的 instance 同为可载入的 12 位 id
+                ["turn"] = meta.LastTurn,
+                ["instance"] = meta.Instance, // 与存档列表的 instance 同为可载入的副本 id
                 ["meta"] = new Dictionary<string, object?>
                 {
-                    ["id"] = meta.Id,
+                    ["instance"] = meta.Instance,
                     ["name"] = meta.Name,
                     ["description"] = meta.Description,
-                    ["saved_at"] = new DateTimeOffset(meta.SavedAt).ToUnixTimeMilliseconds(),
-                    ["turn"] = meta.Turn,
-                    ["weather"] = meta.Weather,
-                    ["unit_count"] = meta.UnitCount,
-                    ["file_size"] = meta.FileSize,
+                    ["scenario"] = meta.Scenario,
+                    ["seed"] = meta.Seed,
+                    ["created_at"] = meta.CreatedAt.ToString("o"),
+                    ["updated_at"] = meta.UpdatedAt.ToString("o"),
+                    ["last_turn"] = meta.LastTurn,
+                    ["max_turns"] = meta.MaxTurns,
                 },
             });
         }
@@ -816,7 +848,7 @@ public sealed class RoomService
             List<Dictionary<string, object?>>? draftMaps = null;
             if (role is "red" or "blue")
             {
-                draftMaps = room.Drafts[role].Select(CommandToMap).ToList();
+                draftMaps = room.Drafts[role].Select(CommandWire.ToMap).ToList();
             }
 
             return new Dictionary<string, object?>
@@ -848,8 +880,8 @@ public sealed class RoomService
     {
         view["orders"] = new Dictionary<string, object?>
         {
-            ["red"] = room.Drafts["red"].Select(CommandToMap).ToList(),
-            ["blue"] = room.Drafts["blue"].Select(CommandToMap).ToList(),
+            ["red"] = room.Drafts["red"].Select(CommandWire.ToMap).ToList(),
+            ["blue"] = room.Drafts["blue"].Select(CommandWire.ToMap).ToList(),
         };
         view["ready"] = new Dictionary<string, object?>
         {
@@ -873,7 +905,7 @@ public sealed class RoomService
 
     private Dictionary<string, object?> WithSideExtras(Room room, string side, Dictionary<string, object?> view)
     {
-        view["draft"] = room.Drafts[side].Select(CommandToMap).ToList();
+        view["draft"] = room.Drafts[side].Select(CommandWire.ToMap).ToList();
         view["ready"] = room.Ready[side];
         view["errors"] = room.LastErrors[side];
         view["ai_managed"] = side == "red" ? room.AiRed : room.AiBlue;
@@ -919,87 +951,26 @@ public sealed class RoomService
             ["sides"] = e.Sides,
         }).ToList();
 
-    // ==================== Parsing helpers ====================
-
-    /// <summary>Lenient command parser: accepts web format (unit, path=[[q,r]]) and React format (unitId, path=[{q,r}]).</summary>
-    private static Command? ParseCommand(JsonElement el)
+    /// <summary>
+    /// 战报帧：CF 因子链逐项随战报下发（doc M6「战报可解释各系数贡献」），
+    /// 导演部据此回答「这一格为什么打不动」，而不是只看到两个乘积。
+    /// </summary>
+    private static Dictionary<string, object?> BattleToMap(TurnResolver.BattleRecord b) => new()
     {
-        if (el.ValueKind != JsonValueKind.Object) return null;
-        var opStr = GetStr(el, "op");
-        CommandOp? op = opStr switch
-        {
-            "move" => CommandOp.Move,
-            "attack" => CommandOp.Attack,
-            "fire" => CommandOp.Fire,
-            "dig" => CommandOp.Dig,
-            "rest" => CommandOp.Rest,
-            "air_mission" => CommandOp.AirMission,
-            "halt" => CommandOp.Halt,
-            _ => null,
-        };
-        if (op == null) return null;
-
-        var path = new List<Hex>();
-        if (el.TryGetProperty("path", out var pathEl) && pathEl.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var p in pathEl.EnumerateArray())
-            {
-                var h = ParseHex(p);
-                if (h != null) path.Add(h.Value);
-            }
-        }
-
-        Hex? zone = el.TryGetProperty("zone", out var zoneEl) &&
-                    zoneEl.ValueKind is JsonValueKind.Array or JsonValueKind.Object
-            ? ParseHex(zoneEl)
-            : null;
-
-        return new Command
-        {
-            Op = op.Value,
-            UnitId = GetStr(el, "unit") ?? GetStr(el, "unitId") ?? "",
-            Path = path,
-            Target = GetStr(el, "target"),
-            Zone = zone,
-            Mission = GetStr(el, "mission") ?? "none",
-        };
-    }
-
-    private static Hex? ParseHex(JsonElement el)
-    {
-        if (el.ValueKind == JsonValueKind.Array && el.GetArrayLength() >= 2)
-        {
-            var q = el[0]; var r = el[1];
-            if (q.TryGetInt32(out var qq) && r.TryGetInt32(out var rr)) return new Hex(qq, rr);
-            return null;
-        }
-        if (el.ValueKind == JsonValueKind.Object &&
-            el.TryGetProperty("q", out var qEl) && el.TryGetProperty("r", out var rEl) &&
-            qEl.TryGetInt32(out var qv) && rEl.TryGetInt32(out var rv))
-        {
-            return new Hex(qv, rv);
-        }
-        return null;
-    }
-
-    private static Dictionary<string, object?> CommandToMap(Command c) => new()
-    {
-        ["op"] = c.Op switch
-        {
-            CommandOp.Move => "move",
-            CommandOp.Attack => "attack",
-            CommandOp.Fire => "fire",
-            CommandOp.Dig => "dig",
-            CommandOp.Rest => "rest",
-            CommandOp.AirMission => "air_mission",
-            _ => "halt",
-        },
-        ["unit"] = c.UnitId,
-        ["path"] = c.Path.Select(h => new int[] { h.Q, h.R }).ToList(),
-        ["target"] = c.Target,
-        ["zone"] = c.Zone != null ? new int[] { c.Zone.Value.Q, c.Zone.Value.R } : null,
-        ["mission"] = c.Mission,
+        ["turn"] = b.Turn,
+        ["kind"] = b.Kind,
+        ["atk"] = b.Attacker,
+        ["def"] = b.Defender,
+        ["atk_loss"] = b.AtkLoss,
+        ["def_loss"] = b.DefLoss,
+        ["atk_cf"] = b.AtkCf,
+        ["def_cf"] = b.DefCf,
+        ["factors_atk"] = b.FactorsAtk.ToMap(),
+        ["factors_def"] = b.FactorsDef.ToMap(),
+        ["routed"] = b.Routed,
     };
+
+    // ==================== Parsing helpers ====================
 
     private static string? GetStr(JsonElement el, string name) =>
         el.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
