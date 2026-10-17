@@ -722,7 +722,7 @@ public sealed class RoomService
         var binDir = Path.GetDirectoryName(assemblyPath);
         if (string.IsNullOrEmpty(binDir)) return Directory.GetCurrentDirectory();
         // bin/Debug/net10.0 → HexFront.Api → src → HexFront.CSharp → wargame
-        return Path.GetFullPath(Path.Combine(binDir, "..", "..", "..", "..", ".."));
+        return Path.GetFullPath(Path.Combine(binDir, "..", "..", "..", "..", "..", ".."));
     }
 
     // ==================== Internal types ====================
