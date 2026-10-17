@@ -440,11 +440,11 @@ public static class FogService
             ["cells"] = cells,
             ["victory"] = g.VictoryConds.Select(v => new Dictionary<string, object?>
             {
-                ["kind"] = VictoryKind(v),
+                ["kind"] = v.Kind,
                 ["side"] = v.Side,
-                ["target"] = v.HexKeys.Count > 0 ? v.HexKeys[0] : null,
+                ["target"] = v.Target,
                 ["amount"] = v.Amount,
-                ["turns"] = v.UntilTurn ?? 0,
+                ["turns"] = v.Turns,
             }).ToList(),
             ["nodes"] = MechanicsService.ObjectiveNodesGeo(g),
             ["over"] = g.Over,
@@ -452,16 +452,6 @@ public static class FogService
             ["fog"] = FlagBool(g, "fog", true),
         };
     }
-
-    private static string VictoryKind(VictoryCond v) => v.Type switch
-    {
-        VictoryType.Attrition => "annihilate",
-        VictoryType.HoldObjective => "capture",
-        VictoryType.ControlNodes => "nodes",
-        VictoryType.ExitMap => "reach",
-        VictoryType.TimedHold => "survive",
-        _ => "nodes",
-    };
 
     /// <summary>Unit status → Dart wire string (ready/moved/combat/routed/destroyed).</summary>
     public static string StatusStr(Unit u) => u.Status switch

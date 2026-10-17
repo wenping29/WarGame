@@ -25,6 +25,8 @@ public static class ScenarioService
         public bool StrictSupply { get; init; } = false;
         
         public List<UnitDeployment> Units { get; init; } = new();
+        /// <summary>剧本里的键名是 <c>victory</c>（doc §6.4），不是属性名推导出来的 victory_conds。</summary>
+        [System.Text.Json.Serialization.JsonPropertyName("victory")]
         public List<VictoryCondition> VictoryConds { get; init; } = new();
         public TerrainSpec? Terrain { get; init; }
         public Dictionary<string, object>? Flags { get; init; }
@@ -104,14 +106,18 @@ public static class ScenarioService
         public int Personnel { get; init; } = -1; // -1 means use type default
     }
 
-    /// <summary>Victory condition specification.</summary>
+    /// <summary>
+    /// 剧本胜利块：与线上 <c>victory</c> 数组同形（doc §6.4），kind/side/target/amount/turns 五项。
+    /// 旧的 RedThreshold/BlueThreshold 那套"双方各配一个阈值"是发明，剧本里根本不存在这些键，
+    /// 所以胜负从来不会由剧本达成 —— 现在按 kind 逐条判定本方是否达成。
+    /// </summary>
     public class VictoryCondition
     {
-        public string Type { get; init; } = "attrition";
-        public int RedThreshold { get; init; }
-        public int BlueThreshold { get; init; }
-        public int RedHoldCount { get; init; }
-        public int BlueHoldCount { get; init; }
+        public string Kind { get; init; } = "annihilate";
+        public string Side { get; init; } = "red";
+        public string? Target { get; init; }
+        public int Amount { get; init; }
+        public int Turns { get; init; }
     }
 
     /// <summary>Terrain specification for generation.</summary>
@@ -231,11 +237,11 @@ public static class ScenarioService
         {
             g.VictoryConds.Add(new VictoryCond
             {
-                Type = ParseVictoryType(vc.Type),
-                RedThreshold = vc.RedThreshold,
-                BlueThreshold = vc.BlueThreshold,
-                RedHoldCount = vc.RedHoldCount,
-                BlueHoldCount = vc.BlueHoldCount,
+                Kind = (vc.Kind ?? "").Trim().ToLowerInvariant(),
+                Side = string.IsNullOrWhiteSpace(vc.Side) ? "red" : vc.Side.Trim().ToLowerInvariant(),
+                Target = vc.Target,
+                Amount = vc.Amount,
+                Turns = vc.Turns,
             });
         }
 
@@ -556,14 +562,10 @@ public static class ScenarioService
         public string Path { get; init; } = "";
     }
 
-    private static VictoryType ParseVictoryType(string type)
-    {
-        return type.ToLowerInvariant() switch
-        {
-            "attrition" => VictoryType.Attrition,
-            "hold_objective" => VictoryType.HoldObjective,
-            "control_nodes" => VictoryType.ControlNodes,
-            _ => VictoryType.Attrition,
-        };
-    }
+    /// <summary>
+    /// 胜利种类白名单（doc §6.4/§8）：annihilate 歼灭比例 · capture 独占要点格 · nodes 同时掌握 N 处要点 · survive 撑满回合。
+    /// 认不出的 kind 不参与结算，但必须由剧本校验报错 —— 静默降级会让胜负条件凭空变化。
+    /// </summary>
+    public static bool IsVictoryKind(string kind) =>
+        kind is "annihilate" or "capture" or "nodes" or "survive";
 }

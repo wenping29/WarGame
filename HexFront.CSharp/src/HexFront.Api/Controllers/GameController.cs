@@ -377,6 +377,14 @@ public class GameController : ControllerBase
         if (initial != null && !LibraryService.WEATHER_JSON.ContainsKey(initial))
             errs.Add($"未知天气 {initial}");
 
+        foreach (var vc in cfg.VictoryConds)
+        {
+            if (!ScenarioService.IsVictoryKind(vc.Kind))
+                errs.Add($"未知胜利条件种类 {vc.Kind}（可用：annihilate / capture / nodes / survive）");
+            if (vc.Kind == "capture" && string.IsNullOrWhiteSpace(vc.Target))
+                errs.Add("capture 胜利条件缺少 target 格坐标");
+        }
+
         return errs;
     }
 

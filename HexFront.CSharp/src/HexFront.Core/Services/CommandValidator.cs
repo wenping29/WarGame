@@ -325,7 +325,8 @@ public static class CommandValidator
     /// <summary>
     /// 攻击射程：航空兵按作战半径，炮兵/反坦克炮等间接火力按自身射程，其余近战 1 格。
     /// 一律取自兵种表，不能写死 —— 剧本用 unit_type_defs 覆盖射程要立刻生效。
+    /// 结算阶段复用同一个口径：校验时能打到、机动后打不到的目标要跳过交战而不是另算一套。
     /// </summary>
-    private static int AttackReach(UnitTypeDef t) =>
+    public static int AttackReach(UnitTypeDef t) =>
         t.IsAir ? t.AirRange : (t.Range > 0 ? t.Range : 1);
 }

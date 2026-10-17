@@ -86,6 +86,14 @@ public sealed class Rules
     public double SupplyCrit { get; init; } = 0.4;
     public int TurnHours { get; init; } = 6;
 
+    // ⑥ 消耗与恢复（doc §8）：休整回血速率按补给率与昼夜缩放，未休整则继续积累疲劳。
+    public double MoraleRecover { get; init; } = 4.0;
+    public double FatigueRecover { get; init; } = 8.0;
+    public double FatigueIdle { get; init; } = 2.0;
+    public double AmmoRecover { get; init; } = 0.05;
+    public double RoutMoraleNudge { get; init; } = 2.0;
+    public double DefaultSupply { get; init; } = 0.7;   // 不可达格（无补给源）的宽松默认
+
     // Fog / observation parameters (Dart Rules defaults)
     public double LosElevStep { get; init; } = 60.0;
     public int ExposureE1 { get; init; } = 1;
@@ -170,6 +178,12 @@ public sealed class CombatParams
     // 季节消耗：冬 / 秋雨加重战损
     public double SeasonWinterAttrition { get; init; } = 1.25;
     public double SeasonAutumnAttrition { get; init; } = 1.08;
+
+    // 空中与间接火力：CF 裁决给出的是"弹着效果"，落地损失还要乘投放/校射效能，
+    // 这些不是战斗常数而是对地支援的规则参数，剧本可调（§7 全系数外置）。
+    public double StrikeLossScale { get; init; } = 1.4;
+    public double FireObservedEfficiency { get; init; } = 1.0;
+    public double FireBlindEfficiency { get; init; } = 0.6;
 }
 
 // ─────────────── Day Phase ───────────────

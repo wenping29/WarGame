@@ -51,8 +51,6 @@ public sealed class Unit
     public int Casualties { get; set; }           // Total casualties taken
     public bool Alive => Personnel > 0;
     public UnitStatus Status { get; set; } = UnitStatus.Ready;
-    public bool HasMoved { get; set; }
-    public bool HasFired { get; set; }
     public bool Airborne { get; set; }
     public string Mission { get; set; } = "none";
     public Hex? MissionZone { get; set; }
@@ -74,30 +72,19 @@ public enum UnitStatus
     Destroyed,
 }
 
-/// <summary>Victory condition types.</summary>
-public enum VictoryType
-{
-    Attrition,      // Eliminate enemy units
-    HoldObjective,  // Hold specific hexes
-    ControlNodes,   // Control N objective nodes
-    ExitMap,        // Move units off map edge
-    TimedHold       // Hold until turn N
-}
-
-/// <summary>Victory condition definition.</summary>
+/// <summary>
+/// 胜利条件：与线上 <c>victory[]</c> 同形（doc §6.4「kind: "nodes", amount: N」）。
+/// kind 用字符串而不是枚举：它既是剧本入参也是视图出参，多一层名字↔序号的映射只会让旧存档按数字错位。
+/// </summary>
 public sealed class VictoryCond
 {
-    public VictoryType Type { get; init; }
-    public string Side { get; init; } = "";
-    public int Amount { get; init; }          // e.g., number of nodes to hold
-    public List<string> HexKeys { get; init; } = new(); // Specific hexes to hold/exit
-    public int? UntilTurn { get; init; }      // For timed conditions
-    
-    // Additional fields for different victory types
-    public int RedThreshold { get; init; }    // For attrition: red personnel threshold
-    public int BlueThreshold { get; init; }   // For attrition: blue personnel threshold
-    public int RedHoldCount { get; init; }    // For hold: red must hold N nodes
-    public int BlueHoldCount { get; init; }   // For hold: blue must hold N nodes
+    /// <summary>annihilate 歼灭比例 / capture 独占要点格 / nodes 同时掌握 N 处要点 / survive 撑满回合。</summary>
+    public string Kind { get; init; } = "annihilate";
+    /// <summary>达成方；剧本漏写时按红方判定（与既有视图口径一致），不要让条件静默失效。</summary>
+    public string Side { get; init; } = "red";
+    public string? Target { get; init; }   // capture："q,r"
+    public int Amount { get; init; }       // annihilate：削掉起始兵力的百分比；nodes：要点数量
+    public int Turns { get; init; }        // survive：坚持到该回合
 }
 
 /// <summary>
@@ -127,6 +114,8 @@ public sealed class GameState
     public string WeatherMode { get; set; } = "director"; // director/realistic/random
     public bool Over { get; set; }
     public string? Winner { get; set; }
+    /// <summary>终局发生的回合号（未终局为 null）：回放时间轴要知道"打到第几回合就结了"。</summary>
+    public int? EndedTurn { get; set; }
     
     // Game flags (optional modifiers)
     public Dictionary<string, object> Flags { get; init; } = new();
@@ -260,6 +249,8 @@ public sealed class GameState
             Weather = Weather,
             WeatherMode = WeatherMode,
             Over = Over,
+            Winner = Winner,
+            EndedTurn = EndedTurn,
             Flags = new Dictionary<string, object>(Flags),
             VictoryConds = new List<VictoryCond>(VictoryConds),
             Obs = Obs.ToDictionary(
