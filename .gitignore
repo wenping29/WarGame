@@ -149,42 +149,14 @@ appsettings.*.json
 # *.sqlite3
 
 
-HexFront.CSharp/src/HexFront.Api/bin/
-HexFront.CSharp/src/HexFront.Api/obj/
-HexFront.CSharp/tests/HexFront.Tests/obj/
-HexFront.CSharp/tests/HexFront.Tests/bin/
-HexFront.CSharp/src/HexFront.Core/bin/
-HexFront.CSharp/src/HexFront.Core/obj/
-HexFront.CSharp/src/HexFront.Api/bin/
-HexFront.CSharp/src/HexFront.Api/obj/
-HexFront.CSharp/tests/HexFront.Tests/bin/
-HexFront.CSharp/tests/HexFront.Tests/obj/
+# ---- HexFront.CSharp .NET 编译产物 ----
+# 刻意限定在 HexFront.CSharp 下：hexfront/bin/ 是 Dart 引擎源码目录，全局 bin/ 规则会把它们一起吞掉
+HexFront.CSharp/**/[Bb]in/
+HexFront.CSharp/**/[Oo]bj/
+HexFront.CSharp/**/[Dd]ebug/
+HexFront.CSharp/**/[Rr]elease/
+HexFront.CSharp/**/*.binlog
 
-
-HexFront.CSharp/src/HexFront.Api/bin/Debug/net10.0/HexFront.Api.dll
-HexFront.CSharp/src/HexFront.Api/bin/Debug/net10.0/HexFront.Api.exe
-HexFront.CSharp/src/HexFront.Api/bin/Debug/net10.0/HexFront.Core.dll
-HexFront.CSharp/src/HexFront.Api/bin/Debug/net10.0/HexFront.Core.pdb
-HexFront.CSharp/src/HexFront.Api/obj/Debug/net10.0/apphost.exe
-HexFront.CSharp/src/HexFront.Api/obj/Debug/net10.0/HexFront.Api.dll
-HexFront.CSharp/src/HexFront.Api/obj/Debug/net10.0/HexFront.Api.pdb
-HexFront.CSharp/src/HexFront.Api/obj/Debug/net10.0/HexFront.Api.sourcelink.json
-HexFront.CSharp/src/HexFront.Api/obj/Debug/net10.0/rjsmcshtml.dswa.cache.json
-HexFront.CSharp/src/HexFront.Api/obj/Debug/net10.0/rjsmrazor.dswa.cache.json
-HexFront.CSharp/src/HexFront.Api/obj/Debug/net10.0/refint/HexFront.Api.dll
-HexFront.CSharp/src/HexFront.Core/bin/Debug/net10.0/HexFront.Core.dll
-HexFront.CSharp/src/HexFront.Core/bin/Debug/net10.0/HexFront.Core.pdb
-HexFront.CSharp/src/HexFront.Core/obj/Debug/net10.0/HexFront.Core.dll
-HexFront.CSharp/src/HexFront.Core/obj/Debug/net10.0/HexFront.Core.pdb
-HexFront.CSharp/src/HexFront.Core/obj/Debug/net10.0/HexFront.Core.sourcelink.json
-HexFront.CSharp/src/HexFront.Core/obj/Debug/net10.0/ref/HexFront.Core.dll
-HexFront.CSharp/src/HexFront.Core/obj/Debug/net10.0/refint/HexFront.Core.dll
-HexFront.CSharp/tests/HexFront.Tests/bin/Debug/net10.0/HexFront.Core.dll
-HexFront.CSharp/tests/HexFront.Tests/bin/Debug/net10.0/HexFront.Core.pdb
-HexFront.CSharp/tests/HexFront.Tests/bin/Debug/net10.0/HexFront.Tests.dll
-HexFront.CSharp/tests/HexFront.Tests/bin/Debug/net10.0/HexFront.Tests.pdb
-HexFront.CSharp/tests/HexFront.Tests/obj/Debug/net10.0/HexFront.Tests.dll
-HexFront.CSharp/tests/HexFront.Tests/obj/Debug/net10.0/HexFront.Tests.pdb
-HexFront.CSharp/tests/HexFront.Tests/obj/Debug/net10.0/HexFront.Tests.sourcelink.json
-HexFront.CSharp/tests/HexFront.Tests/obj/Debug/net10.0/ref/HexFront.Tests.dll
-HexFront.CSharp/tests/HexFront.Tests/obj/Debug/net10.0/refint/HexFront.Tests.dll
+# ---- Python 缓存 ----
+__pycache__/
+*.py[cod]
