@@ -132,7 +132,7 @@ public static class AiService
         {
             Op = CommandOp.Move,
             UnitId = u.Id,
-            Path = path.Skip(1).ToList(), // Exclude starting position
+            Path = path, // 校验要求 path[0]==单位当前格，去掉起点会让 AI 机动 100% 被拒
         };
     }
 
@@ -162,9 +162,7 @@ public static class AiService
         if (difficulty == Difficulty.Easy)
         {
             // Random adjacent hex
-            var directions = Hex.Directions;
-            var dir = directions[rng.Next(directions.Length)];
-            return new Hex(u.Pos.Q + dir.Q, u.Pos.R + dir.R);
+            return u.Pos.Neighbors().ElementAt(rng.Next(6));
         }
 
         // Medium/Hard: Move toward nearest enemy or objective
@@ -223,16 +221,15 @@ public static class AiService
     /// <summary>Get next step toward target hex.</summary>
     private static Hex GetNextStepToward(GameState g, Hex from, Hex to)
     {
-        var directions = Hex.Directions;
+        // Pick the neighbor that reduces distance most; prefer cells that are actually
+        // on the board and passable, otherwise the engine rejects the move order.
+        var candidates = from.Neighbors().ToList();
+        var usable = candidates
+            .Where(h => g.GetCell(h) != null && !g.TerrainOf(h).Impassable)
+            .ToList();
+        if (usable.Count == 0) usable = candidates;
 
-        // Pick direction that reduces distance most
-        var bestDir = directions.OrderBy(d =>
-        {
-            var next = new Hex(from.Q + d.Q, from.R + d.R);
-            return next.DistanceTo(to);
-        }).First();
-
-        return new Hex(from.Q + bestDir.Q, from.R + bestDir.R);
+        return usable.OrderBy(h => h.DistanceTo(to)).First();
     }
 
     /// <summary>Find enemy units within range.</summary>

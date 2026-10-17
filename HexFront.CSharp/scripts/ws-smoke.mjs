@@ -43,7 +43,24 @@ function connect(qs) {
 }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const room = 'SMOKE' + Date.now().toString(36);
+const API = 'http://localhost:5018';
+
+// 房间必须由 REST 创建：未知房间码连 /ws 一律 404（不再静默建局）
+const noSuchRoom = await new Promise((resolve) => {
+  const ws = new WebSocket(BASE + '?room=NOSUCH0&role=director');
+  ws.onopen = () => { ws.close(); resolve('opened'); };
+  ws.onerror = () => resolve('rejected');
+});
+if (noSuchRoom !== 'rejected') fail('unknown room code should not open a game, got: ' + noSuchRoom);
+log('0. 未知房间码被拒（不再静默建局）');
+
+const inst = await (await fetch(API + '/api/instances', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ scenario: 'rhine_corridor', name: 'ws-smoke' }),
+})).json();
+if (!inst.code) fail('create instance failed: ' + JSON.stringify(inst));
+const room = inst.code;
+log('0. 副本创建 code=' + room);
 
 // 1. director joins
 const dir = await connect(`?room=${room}&role=director`);
@@ -85,9 +102,13 @@ const turnNow = sArr[sArr.length - 1].turn;
 log('5. resolved: events', ev.events.length, 'rejected', ev.rejected.length, 'new turn', turnNow);
 if (turnNow !== turn0 + 1) fail(`expected turn ${turn0} -> ${turn0 + 1}, got ${turnNow}`);
 
-// 5. frames
+// 5. frames：回放帧含导演部全知视图，对抗方不得取用
+const redErrBefore = red.msgs.filter(m => m.type === 'error').length;
 red.send({ type: 'frames' });
-log('6. frames count:', (await red.waitFor('frames'))[0].frames.length);
+const [ferr] = await red.waitFor('error', redErrBefore + 1, 5000);
+log('6. red frames rejected:', ferr.message);
+dir.send({ type: 'frames' });
+log('   director frames count:', (await dir.waitFor('frames'))[0].frames.length);
 
 // 6. save
 const [saved] = await (async () => { dir.send({ type: 'save', name: 'ws-smoke' }); return dir.waitFor('saved'); })();
@@ -103,10 +124,25 @@ try {
 log('   red2 state kind:', (await red2.waitFor('state'))[0].view.kind);
 
 // 8. director_cmd weather + fog
-dir.send({ type: 'director_cmd', action: 'fog', value: false });
-await sleep(300);
+dir.send({ type: 'director_cmd', action: 'fog', on: false });
+await sleep(400);
 const dState = dir.msgs.filter(m => m.type === 'state').pop();
 log('9. fog off, view fog field:', dState.view.fog ?? 'n/a');
+
+// 8b. 明牌不留档案（§11.9）：关雾时红方看得见全部敌人，重开雾后不能留下这份永久档案
+const enemyCount = (dState.view.units || []).filter(u => u.side !== 'red' && u.side !== 'neutral').length;
+const offState = red2.msgs.filter(m => m.type === 'state').pop();
+log('   明牌红方 contacts:', (offState.view.contacts || []).length, '/ 敌方单位', enemyCount);
+if ((offState.view.contacts || []).length !== enemyCount)
+  fail('fog off should show every enemy in the side view');
+dir.send({ type: 'director_cmd', action: 'fog', on: true });
+const redStatesBefore = red2.msgs.filter(m => m.type === 'state').length;
+const onArr = await red2.waitFor('state', redStatesBefore + 1, 5000);
+const onState = onArr[onArr.length - 1];
+const back = (onState.view.contacts || []).length;
+log('   重开雾红方 contacts:', back, 'fog field:', onState.view.fog);
+log('   重开雾红方 contacts:', back);
+if (back >= enemyCount) fail('fog re-enabled but the omniscient archive survived (' + back + '/' + enemyCount + ')');
 
 // 9. non-director resolve rejected
 blue.send({ type: 'resolve' });

@@ -77,13 +77,13 @@ public static class FogService
 
         if (!fogOn)
         {
-            // 迷雾关闭：双方互为全知（教学/调试用）
+            // 迷雾关闭只放开观测场，不写 tracks：明牌期间的"看见"不该变成重开雾后 still 生效的永久档案（§11.9）。
+            // 明牌展示由 SideView 实时合成。
             foreach (var side in sides)
             {
                 var all = new Dictionary<string, int>();
                 foreach (var key in g.Cells.Keys) all[key] = 99;
                 g.Obs[side] = all;
-                RefreshTracks(g, side, allSeeing: true);
             }
             g.Obs["spectator"] = new Dictionary<string, int>();
             return;
@@ -128,12 +128,12 @@ public static class FogService
             }
 
             g.Obs[side] = pts;
-            RefreshTracks(g, side, allSeeing: false);
+            RefreshTracks(g, side);
         }
         g.Obs["spectator"] = new Dictionary<string, int>();
     }
 
-    private static void RefreshTracks(GameState g, string side, bool allSeeing)
+    private static void RefreshTracks(GameState g, string side)
     {
         var enemies = g.Units
             .Where(u => u.Alive && u.Side != side && u.Side != "neutral")
@@ -148,7 +148,7 @@ public static class FogService
         foreach (var e in enemies)
         {
             var p = pts.GetValueOrDefault(e.Pos.Key, 0);
-            var lvl = allSeeing ? 3 : ExposureLevel(g, p);
+            var lvl = ExposureLevel(g, p);
             if (lvl > 0)
             {
                 seenIds.Add(e.Id);
@@ -157,7 +157,7 @@ public static class FogService
                 tracks[e.Id] = new Track
                 {
                     UnitId = e.Id,
-                    Level = allSeeing ? 3 : level,
+                    Level = level,
                     LastSeen = e.Pos,
                     LastSeenTurn = g.Turn,
                 };
@@ -243,7 +243,20 @@ public static class FogService
             .OrderBy(u => u.Id, StringComparer.Ordinal)
             .Select(u => OwnUnit(g, u))
             .ToList();
-        var contacts = (g.Tracks.TryGetValue(side, out var tracks) ? tracks.Values : Enumerable.Empty<Track>())
+        // 明牌时按 E3 实时合成敌情，不读也不写 tracks —— 关雾是一次性照明，不是发档案
+        List<Track> seenTracks;
+        if (!FlagBool(g, "fog", true))
+        {
+            seenTracks = g.Units
+                .Where(u => u.Alive && u.Side != side && u.Side != "neutral")
+                .Select(u => new Track { UnitId = u.Id, Level = 3, LastSeen = u.Pos, LastSeenTurn = g.Turn })
+                .ToList();
+        }
+        else
+        {
+            seenTracks = g.Tracks.TryGetValue(side, out var tracks) ? tracks.Values.ToList() : new List<Track>();
+        }
+        var contacts = seenTracks
             .OrderBy(t => t.UnitId, StringComparer.Ordinal)
             .Select(t => ContactOf(g, t))
             .ToList();
@@ -396,6 +409,7 @@ public static class FogService
             ["ox"] = g.Grid.Ox,
             ["oy"] = g.Grid.Oy,
             ["radius"] = g.Grid.Radius,
+            ["layout"] = "odd_r",
         };
         if (g.Grid.CellGroundKm > 0) geo["cell_ground_km"] = g.Grid.CellGroundKm;
         if (g.Grid.MercatorScale > 0) geo["mercator_scale"] = g.Grid.MercatorScale;

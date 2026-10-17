@@ -350,35 +350,40 @@ public static class TurnResolver
             if (u.Fuel <= 0.01 && (cls == "motor" || cls == "mech")) budget *= 0.25;
             if (u.Fatigue > 70) budget *= 0.7;
             if (u.FortLevel > 0) budget *= 0.8; // Abandon fortifications
-            budget = Clamp(budget * hq, 0.6, 1.15);
+            // 指挥官系数只在 [0.6,1.15] 内缩放，预算本身按 Dart 语义取整（不是把预算夹到 1.15）
+            budget = Math.Round(budget * Clamp(hq, 0.6, 1.15));
 
             var spent = 0.0;
             var cur = u.Pos;
-            var pathValid = true;
+            var moved_any = false;
 
             foreach (var h in c.Path.Skip(1))
             {
                 var td = g.TerrainOf(h);
                 var cell = g.GetCell(h);
-                if (cell == null) { pathValid = false; break; }
+                if (cell == null || td.Impassable) break;
 
                 var step = StepCost(td, cell, cls);
-                if (td.Impassable) { pathValid = false; break; }
                 if (spent + step > budget) break;
 
                 spent += step;
                 cur = h;
+                moved_any = true;
             }
 
-            if (!pathValid || cur == u.Pos) continue;
+            if (!moved_any || cur == u.Pos) continue;
 
             // Execute movement
             var oldPos = u.Pos;
+            u.Fatigue = Clamp(u.Fatigue + g.Rules.FatigueMarch * (spent / Math.Max(1, budget)) * 6, 0, 100);
+            u.Morale = Clamp(u.Morale - (u.Fatigue > 80 ? 3 : 0), 0, 100);
+            u.FortLevel = 0;
             u.Pos = cur;
-            u.Fatigue = Clamp(u.Fatigue + spent * g.Rules.FatigueMarch, 0, 100);
+            u.Status = UnitStatus.Moved;
+            u.HasMoved = true;
             moved.Add(u);
 
-            emit("move", $"{u.Id} 从 ({oldPos.Q},{oldPos.R}) 移动到 ({cur.Q},{cur.R})", new List<string> { u.Side });
+            emit("move", $"{u.Id} 机动至 {cur.Q},{cur.R}（耗 MP {Math.Round(spent)}）", new List<string> { u.Side });
 
             // Check if entering enemy-occupied hex
             var enemies = g.UnitsAt(cur).Where(e => e.Side != u.Side && e.Alive).ToList();

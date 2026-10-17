@@ -165,8 +165,6 @@ public sealed class RoomService
         var token = query["token"].ToString();
         var name = query["name"].ToString();
         var force = query["force"].ToString() == "1";
-        var scenarioId = query["scenario"].ToString();
-        var saveId = query["save"].ToString();
 
         if (string.IsNullOrEmpty(code) || !Roles.Contains(role))
         {
@@ -182,20 +180,15 @@ public sealed class RoomService
             return;
         }
 
-        Room room;
-        try
+        // 副本只能由 POST /api/instances 或 POST /api/saves/load 创建；
+        // 未知房间码在这里静默建局会让打错码的人开出一局没人知道的仗，且与 GET /api/room/{code} 的 404 自相矛盾。
+        if (!TryFindRoom(code, out var roomFound) || roomFound.Game == null)
         {
-            room = _rooms.GetOrAdd(code, c => CreateRoom(c, scenarioId, saveId));
-            if (room.Game == null)
-                throw new InvalidOperationException("房间状态无效");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "room {Code} init failed", code);
-            context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await context.Response.WriteAsync("room init failed: " + ex.Message);
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            await context.Response.WriteAsync("room not found");
             return;
         }
+        var room = roomFound;
 
         var socket = await context.WebSockets.AcceptWebSocketAsync();
         var conn = new WsConn
@@ -255,14 +248,26 @@ public sealed class RoomService
         });
         await conn.SendAsync(BuildState(room, role));
 
-        await ReceiveLoop(room, conn, context.RequestAborted);
-
-        // Deregister only if our slot was not taken over by a newer connection.
-        if (room.Slots.TryGetValue(role, out var cur) && ReferenceEquals(cur, conn))
+        try
         {
-            room.Slots.TryRemove(role, out _);
+            await ReceiveLoop(room, conn, context.RequestAborted);
         }
-        _logger.LogInformation("room {Code}: {Role} disconnected", code, role);
+        catch (Exception ex)
+        {
+            _logger.LogInformation(ex, "room {Code}: {Role} receive aborted", code, role);
+        }
+        finally
+        {
+            // Deregister only if our slot was not taken over by a newer connection.
+            if (room.Slots.TryGetValue(role, out var cur) && ReferenceEquals(cur, conn))
+            {
+                room.Slots.TryRemove(role, out _);
+            }
+            // 对端可能不发 close 帧就掉线（进程退出/断网），主动作废该 socket，
+            // 否则 IsOpen 永远为 true，角色位被僵尸连接占死、force 接管也救不回来。
+            try { conn.Socket.Abort(); } catch { /* 忽略 */ }
+            _logger.LogInformation("room {Code}: {Role} disconnected", code, role);
+        }
     }
 
     private async Task ReceiveLoop(Room room, WsConn conn, CancellationToken ct)
@@ -349,6 +354,12 @@ public sealed class RoomService
                 break;
 
             case "frames":
+                // 回放帧含导演部全知视图，对抗方取用即等于看对手底牌
+                if (conn.Role is not ("director" or "spectator"))
+                {
+                    await conn.SendAsync(ErrorPayload("只有导演部与观战可以获取回放帧"));
+                    break;
+                }
                 await conn.SendAsync(new Dictionary<string, object?>
                 {
                     ["type"] = "frames",
@@ -907,38 +918,6 @@ public sealed class RoomService
             ["text"] = e.Text,
             ["sides"] = e.Sides,
         }).ToList();
-
-    // ==================== Room creation ====================
-
-    private Room CreateRoom(string code, string scenarioId, string saveId)
-    {
-        GameState game;
-        if (!string.IsNullOrEmpty(saveId))
-        {
-            game = StoreService.LoadGame(saveId, _saveDir);
-        }
-        else
-        {
-            var scenarios = ScenarioService.ListScenarios(_scenarioDir);
-            var info = string.IsNullOrEmpty(scenarioId)
-                ? scenarios.FirstOrDefault()
-                : scenarios.FirstOrDefault(s => s.Id == scenarioId) ?? scenarios.FirstOrDefault();
-            if (info == null)
-                throw new InvalidOperationException($"目录 {_scenarioDir} 中没有可用剧本");
-            game = ScenarioService.CreateGameState(ScenarioService.LoadFromFile(info.Path), _gisDir);
-        }
-
-        _logger.LogInformation("room {Code} created from scenario {Scenario} turn {Turn}",
-            code, game.ScenarioId, game.Turn);
-
-        return new Room
-        {
-            Code = code,
-            Game = game,
-            Drafts = new Dictionary<string, List<Command>> { ["red"] = new(), ["blue"] = new() },
-            Ready = new Dictionary<string, bool> { ["red"] = false, ["blue"] = false },
-        };
-    }
 
     // ==================== Parsing helpers ====================
 
