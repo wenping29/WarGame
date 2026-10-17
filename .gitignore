@@ -160,3 +160,6 @@ HexFront.CSharp/**/*.binlog
 # ---- Python 缓存 ----
 __pycache__/
 *.py[cod]
+
+# ---- 兵棋运行期存档（每跑一局验证就新增/改写，不属于代码） ----
+saves/
