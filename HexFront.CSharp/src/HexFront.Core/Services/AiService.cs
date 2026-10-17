@@ -157,12 +157,10 @@ public static class AiService
     /// <summary>Find best hex to move toward based on objectives.</summary>
     private static Hex? FindBestTarget(GameState g, Unit u, Difficulty difficulty)
     {
-        var rng = new Random();
-
         if (difficulty == Difficulty.Easy)
         {
             // Random adjacent hex
-            return u.Pos.Neighbors().ElementAt(rng.Next(6));
+            return u.Pos.Neighbors().ElementAt(g.Rng.NextInt(0, 5));
         }
 
         // Medium/Hard: Move toward nearest enemy or objective
@@ -174,7 +172,7 @@ public static class AiService
         }
 
         // No enemies: move toward center of map or random
-        return new Hex(u.Pos.Q + rng.Next(-2, 3), u.Pos.R + rng.Next(-2, 3));
+        return new Hex(u.Pos.Q + g.Rng.NextInt(-2, 2), u.Pos.R + g.Rng.NextInt(-2, 2));
     }
 
     /// <summary>Simple pathfinding (BFS for short distances).</summary>
@@ -254,14 +252,13 @@ public static class AiService
     }
 
     /// <summary>Select best enemy target based on weakness/priority.</summary>
-    private static Unit? SelectBestTarget(List<Unit> enemies, Difficulty difficulty)
+    private static Unit? SelectBestTarget(SeededRng rng, List<Unit> enemies, Difficulty difficulty)
     {
         if (enemies.Count == 0) return null;
 
         if (difficulty == Difficulty.Easy)
         {
-            var rng = new Random();
-            return enemies[rng.Next(enemies.Count)];
+            return enemies[rng.NextInt(0, enemies.Count - 1)];
         }
 
         // Medium/Hard: Pick weakest or most damaged

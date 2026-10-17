@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using HexFront.Core.Geometry;
 using HexFront.Core.Services;
 
@@ -116,6 +118,8 @@ public sealed class GameState
     // Scenario metadata
     public string ScenarioId { get; init; } = "";
     public string ScenarioName { get; init; } = "";
+    /// <summary>副本随机种子：同种子 + 同指令序列 → 同结果（§4 确定性要求）。</summary>
+    public uint Seed { get; set; }
     public int Turn { get; set; }  // Current turn number
     public int MaxTurns { get; init; } = 14;
     public int HourOfDay { get; set; } = 6;
@@ -149,6 +153,21 @@ public sealed class GameState
     public int Width => Grid.Width;
     public int Height => Grid.Height;
     public string Season { get; init; } = "summer";
+
+    /// <summary>
+    /// 全引擎唯一随机源。Rng 本身不进 JSON（[JsonIgnore]），
+    /// 由 <see cref="RngState"/> 以扁平 rng_state 落盘，与 Dart 快照字段同名，
+    /// 载入时必须恢复状态而不是新建，否则续跑的分歧从第一个抖动就开始。
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public SeededRng Rng { get; } = new SeededRng(0);
+
+    /// <summary>随机源状态（序列化为 rng_state）。</summary>
+    public uint RngState
+    {
+        get => Rng.State;
+        set => Rng.State = value;
+    }
 
     /// <summary>Get cell at hex position.</summary>
     public Cell? GetCell(Hex h)
@@ -194,15 +213,31 @@ public sealed class GameState
         return Units.Where(u => u.Alive && u.Side == side).ToList();
     }
 
-    /// <summary>Generate state fingerprint for change detection.</summary>
+    /// <summary>
+    /// 紧凑指纹（FNV-1a 8 位十六进制）：确定性对拍 + 存档完整性校验，字段构成与 Dart 版 state.dart 对齐。
+    /// 必须含 rng_state —— 随机源走偏要在指纹上立刻暴露，不能等到肉眼比对兵力。
+    /// </summary>
     public string Fingerprint()
     {
-        var hash = $"{Turn}:{Units.Count}:";
-        foreach (var u in Units.OrderBy(u => u.Id))
-        {
-            hash += $"{u.Id}({u.Personnel},{u.Pos.Key});";
-        }
-        return hash;
+        var sb = new StringBuilder();
+        sb.Append(Turn).Append('#').Append(HourOfDay).Append('#').Append(Weather ?? "clear")
+          .Append('#').Append(Rng.State).Append('#');
+        sb.Append(string.Join("|", Units
+            .OrderBy(u => u.Id, StringComparer.Ordinal)
+            .Select(u => $"{u.Id}:{u.Pos.Q},{u.Pos.R}:{u.Personnel}:{u.Status}:{u.FortLevel}")));
+        sb.Append('#');
+        sb.Append(string.Join("|", AirControl
+            .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
+            .Select(kvp => $"{kvp.Key}={kvp.Value.ToString("F3", CultureInfo.InvariantCulture)}")));
+        return Fnv1a(sb.ToString());
+    }
+
+    private static string Fnv1a(string s)
+    {
+        var h = 2166136261u;
+        // 按 UTF-16 code unit 累加，与 Dart 的 codeUnits 取法一致
+        foreach (var c in s) h = unchecked((h ^ c) * 16777619u);
+        return h.ToString("x8", CultureInfo.InvariantCulture);
     }
 
     /// <summary>Create a deep copy of the game state (for turn resolution rollback).</summary>
@@ -239,6 +274,8 @@ public sealed class GameState
             InstanceId = InstanceId,
             Name = Name,
             Season = Season,
+            Seed = Seed,
+            RngState = RngState, // 副本回滚不能顺带把随机源拨回原点
         };
     }
 }

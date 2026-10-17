@@ -200,7 +200,7 @@ public static class TurnResolver
             var ctl = g.AirControl.GetValueOrDefault(z.Key, 0);
             var hostile = (ctl > 0.2 && u.Side == "blue") || (ctl < -0.2 && u.Side == "red");
 
-            if (hostile && new Random().NextDouble() < 0.12)
+            if (hostile && g.Rng.Chance(0.12))
             {
                 u.Personnel = 0;
                 u.Status = UnitStatus.Destroyed;
@@ -663,8 +663,7 @@ public static class TurnResolver
         var currentIdx = Array.IndexOf(weathers, g.Weather ?? "clear");
         if (currentIdx < 0) currentIdx = 0;
 
-        var rng = new Random();
-        var change = rng.Next(-1, 2); // -1, 0, or +1
+        var change = g.Rng.NextInt(-1, 1); // -1, 0, or +1
         var newIdx = Clamp(currentIdx + change, 0, weathers.Length - 1);
 
         return weathers[newIdx];
