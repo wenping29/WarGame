@@ -89,7 +89,7 @@ public static class StoreService
             return new List<SaveMetadata>();
 
         var json = File.ReadAllText(indexPath);
-        var saves = JsonSerializer.Deserialize<List<SaveMetadata>>(json);
+        var saves = JsonSerializer.Deserialize<List<SaveMetadata>>(json, JsonOptions);
 
         return saves ?? new List<SaveMetadata>();
     }
@@ -106,7 +106,7 @@ public static class StoreService
         if (File.Exists(indexPath))
         {
             var json = File.ReadAllText(indexPath);
-            var saves = JsonSerializer.Deserialize<List<SaveMetadata>>(json) ?? new List<SaveMetadata>();
+            var saves = JsonSerializer.Deserialize<List<SaveMetadata>>(json, JsonOptions) ?? new List<SaveMetadata>();
             saves = saves.Where(s => s.Id != id).ToList();
 
             var newJson = JsonSerializer.Serialize(saves, JsonOptions);
@@ -129,7 +129,7 @@ public static class StoreService
         if (File.Exists(indexPath))
         {
             var json = File.ReadAllText(indexPath);
-            saves = JsonSerializer.Deserialize<List<SaveMetadata>>(json) ?? new List<SaveMetadata>();
+            saves = JsonSerializer.Deserialize<List<SaveMetadata>>(json, JsonOptions) ?? new List<SaveMetadata>();
         }
 
         // Add new entry (no updates, always append)

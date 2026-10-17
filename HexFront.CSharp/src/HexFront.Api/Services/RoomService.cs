@@ -41,13 +41,125 @@ public sealed class RoomService
         _gisDir = Path.Combine(root, "data", "gis");
     }
 
+    // ==================== Public API for REST controller ====================
+
+    public string ScenarioDirectory => _scenarioDir;
+    public string SaveDirectory => _saveDir;
+    public string GisDirectory => _gisDir;
+
+    /// <summary>Create a room from an existing game state (REST instance creation / save resume).</summary>
+    public string CreateRoomFromState(GameState game, string? instanceName = null, bool aiRed = false, bool aiBlue = false)
+    {
+        string code;
+        do
+        {
+            code = RandomCode();
+        }
+        while (_rooms.ContainsKey(code));
+
+        var room = new Room
+        {
+            Code = code,
+            Game = game,
+            InstanceName = instanceName,
+            AiRed = aiRed,
+            AiBlue = aiBlue,
+            Drafts = new Dictionary<string, List<Command>> { ["red"] = new(), ["blue"] = new() },
+            Ready = new Dictionary<string, bool> { ["red"] = false, ["blue"] = false },
+        };
+
+        // Resumed mid-game state gets an initial replay frame, matching Dart saves/load behavior.
+        if (game.Turn > 1)
+        {
+            lock (room.GameLock)
+            {
+                room.Frames.Add(new Dictionary<string, object?>
+                {
+                    ["turn"] = game.Turn - 1,
+                    ["hour"] = game.HourOfDay,
+                    ["weather"] = game.Weather,
+                    ["director"] = FogService.DirectorView(game),
+                    ["events"] = EventsToMaps(game.Events.TakeLast(200).ToList()),
+                });
+            }
+        }
+
+        _rooms[code] = room;
+        _logger.LogInformation("room {Code} opened for instance {Scenario} turn {Turn}", code, game.ScenarioId, game.Turn);
+        return code;
+    }
+
+    /// <summary>Public room listing for lobby (matches Dart publicInfo() shape).</summary>
+    public Dictionary<string, object?>? PublicInfo(string code)
+    {
+        if (!TryFindRoom(code, out var room)) return null;
+        lock (room.GameLock)
+        {
+            var g = room.Game;
+            bool Taken(string role) => room.Slots.TryGetValue(role, out var c) && c.IsOpen;
+            return new Dictionary<string, object?>
+            {
+                ["code"] = room.Code,
+                ["instance"] = g.InstanceId,
+                ["name"] = room.InstanceName ?? (string.IsNullOrEmpty(g.Name) ? g.ScenarioName : g.Name),
+                ["scenario"] = g.ScenarioId,
+                ["scenario_name"] = g.ScenarioName,
+                ["turn"] = g.Turn,
+                ["max_turns"] = g.MaxTurns,
+                ["weather"] = g.Weather,
+                ["over"] = g.Over,
+                ["winner"] = g.Winner,
+                ["roles"] = new Dictionary<string, object?>
+                {
+                    ["director"] = Taken("director") ? 1 : 0,
+                    ["red"] = Taken("red") ? 1 : 0,
+                    ["blue"] = Taken("blue") ? 1 : 0,
+                    ["spectator"] = Taken("spectator") ? 1 : 0,
+                },
+                ["side_taken"] = new Dictionary<string, object?>
+                {
+                    ["red"] = Taken("red"),
+                    ["blue"] = Taken("blue"),
+                },
+                ["ai"] = new Dictionary<string, object?> { ["red"] = room.AiRed, ["blue"] = room.AiBlue },
+                ["created_at"] = room.CreatedAt.ToString("o"),
+                ["fog"] = FlagBool(g, "fog", true),
+                ["width"] = g.Width,
+                ["height"] = g.Height,
+            };
+        }
+    }
+
+    public List<Dictionary<string, object?>> ListRooms() =>
+        _rooms.Keys.Select(k => PublicInfo(k)).Where(x => x != null).Select(x => x!).ToList();
+
+    public List<Dictionary<string, object?>>? Frames(string code)
+    {
+        if (!TryFindRoom(code, out var room)) return null;
+        lock (room.GameLock)
+        {
+            return room.Frames.ToList();
+        }
+    }
+
+    private bool TryFindRoom(string code, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Room? room) =>
+        _rooms.TryGetValue(code.ToUpperInvariant(), out room);
+
+    private static string RandomCode()
+    {
+        const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        var bytes = new byte[6];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        return new string(bytes.Select(b => alphabet[b % alphabet.Length]).ToArray());
+    }
+
     // ==================== Connection entry point ====================
 
     /// <summary>Handles an incoming /ws request: handshake, role takeover, message loop.</summary>
     public async Task HandleAsync(HttpContext context)
     {
         var query = context.Request.Query;
-        var code = query["room"].ToString();
+        var code = query["room"].ToString().ToUpperInvariant();
         var role = query["role"].ToString();
         if (string.IsNullOrEmpty(role)) role = "spectator";
         var token = query["token"].ToString();
@@ -329,6 +441,11 @@ public sealed class RoomService
                 ["red"] = room.Drafts["red"].Select(c => c.Clone()).ToList(),
                 ["blue"] = room.Drafts["blue"].Select(c => c.Clone()).ToList(),
             };
+            if (room.AiRed && orders["red"].Count == 0)
+                orders["red"] = AiService.GenerateOrders(room.Game, "red");
+            if (room.AiBlue && orders["blue"].Count == 0)
+                orders["blue"] = AiService.GenerateOrders(room.Game, "blue");
+
             report = TurnResolver.ResolveTurn(room.Game, orders);
             room.Drafts["red"].Clear();
             room.Drafts["blue"].Clear();
@@ -338,8 +455,18 @@ public sealed class RoomService
             room.Frames.Add(new Dictionary<string, object?>
             {
                 ["turn"] = room.Game.Turn - 1,
-                ["view"] = FogService.DirectorView(room.Game),
+                ["hour"] = room.Game.HourOfDay,
+                ["weather"] = room.Game.Weather,
+                ["director"] = FogService.DirectorView(room.Game),
                 ["events"] = EventsToMaps(report.Events),
+                ["battles"] = report.Battles.Select(b => new Dictionary<string, object?>
+                {
+                    ["turn"] = b.Turn,
+                    ["kind"] = b.Kind,
+                    ["attacker"] = b.Attacker,
+                    ["defender"] = b.Defender,
+                    ["losses"] = b.Losses,
+                }).ToList(),
             });
         }
 
@@ -377,6 +504,8 @@ public sealed class RoomService
             await BroadcastAll(room, new Dictionary<string, object?>
             {
                 ["type"] = "saved",
+                ["turn"] = meta.Turn,
+                ["instance"] = room.Game.InstanceId,
                 ["meta"] = new Dictionary<string, object?>
                 {
                     ["id"] = meta.Id,
@@ -738,6 +867,10 @@ public sealed class RoomService
         public Dictionary<string, List<Command>> Drafts { get; init; } = new();
         public Dictionary<string, bool> Ready { get; init; } = new();
         public List<Dictionary<string, object?>> Frames { get; init; } = new();
+        public bool AiRed { get; set; }
+        public bool AiBlue { get; set; }
+        public string? InstanceName { get; set; }
+        public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
     }
 
     private sealed class WsConn

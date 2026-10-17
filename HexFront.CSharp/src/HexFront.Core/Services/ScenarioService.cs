@@ -62,6 +62,7 @@ public static class ScenarioService
     public class SideConfig
     {
         public string Name { get; init; } = "";
+        public double PointsBudget { get; init; }
         public List<OobEntry> Oob { get; init; } = new();
     }
 
