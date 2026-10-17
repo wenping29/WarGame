@@ -4,7 +4,8 @@ using System.Collections.Generic;
 namespace HexFront.Core.Geometry;
 
 /// <summary>
-/// Pointy-top hex grid geometry in EPSG:3857 (Web Mercator).
+/// Pointy-top odd-r offset hex board in EPSG:3857 (Web Mercator): q = column, r = row,
+/// odd rows shifted half a cell right, so width×height cells tile a rectangle.
 /// All distances are in Mercator meters. Ground-km distances
 /// must be converted via mercatorScale = 1/cos(centerLat).
 /// </summary>
@@ -60,22 +61,18 @@ public sealed class HexGrid
     /// <summary>Nearest hex to a point in Mercator meters.</summary>
     public Hex Nearest(double mx, double my)
     {
-        // Inverse of Center(): solve for fractional (fq, fr), then cube-round.
-        var x = mx - Ox;
-        var y = my - Oy;
-
-        // For odd-r offset layout:
-        //   x = fq * w + (fr_rounded & 1) * w/2
-        //   y = -fr * h
-        var fr = -y / RowStep;
-        var frRounded = (int)Math.Round(fr);
-        var offset = (frRounded & 1) * 0.5;
-        var fq = (x - offset * FlatToFlat) / FlatToFlat;
-
-        // Convert axial to cube for rounding
-        var fs = -fq - fr;
-        return Hex.Round(fq, fr, fs);
+        // odd-r offset shares pixel positions with axial coordinates
+        // (aq = q - (r - r&1)/2), so invert in axial space and round there.
+        var far = (Oy - my) / RowStep;
+        var faq = (mx - Ox) / FlatToFlat - far / 2.0;
+        return Hex.Round(faq, far);
     }
+
+    /// <summary>Horizontal extent of the whole board in Mercator meters.</summary>
+    public double BoardWidthM => Width * FlatToFlat + FlatToFlat / 2.0;
+
+    /// <summary>Vertical extent of the whole board in Mercator meters.</summary>
+    public double BoardHeightM => (Height - 1) * RowStep + 2.0 * Radius;
 
     /// <summary>All valid hex coordinates in this grid.</summary>
     public IEnumerable<Hex> AllCells()

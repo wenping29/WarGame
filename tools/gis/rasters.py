@@ -162,14 +162,14 @@ def _cells_from_index(grid, idx, inside):
 
 def _fill_gaps(grid, values):
     """采样过稀导致空格时，用最近非空格补齐（不产出缺高程/缺类别的格）。"""
-    from hexgen import axial_distance
+    from hexgen import hex_distance
 
     known = [c for c, v in values.items() if v is not None]
     if not known:
         raise ValueError("栅格在该范围内没有有效像元")
     for c in grid.iter_cells():
         if values.get(c) is None:
-            values[c] = values[min(known, key=lambda k: (axial_distance(c, k), k[1], k[0]))]
+            values[c] = values[min(known, key=lambda k: (hex_distance(c, k), k[1], k[0]))]
     return values
 
 
@@ -205,7 +205,7 @@ def landcover_by_hex(grid, bbox=None, url=WORLDCOVER_URL, tile_deg=3):
     """
     if not HAVE_GDAL:
         raise RuntimeError("rasterio 未安装")
-    from hexgen import axial_distance
+    from hexgen import hex_distance
 
     bbox = tuple(bbox or grid.bbox())
     tallies = Counter()
@@ -249,7 +249,7 @@ def landcover_by_hex(grid, bbox=None, url=WORLDCOVER_URL, tile_deg=3):
         raise RuntimeError("WorldCover 在该范围无有效像元")
     for cell in grid.iter_cells():
         if values[cell] is None:
-            values[cell] = values[min(known, key=lambda k: (axial_distance(cell, k), k[1], k[0]))]
+            values[cell] = values[min(known, key=lambda k: (hex_distance(cell, k), k[1], k[0]))]
     return values, {
         "kind": "esa-worldcover-v200", "product": "ESA WorldCover 10m 2021",
         "url_sample": url.format(tag="N51E006"), "tiles": tiles, "cells_with_data": len(known),

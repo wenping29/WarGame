@@ -212,15 +212,8 @@ public static class HexGenService
                 var idx = r * grid.Width + q;
                 var maxSlope = 0.0;
                 
-                // Three gradient axes for pointy-top hex
-                var axes = new[]
-                {
-                    ((1, 0), (-1, 0)),   // axis 0°
-                    ((1, -1), (-1, 1)),  // axis 60°
-                    ((0, -1), (0, 1)),   // axis 120°
-                };
-                
-                foreach (var ((dqPos, drPos), (dqNeg, drNeg)) in axes)
+                // Three gradient axes through the cell (parity-aware on an odd-r board)
+                foreach (var ((dqPos, drPos), (dqNeg, drNeg)) in SlopeAxes(r))
                 {
                     var nqPos = q + dqPos;
                     var nrPos = r + drPos;
@@ -827,9 +820,7 @@ public static class HexGenService
     
     private static int HexDistance(int q1, int r1, int q2, int r2)
     {
-        var s1 = -q1 - r1;
-        var s2 = -q2 - r2;
-        return Math.Max(Math.Abs(q1 - q2), Math.Max(Math.Abs(r1 - r2), Math.Abs(s1 - s2)));
+        return new Hex(q1, r1).DistanceTo(new Hex(q2, r2));
     }
     
     private static double TurnAngle(HexGridGeometry grid, (int Q, int R) a, (int Q, int R) b, (int Q, int R) c)
@@ -846,7 +837,8 @@ public static class HexGenService
     
     private static (double X, double Y) Center(HexGridGeometry grid, int q, int r)
     {
-        var x = grid.MercatorOx + grid.HexWidthM * (q + r / 2.0);
+        // odd-r offset board: odd rows shifted half a cell right
+        var x = grid.MercatorOx + grid.HexWidthM * (q + (r & 1) / 2.0);
         var y = grid.MercatorOy - grid.RowStepM * r;
         return (x, y);
     }
@@ -859,14 +851,7 @@ public static class HexGenService
         var cellDist = grid.CellGroundM;
         var maxSlope = 0.0;
         
-        var axes = new[]
-        {
-            ((1, 0), (-1, 0)),
-            ((1, -1), (-1, 1)),
-            ((0, -1), (0, 1)),
-        };
-        
-        foreach (var ((dqPos, drPos), (dqNeg, drNeg)) in axes)
+        foreach (var ((dqPos, drPos), (dqNeg, drNeg)) in SlopeAxes(r))
         {
             var nqPos = q + dqPos;
             var nrPos = r + drPos;
@@ -1087,18 +1072,25 @@ public static class HexGenService
     
     private static IEnumerable<(int Q, int R)> GetNeighbors(HexGridGeometry grid, int q, int r)
     {
-        var dirs = new[]
-        {
-            (1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)
-        };
-        
-        foreach (var (dq, dr) in dirs)
+        foreach (var (dq, dr) in Hex.DirectionsFor(r))
         {
             var nq = q + dq;
             var nr = r + dr;
             if (InBounds(grid, nq, nr))
                 yield return (nq, nr);
         }
+    }
+
+    /// <summary>The 3 diametric neighbor pairs (indices 0/3, 1/4, 2/5) used for slope gradients.</summary>
+    private static ((int Dq, int Dr) Pos, (int Dq, int Dr) Neg)[] SlopeAxes(int r)
+    {
+        var d = Hex.DirectionsFor(r);
+        return new[]
+        {
+            (d[0], d[3]),
+            (d[1], d[4]),
+            (d[2], d[5]),
+        };
     }
     
     private static int BridgeTargetCount(HexGridGeometry grid)

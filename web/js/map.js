@@ -1,6 +1,6 @@
 // Canvas 战场渲染：天地图瓦片层 + 六角叠加层，共用同一"米→屏幕"变换，
 // 保证六角落在瓦片上不错位。pan/zoom 同时作用两层。
-import { hexCenterMeters, hexCornerOffsetsMeters, metersToHex, hexDistance, hexRange, SQRT3 } from './hex.js';
+import { hexCenterMeters, hexCornerOffsetsMeters, metersToHex, hexDistance, hexRange, dirsRightFor, dirsFor, SQRT3 } from './hex.js';
 import { el } from './util.js';
 
 const E = 20037508.342789244; // EPSG:3857 半周长（米）
@@ -495,10 +495,9 @@ export class MapView {
   }
 
   _drawLines(ctx, rp) {
-    const dirsRight = [[1, 0], [1, -1], [0, 1]]; // 覆盖每条共享边一次
     for (const c of this._cells) {
       if (!c.road && !c.river && !c.bridge) continue;
-      for (const [dq, dr] of dirsRight) {
+      for (const [dq, dr] of dirsRightFor(c.r)) { // 覆盖每条共享边一次
         const nb = this.cellAt(c.q + dq, c.r + dr);
         if (!nb) continue;
         const link = (c.road && nb.road) || (c.river && nb.river) || (c.bridge && (nb.road || nb.bridge));
@@ -533,13 +532,12 @@ export class MapView {
 
   // ── 地物层：铁路 / 输电网络 / 机场 / 电厂 / 变电站 / 车站 / 隧道 / 要点归属 ──
 
-  /// 线状地物沿「共享边」连笔。dirsRight 只取三个偏移，保证每对相邻格只连一次。
+  /// 线状地物沿「共享边」连笔。dirsRightFor 只取半边方向，保证每对相邻格只连一次。
   _linkPairs(key) {
-    const dirsRight = [[1, 0], [1, -1], [0, 1]];
     const pairs = [];
     for (const c of this._cells) {
       if (!c[key]) continue;
-      for (const [dq, dr] of dirsRight) {
+      for (const [dq, dr] of dirsRightFor(c.r)) {
         const nb = this.cellAt(c.q + dq, c.r + dr);
         if (nb && nb[key]) pairs.push([c, nb]);
       }
@@ -576,12 +574,11 @@ export class MapView {
 
   /// 杆塔只画在线路的端点/分叉上（每个格都画会糊成一片）
   _pylonCells() {
-    const dirs = [[1, 0], [1, -1], [0, 1], [-1, 1], [-1, 0], [0, -1]];
     const out = [];
     for (const c of this._cells) {
       if (!c.powerline) continue;
       let deg = 0;
-      for (const [dq, dr] of dirs) {
+      for (const [dq, dr] of dirsFor(c.r)) {
         const nb = this.cellAt(c.q + dq, c.r + dr);
         if (nb && nb.powerline) deg++;
       }

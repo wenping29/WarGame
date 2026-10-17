@@ -19,9 +19,10 @@ hexgen.py —— 兵棋引擎「GIS 六角格地形数据包」生成器（零�
          stats{terrain_counts, elev_min, elev_max, ...}
   hexes: [{q,r,terrain,elev,slope,road,river,bridge,city}, ...]  顺序固定：r 外层、q 内层
 
-格网几何（尖顶格，Red Blob axial 约定）：
-  格心：cx = ox + W*(q + r/2)      cy = oy - 1.5*radius*r      W = sqrt(3)*radius = cell_km*1000
-  邻居：(q±1,r)、(q,r±1)、(q+1,r-1)、(q-1,r+1)                行距（南北）= 1.5*radius
+格网几何（尖顶格，odd-r 偏移 /「砖墙」约定，整盘铺成矩形）：
+  格心：cx = ox + W*(q + (r&1)/2)   cy = oy - 1.5*radius*r      W = sqrt(3)*radius = cell_km*1000
+  邻居：按行奇偶取偏移表（偶数行 NE=(q,r-1)，奇数行 NE=(q+1,r-1)）  行距（南北）= 1.5*radius
+  距离/直线等立方体运算先转 axial：aq = q - (r - (r&1))/2, ar = r
   ox/oy 反推自「格网几何中心 == bbox 中心 == center_lonlat」。
 
 墨卡托换算（EPSG:3857 ↔ WGS84，严格互逆）：
@@ -239,9 +240,31 @@ def y_to_lat(y_m: float) -> float:
     return math.degrees(2.0 * math.atan(math.exp(y_deg * math.pi / 180.0)) - math.pi / 2.0)
 
 
-AXIAL_DIRS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))   # 尖顶 axial 邻居
-# 三条梯度轴（像素方向角 0°/±60°）对应的 (正向邻居, 负向邻居)
-SLOPE_AXES = (((1, 0), (-1, 0)), ((1, -1), (-1, 1)), ((0, -1), (0, 1)))
+DIRS_EVEN = ((1, 0), (0, -1), (-1, -1), (-1, 0), (-1, 1), (0, 1))   # 偶数行：本行不右移
+DIRS_ODD = ((1, 0), (1, -1), (0, -1), (-1, 0), (0, 1), (1, 1))      # 奇数行：本行右移半格
+# 顺时针自 E 起，与 C# Hex.DirectionsFor / web/js/hex.js dirsFor 完全一致
+
+
+def dirs_for(r: int):
+    """odd-r 偏移坐标的 6 邻方向（按行奇偶）。"""
+    return DIRS_ODD if (r & 1) else DIRS_EVEN
+
+
+def to_axial(cell):
+    """odd-r 偏移 (q, r) → axial (aq, ar)：立方体运算统一在 axial 空间做。"""
+    q, r = cell
+    return (q - (r - (r & 1)) // 2, r)
+
+
+def from_axial(aq: int, ar: int):
+    """axial → odd-r 偏移。"""
+    return (aq + (ar - (ar & 1)) // 2, ar)
+
+
+def slope_axes(r: int):
+    """三条梯度轴 = 三对对角邻居（dirs 索引 0/3、1/4、2/5）。"""
+    d = dirs_for(r)
+    return ((d[0], d[3]), (d[1], d[4]), (d[2], d[5]))
 
 
 def mercator_scale(lat_deg: float) -> float:
@@ -293,9 +316,9 @@ class HexGrid:
 
     # ---- 几何 ----
     def center(self, cell):
-        """格心 EPSG:3857 (x, y)。"""
+        """格心 EPSG:3857 (x, y)。奇数行整体右移半格 ⇒ 矩形棋盘。"""
         q, r = cell
-        return (self.mercator_ox + self.hex_width_m * (q + r / 2.0),
+        return (self.mercator_ox + self.hex_width_m * (q + (r & 1) / 2.0),
                 self.mercator_oy - self.row_step_m * r)
 
     def center_lonlat(self, cell):
@@ -305,7 +328,7 @@ class HexGrid:
 
     def neighbors(self, q: int, r: int):
         out = []
-        for dq, dr in AXIAL_DIRS:
+        for dq, dr in dirs_for(r):
             nq, nr = q + dq, r + dr
             if self.in_bounds(nq, nr):
                 out.append((nq, nr))
@@ -442,11 +465,11 @@ def plan_payload(bbox, cell_km=None):
     }
 
 
-def axial_distance(a, b) -> int:
-    """轴向坐标的六角格距离（cube 距离）。"""
-    ax, az = a
-    bx, bz = b
-    return max(abs(ax - bx), abs(-ax - az + bx + bz), abs(az - bz))
+def hex_distance(a, b) -> int:
+    """odd-r 偏移坐标的六角格距离：转 axial 后取 cube 距离。"""
+    ax, ay = to_axial(a)
+    bx, by = to_axial(b)
+    return max(abs(ax - bx), abs(ay - by), abs(-ax - ay + bx + by))
 
 
 # =====================================================================================
@@ -660,7 +683,7 @@ def compute_slopes(grid: HexGrid, elev):
     for (q, r) in grid.iter_cells():
         e0 = e(q, r)
         derivs = []
-        for dp, dm in SLOPE_AXES:
+        for dp, dm in slope_axes(r):
             p = (q + dp[0], r + dp[1])
             m = (q + dm[0], r + dm[1])
             hp, hm = grid.in_bounds(*p), grid.in_bounds(*m)
@@ -1035,7 +1058,7 @@ def place_cities(grid: HexGrid, terr, road, river_dist, bridge_set, seed):
     for _, _, _, cell in cand:
         if len(picks) >= CITY_TARGET:
             break
-        if all(axial_distance(cell, p) >= CITY_MIN_SEPARATION for p in picks):
+        if all(hex_distance(cell, p) >= CITY_MIN_SEPARATION for p in picks):
             picks.append(cell)
     if len(picks) < CITY_MIN:                       # 兜底：放宽河岸约束，仅要求道路格
         for cell in sorted(road):
@@ -1043,7 +1066,7 @@ def place_cities(grid: HexGrid, terr, road, river_dist, bridge_set, seed):
                 break
             if cell in bridge_set or terr[grid.index(*cell)] in ("water", "river"):
                 continue
-            if all(axial_distance(cell, p) >= 2 for p in picks):
+            if all(hex_distance(cell, p) >= 2 for p in picks):
                 picks.append(cell)
     marks = {}
     for idx, cell in enumerate(picks[:CITY_MAX]):
@@ -1100,8 +1123,8 @@ def build_railway(grid, elev, terr, road, bridge_set, city_marks):
                 rail |= set(branch)
     stations = {}
     for cell, grade in cities:
-        cand = [(axial_distance(cell, rc), grid.index(*rc), rc) for rc in rail
-                if axial_distance(cell, rc) <= RAIL_STATION_MAX_DIST
+        cand = [(hex_distance(cell, rc), grid.index(*rc), rc) for rc in rail
+                if hex_distance(cell, rc) <= RAIL_STATION_MAX_DIST
                 and terr[grid.index(*rc)] not in ("river", "water")]
         if cand:
             stations[min(cand)[2]] = grade
@@ -1169,7 +1192,7 @@ def build_power(grid, elev, terr, slopes, city_marks, river_dist):
     for _, _, cell in cand:
         if len(plants) >= plant_max:
             break
-        if all(axial_distance(cell, p) >= PLANT_SEPARATION for p in plants):
+        if all(hex_distance(cell, p) >= PLANT_SEPARATION for p in plants):
             plants.append(cell)
     plants = set(plants)
     if not plants:                                  # 全图找不到近水平地 ⇒ 贴着变电站摆一处（保住玩法目标）
@@ -1244,7 +1267,7 @@ def place_airports(grid, terr, slopes, road, rail, city_marks, real_airports):
     for (q, r) in grid.iter_cells():
         i = grid.index(q, r)
         cell = (q, r)
-        d = axial_distance(cell, capital)
+        d = hex_distance(cell, capital)
         if not AIRPORT_CITY_MIN_DIST <= d <= AIRPORT_CITY_MAX_DIST:
             continue
         if terr[i] not in ("clear", "rough") or slopes[i] > AIRPORT_DERIVED_SLOPE_MAX_DEG:
@@ -2028,7 +2051,7 @@ def build_payload(args):
             "substation_cells": len(feat["substation"]),
             "airport_cells": len(feat["airport"]),
         },
-        "projection": "EPSG:3857 (Web Mercator); pointy-top axial hexes, cx=ox+W*(q+r/2), cy=oy-1.5*radius*r",
+        "projection": "EPSG:3857 (Web Mercator); pointy-top odd-r offset hexes (brick board), cx=ox+W*(q+(r&1)/2), cy=oy-1.5*radius*r",
         "hex_order": "r outer loop, q inner loop; index = r*width + q",
         "seed": args.seed,
         "cell_row_spacing_m": grid.row_step_m,
