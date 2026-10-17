@@ -92,14 +92,16 @@ public static class FogService
     public static void UpdateObservation(GameState g)
     {
         var sides = new[] { "red", "blue" };
-        var fogOn = g.Flags.GetValueOrDefault("fog", true);
+        var fogOn = FlagBool(g, "fog", true);
 
         if (!fogOn)
         {
             // Fog off: both sides see everything (teaching/debug mode)
             foreach (var side in sides)
             {
-                g.Observations[side] = new HashSet<string>(g.Cells.Keys);
+                var all = new Dictionary<string, int>();
+                foreach (var key in g.Cells.Keys) all[key] = 99; // full exposure
+                g.Obs[side] = all;
                 RefreshTracks(g, side, allSeeing: true);
             }
             return;
@@ -134,9 +136,23 @@ public static class FogService
                 }
             }
 
-            g.Observations[side] = new HashSet<string>(pts.Keys);
+            g.Obs[side] = pts;
             RefreshTracks(g, side, allSeeing: false);
         }
+    }
+
+    /// <summary>Read a boolean flag from GameState.Flags, tolerant of boxed types.</summary>
+    private static bool FlagBool(GameState g, string key, bool fallback)
+    {
+        var raw = g.Flags.GetValueOrDefault(key);
+        if (raw == null) return fallback;
+        return raw switch
+        {
+            bool b => b,
+            System.Text.Json.JsonElement je when je.ValueKind == System.Text.Json.JsonValueKind.True => true,
+            System.Text.Json.JsonElement je when je.ValueKind == System.Text.Json.JsonValueKind.False => false,
+            _ => fallback,
+        };
     }
 
     /// <summary>Refresh enemy track memory with decay logic.</summary>
@@ -161,10 +177,10 @@ public static class FogService
         {
             ["kind"] = "side",
             ["side"] = side,
-            ["turn"] = g.CurrentTurn,
+            ["turn"] = g.Turn,
             ["units"] = ownUnits,
             ["node_holders"] = nodeHolders,
-            ["fog"] = g.Flags.GetValueOrDefault("fog", true),
+            ["fog"] = FlagBool(g, "fog", true),
         };
     }
 
@@ -187,7 +203,7 @@ public static class FogService
         return new Dictionary<string, object>
         {
             ["kind"] = "director",
-            ["turn"] = g.CurrentTurn,
+            ["turn"] = g.Turn,
             ["units"] = allUnits,
             ["node_holders"] = nodeHolders,
             ["power"] = power,
@@ -197,13 +213,15 @@ public static class FogService
     /// <summary>Spectator view: merged exposed contacts from both sides, no hidden units.</summary>
     public static Dictionary<string, object> SpectatorView(GameState g)
     {
-        // Merge tracks from both sides (simplified: use observations intersection)
-        var redObs = g.Observations.GetValueOrDefault("red", new HashSet<string>());
-        var blueObs = g.Observations.GetValueOrDefault("blue", new HashSet<string>());
-        var mergedObs = new HashSet<string>(redObs.Concat(blueObs));
+        // Merge track points from both sides (max points per hex)
+        var redObs = g.Obs.GetValueOrDefault("red") ?? new Dictionary<string, int>();
+        var blueObs = g.Obs.GetValueOrDefault("blue") ?? new Dictionary<string, int>();
+        var merged = new Dictionary<string, int>();
+        foreach (var (k, v) in redObs) merged[k] = v;
+        foreach (var (k, v) in blueObs) merged[k] = Math.Max(merged.GetValueOrDefault(k, 0), v);
 
         var visibleUnits = g.Units
-            .Where(u => u.Alive && mergedObs.Contains(u.Pos.Key))
+            .Where(u => u.Alive && merged.ContainsKey(u.Pos.Key))
             .OrderBy(u => u.Id)
             .Select(u => SerializeUnit(g, u, fullDetail: false))
             .ToList();
@@ -211,7 +229,7 @@ public static class FogService
         return new Dictionary<string, object>
         {
             ["kind"] = "spectator",
-            ["turn"] = g.CurrentTurn,
+            ["turn"] = g.Turn,
             ["contacts"] = visibleUnits,
             ["summary"] = new Dictionary<string, int>
             {
@@ -231,8 +249,8 @@ public static class FogService
             ["side"] = u.Side,
             ["type"] = t.Id,
             ["pos"] = new[] { u.Pos.Q, u.Pos.R },
-            ["hp"] = u.HP,
-            ["max_hp"] = u.MaxHP,
+            ["hp"] = u.Personnel,
+            ["max_hp"] = u.MaxPersonnel,
         };
 
         if (fullDetail)
@@ -241,7 +259,7 @@ public static class FogService
             result["fatigue"] = u.Fatigue;
             result["ammo"] = u.Ammo;
             result["fuel"] = u.Fuel;
-            result["moves_left"] = u.MovesLeft;
+            result["fort"] = u.FortLevel;
             result["orders"] = u.Orders;
         }
 

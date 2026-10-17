@@ -53,7 +53,7 @@ public static class AiService
                     {
                         Op = CommandOp.Fire,
                         UnitId = u.Id,
-                        Zone = new Hex { Q = u.Q, R = u.R },
+                        Zone = new Hex(u.Pos.Q, u.Pos.R),
                     });
                     break;
                     
@@ -125,7 +125,7 @@ public static class AiService
         if (target == null) return null;
 
         // Find path using A* or BFS
-        var path = FindPath(g, u.Pos, target, difficulty);
+        var path = FindPath(g, u.Pos, target.Value, difficulty);
         if (path == null || path.Count < 2) return null;
 
         return new Command
@@ -162,32 +162,27 @@ public static class AiService
         if (difficulty == Difficulty.Easy)
         {
             // Random adjacent hex
-            var directions = new[]
-            {
-                new Hex { Q = 1, R = 0 }, new Hex { Q = 1, R = -1 },
-                new Hex { Q = 0, R = -1 }, new Hex { Q = -1, R = 0 },
-                new Hex { Q = -1, R = 1 }, new Hex { Q = 0, R = 1 },
-            };
+            var directions = Hex.Directions;
             var dir = directions[rng.Next(directions.Length)];
-            return new Hex { Q = u.Q + dir.Q, R = u.R + dir.R };
+            return new Hex(u.Pos.Q + dir.Q, u.Pos.R + dir.R);
         }
 
         // Medium/Hard: Move toward nearest enemy or objective
         var enemies = FindNearbyEnemies(g, u, 10);
         if (enemies.Count > 0)
         {
-            var nearest = enemies.OrderBy(e => Hex.Distance(u.Pos, e.Pos)).First();
+            var nearest = enemies.OrderBy(e => u.Pos.DistanceTo(e.Pos)).First();
             return GetNextStepToward(g, u.Pos, nearest.Pos);
         }
 
         // No enemies: move toward center of map or random
-        return new Hex { Q = u.Q + rng.Next(-2, 3), R = u.R + rng.Next(-2, 3) };
+        return new Hex(u.Pos.Q + rng.Next(-2, 3), u.Pos.R + rng.Next(-2, 3));
     }
 
     /// <summary>Simple pathfinding (BFS for short distances).</summary>
     private static List<Hex>? FindPath(GameState g, Hex start, Hex end, Difficulty difficulty)
     {
-        if (difficulty == Difficulty.Easy && Hex.Distance(start, end) > 3)
+        if (difficulty == Difficulty.Easy && start.DistanceTo(end) > 3)
             return null; // Easy AI has poor pathfinding
 
         var queue = new Queue<(Hex pos, List<Hex> path)>();
@@ -228,21 +223,16 @@ public static class AiService
     /// <summary>Get next step toward target hex.</summary>
     private static Hex GetNextStepToward(GameState g, Hex from, Hex to)
     {
-        var directions = new[]
-        {
-            new Hex { Q = 1, R = 0 }, new Hex { Q = 1, R = -1 },
-            new Hex { Q = 0, R = -1 }, new Hex { Q = -1, R = 0 },
-            new Hex { Q = -1, R = 1 }, new Hex { Q = 0, R = 1 },
-        };
+        var directions = Hex.Directions;
 
         // Pick direction that reduces distance most
         var bestDir = directions.OrderBy(d =>
         {
-            var next = new Hex { Q = from.Q + d.Q, R = from.R + d.R };
-            return Hex.Distance(next, to);
+            var next = new Hex(from.Q + d.Q, from.R + d.R);
+            return next.DistanceTo(to);
         }).First();
 
-        return new Hex { Q = from.Q + bestDir.Q, R = from.R + bestDir.R };
+        return new Hex(from.Q + bestDir.Q, from.R + bestDir.R);
     }
 
     /// <summary>Find enemy units within range.</summary>
@@ -251,7 +241,7 @@ public static class AiService
         return g.Units.Where(other =>
             other.Side != u.Side &&
             other.Alive &&
-            Hex.Distance(u.Pos, other.Pos) <= range
+            u.Pos.DistanceTo(other.Pos) <= range
         ).ToList();
     }
 
@@ -262,7 +252,7 @@ public static class AiService
             other.Side == u.Side &&
             other.Id != u.Id &&
             other.Alive &&
-            Hex.Distance(u.Pos, other.Pos) <= range
+            u.Pos.DistanceTo(other.Pos) <= range
         ).ToList();
     }
 

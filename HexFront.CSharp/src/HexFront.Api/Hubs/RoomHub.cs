@@ -5,7 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
 
-namespace HexFront.WebApi.Hubs;
+namespace HexFront.Api.Hubs;
 
 /// <summary>
 /// SignalR hub for real-time multiplayer game sessions.
@@ -84,8 +84,8 @@ public class RoomHub : Hub
             var player = room.Players.Values.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
             if (player != null)
             {
-                room.Players.Remove(player.PlayerId);
-                
+                room.Players.TryRemove(player.PlayerId, out _);
+
                 await Clients.Group(roomId).SendAsync("player_left", new
                 {
                     roomId,
@@ -104,7 +104,7 @@ public class RoomHub : Hub
     }
 
     /// <summary>Submit orders for a side (broadcast to all players).</summary>
-    public async Task SubmitOrders(string roomId, string side, object orders)
+    public async Task SubmitOrders(string roomId, string side, List<object> orders)
     {
         if (!Rooms.TryGetValue(roomId, out var room))
         {
@@ -113,9 +113,9 @@ public class RoomHub : Hub
         }
 
         // Validate player is in room and has correct side
-        var player = room.Players.Values.FirstOrDefault(p => 
+        var player = room.Players.Values.FirstOrDefault(p =>
             p.ConnectionId == Context.ConnectionId && p.Side == side);
-        
+
         if (player == null)
         {
             await Clients.Caller.SendAsync("error", "Not authorized for this side");
@@ -130,7 +130,7 @@ public class RoomHub : Hub
         {
             roomId,
             side,
-            orderCount = ((List<object>)orders).Count,
+            orderCount = orders.Count,
         });
     }
 
@@ -200,14 +200,14 @@ public class RoomHub : Hub
     {
         // Find and remove from all rooms
         var roomsToRemove = new List<string>();
-        
+
         foreach (var (roomId, room) in Rooms)
         {
             var player = room.Players.Values.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
             if (player != null)
             {
-                room.Players.Remove(player.PlayerId);
-                
+                room.Players.TryRemove(player.PlayerId, out _);
+
                 await Clients.Group(roomId).SendAsync("player_left", new
                 {
                     roomId,

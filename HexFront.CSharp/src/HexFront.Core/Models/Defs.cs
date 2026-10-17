@@ -37,6 +37,9 @@ public sealed class UnitTypeDef
     public bool SupplySource { get; init; }
     public bool IsAir => Cls == "air";
     public string AirRole { get; init; } = ""; // fighter/strike/transport (for air units)
+    public int AirRange { get; init; }          // air unit operational radius (hexes)
+    public double AntiAir { get; init; }         // anti-air fire strength
+    public int Range { get; init; }              // indirect-fire range (hexes)
     public double Points { get; init; }
     public List<EquipmentItem> Equipment { get; init; } = new();
     
@@ -75,6 +78,31 @@ public sealed class Rules
     public double FoodPerTurn { get; init; } = 0.05;
     public double SupplyCrit { get; init; } = 0.3;
     public int TurnHours { get; init; } = 4;
+}
+
+// ─────────────── Day Phase ───────────────
+
+/// <summary>Daylight phase modifiers. Ported from defs.dart DayPhase.</summary>
+public sealed class DayPhase
+{
+    public string Id { get; }
+    public string Label { get; }
+    public double Recon { get; }
+    public double Combat { get; }
+
+    public DayPhase(string id, string label, double recon, double combat)
+    {
+        Id = id; Label = label; Recon = recon; Combat = combat;
+    }
+
+    public static DayPhase FromHours(int hourOfDay)
+    {
+        var h = ((hourOfDay % 24) + 24) % 24;
+        if (h >= 6 && h < 9) return new DayPhase("dawn", "拂晓", 0.8, 0.95);
+        if (h >= 9 && h < 17) return new DayPhase("day", "昼间", 1.0, 1.0);
+        if (h >= 17 && h < 20) return new DayPhase("dusk", "黄昏", 0.8, 0.95);
+        return new DayPhase("night", "夜间", 0.45, 0.75);
+    }
 }
 
 // ─────────────── Cell (hex terrain + features) ───────────────

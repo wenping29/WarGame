@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using HexFront.Core.Geometry;
 using HexFront.Core.Models;
 
 namespace HexFront.Core.Services;
@@ -111,9 +112,10 @@ public static class ScenarioService
             VictoryConds = new List<VictoryCond>(),
             Units = new List<Unit>(),
             Cells = new Dictionary<string, Cell>(),
-            Obs = new Dictionary<string, Dictionary<string, double>>(),
+            Obs = new Dictionary<string, Dictionary<string, int>>(),
+            Tracks = new Dictionary<string, Dictionary<string, Track>>(),
             AirControl = new Dictionary<string, double>(),
-            Events = new List<Track>(),
+            Events = new List<WarEvent>(),
         };
 
         // Parse victory conditions
@@ -139,9 +141,8 @@ public static class ScenarioService
             {
                 Id = dep.Id,
                 Side = dep.Side,
-                TypeId = dep.Type,
-                Q = dep.Q,
-                R = dep.R,
+                UnitType = dep.Type,
+                Pos = new Hex(dep.Q, dep.R),
                 Personnel = personnel,
                 MaxPersonnel = personnel,
                 Morale = dep.Morale,

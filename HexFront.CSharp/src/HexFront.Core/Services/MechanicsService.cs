@@ -128,6 +128,71 @@ public static class MechanicsService
         return result;
     }
 
+    /// <summary>
+    /// Compute air control per hex from air units, anti-air and structures.
+    /// Positive = red-leaning, negative = blue-leaning, in [-1,1]. Contested (|v|&lt;0.2) omitted.
+    /// Ported from mechanics.dart computeAirControl.
+    /// </summary>
+    public static Dictionary<string, double> ComputeAirControl(GameState g)
+    {
+        var acc = new Dictionary<string, Dictionary<string, double>>
+        {
+            ["red"] = new(),
+            ["blue"] = new(),
+        };
+
+        void Add(string side, Hex h, double v, int radius)
+        {
+            if (side != "red" && side != "blue") return;
+            var m = acc[side];
+            foreach (var c in h.Range(Math.Max(0, radius)))
+            {
+                if (!g.Cells.ContainsKey(c.Key)) continue;
+                m[c.Key] = m.GetValueOrDefault(c.Key, 0.0) + v;
+            }
+        }
+
+        var roleWeight = new Dictionary<string, double>
+        {
+            ["fighter"] = 1.0, ["strike"] = 0.45, ["recon"] = 0.25,
+        };
+
+        foreach (var u in g.Units)
+        {
+            if (!u.Alive) continue;
+            var t = g.TypeOf(u);
+            if (t.IsAir)
+            {
+                var zone = u.Airborne ? (u.MissionZone ?? u.Pos) : u.Pos;
+                var w = roleWeight.GetValueOrDefault(t.AirRole, 0.1);
+                Add(u.Side, zone, u.Mission == "patrol" ? w : w * 0.4, t.AirRange);
+            }
+            else if (t.AntiAir > 0)
+            {
+                Add(u.Side, u.Pos, t.AntiAir * 0.25, 3);
+            }
+            else if (t.Cls == "structure")
+            {
+                Add(u.Side, u.Pos, 0.2, 4);
+            }
+        }
+
+        var keys = new HashSet<string>(acc["red"].Keys);
+        keys.UnionWith(acc["blue"].Keys);
+        var outMap = new Dictionary<string, double>();
+        foreach (var k in keys)
+        {
+            var a = acc["red"].GetValueOrDefault(k, 0.0);
+            var b = acc["blue"].GetValueOrDefault(k, 0.0);
+            var tot = a + b;
+            if (tot < 0.05) continue;
+            var v = (a - b) / tot;
+            if (Math.Abs(v) < 0.2) continue; // contested → no owner
+            outMap[k] = Math.Max(-1.0, Math.Min(1.0, v));
+        }
+        return outMap;
+    }
+
     /// <summary>Power factor: held plant + substations boost supply retention.</summary>
     /// <returns>Multiplier in range [1.0, 1.15]</returns>
     public static double PowerFactor(GameState g, string side)

@@ -175,7 +175,7 @@ public static class CommandValidator
             }
 
             // Impassable terrain
-            var td = g.TerrainOf(cell);
+            var td = g.TerrainOf(h);
             if (td.Impassable)
             {
                 errs.Add(new CommandError(c.UnitId, "impassable", "路径经过不可通行地形"));
@@ -313,11 +313,11 @@ public static class CommandValidator
         var observed = new HashSet<string>();
         
         // In fog mode, only units in observed hexes are visible
-        if (g.Observations.TryGetValue(side, out var obsHexes))
+        if (g.Obs.TryGetValue(side, out var obsPts))
         {
             foreach (var enemy in g.Units.Where(u => u.Alive && u.Side != side && u.Side != "neutral"))
             {
-                if (obsHexes.Contains(enemy.Pos.Key))
+                if (obsPts.TryGetValue(enemy.Pos.Key, out var pts) && pts >= 1)
                 {
                     observed.Add(enemy.Id);
                 }

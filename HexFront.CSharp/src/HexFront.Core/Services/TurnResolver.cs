@@ -283,14 +283,18 @@ public static class TurnResolver
 
     private static void ResolveSupply(GameState g, bool strict, Action<string, string, List<string>> emit)
     {
-        var supply = MechanicsService.ComputeSupply(g);
+        var supplyBySide = new Dictionary<string, Dictionary<string, double>>
+        {
+            ["red"] = MechanicsService.ComputeSupply(g, "red"),
+            ["blue"] = MechanicsService.ComputeSupply(g, "blue"),
+        };
 
         foreach (var u in g.Units)
         {
             if (!u.Alive) continue;
 
-            var m = supply.GetValueOrDefault(u.Side);
-            u.SupplyRate = m?.GetValueOrDefault(u.Pos.Key, 0.7) ?? 0.7;
+            var m = supplyBySide.GetValueOrDefault(u.Side);
+            u.SupplyRate = m != null && m.TryGetValue(u.Pos.Key, out var s) ? s : 0.7;
 
             var t = g.TypeOf(u);
             var drain = t.Consumption * 0.06 * (strict ? 1.0 : 0.5) * (1.0 - u.SupplyRate) + g.Rules.FoodPerTurn * 0.4;
@@ -593,8 +597,8 @@ public static class TurnResolver
     private static void CheckHoldVictory(GameState g, VictoryCond vc, Action<string, string, List<string>> emit)
     {
         var holders = MechanicsService.NodeHolders(g);
-        var redNodes = holders.GetValueOrDefault("red", 0);
-        var blueNodes = holders.GetValueOrDefault("blue", 0);
+        var redNodes = holders.GetValueOrDefault("red", new List<string>()).Count;
+        var blueNodes = holders.GetValueOrDefault("blue", new List<string>()).Count;
 
         if (redNodes >= vc.RedHoldCount)
         {
@@ -613,8 +617,8 @@ public static class TurnResolver
     private static void CheckNodeVictory(GameState g, VictoryCond vc, Action<string, string, List<string>> emit)
     {
         var holders = MechanicsService.NodeHolders(g);
-        var redNodes = holders.GetValueOrDefault("red", 0);
-        var blueNodes = holders.GetValueOrDefault("blue", 0);
+        var redNodes = holders.GetValueOrDefault("red", new List<string>()).Count;
+        var blueNodes = holders.GetValueOrDefault("blue", new List<string>()).Count;
 
         if (redNodes > blueNodes)
         {
