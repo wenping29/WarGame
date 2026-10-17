@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
-import type { ReactNode } from 'react'
-import { useWebSocket } from '../hooks/useWebSocket'
+import { useState, type ReactNode } from 'react'
+import { isMuted, play, setMuted } from '../services/sound'
 
 interface LayoutProps {
   children: ReactNode
@@ -8,24 +8,7 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
-  const { status } = useWebSocket({ autoConnect: false })
-
-  const getStatusText = () => {
-    switch (status) {
-      case 'live': return '已连接'
-      case 'connecting': return '连接中...'
-      case 'dead': return '连接断开'
-      default: return '本地模式'
-    }
-  }
-
-  const getStatusClass = () => {
-    switch (status) {
-      case 'live': return 'conn live'
-      case 'dead': return 'conn dead'
-      default: return 'conn'
-    }
-  }
+  const [muted, setLocalMuted] = useState(isMuted())
 
   return (
     <div className="app">
@@ -41,10 +24,21 @@ export default function Layout({ children }: LayoutProps) {
             大厅
           </Link>
         </nav>
-        <div className={getStatusClass()}>{getStatusText()}</div>
+        <button
+          className="btn btn-sm"
+          style={{ marginLeft: 'auto' }}
+          title="交互提示音开关"
+          onClick={() => {
+            const next = !muted
+            setMuted(next)
+            setLocalMuted(next)
+            if (!next) play('ok')
+          }}
+        >
+          提示音 {muted ? '关' : '开'}
+        </button>
       </header>
       <main id="app">{children}</main>
-      <div id="toast"></div>
     </div>
   )
 }

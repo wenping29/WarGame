@@ -4,22 +4,31 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react'
-import type { Cell } from '../services/api'
-import type { Unit as StoreUnit } from '../store/gameStore'
+import type { WireCell } from '../room/protocol'
+
+export interface MapUnit {
+  id: string
+  side: string
+  type: string
+  q: number
+  r: number
+  hp: number // 0-100 percentage
+  morale: number
+  fatigue: number
+}
 
 interface HexMapProps {
   width: number
   height: number
-  cells: Cell[]
-  units: StoreUnit[]
-  selectedUnit?: StoreUnit | null
+  cells: WireCell[]
+  units: MapUnit[]
+  selectedUnit?: MapUnit | null
   hoveredHex?: { q: number; r: number } | null
   pathPoints?: Array<{ q: number; r: number }>
-  attackTarget?: StoreUnit | null
+  attackTarget?: MapUnit | null
   reachableHexes?: Set<string>
-  obsPoints?: Record<string, number> // hexKey -> observation points
   onHexClick?: (q: number, r: number) => void
-  onUnitClick?: (unit: StoreUnit) => void
+  onUnitClick?: (unit: MapUnit) => void
   onPathPointAdd?: (q: number, r: number) => void
 }
 
@@ -36,10 +45,27 @@ const TERRAIN_COLORS: Record<string, string> = {
   water: '#3a7bd5',      // 水域 - deep blue
 }
 
-// Hex geometry constants
-const HEX_SIZE = 25 // pixels (flat-to-flat / 2)
-const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE
+// Hex geometry constants (pointy-top, odd-r offset "brick" board)
+const HEX_SIZE = 25 // circumradius in px (center -> corner)
+const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE // flat-to-flat == horizontal neighbour pitch
 const HEX_HEIGHT = 2 * HEX_SIZE
+const ROW_STEP = HEX_HEIGHT * 0.75
+const PAD_X = HEX_WIDTH / 2
+const PAD_Y = HEX_SIZE
+
+// Convert axial fractional coords to the nearest hex (cube rounding)
+function roundAxial(faq: number, far: number): { q: number; r: number } {
+  const fas = -faq - far
+  let rq = Math.round(faq)
+  let rr = Math.round(far)
+  const rs = Math.round(fas)
+  const dq = Math.abs(rq - faq)
+  const dr = Math.abs(rr - far)
+  const ds = Math.abs(rs - fas)
+  if (dq > dr && dq > ds) rq = -rr - rs
+  else if (dr > ds) rr = -rq - rs
+  return { q: rq, r: rr }
+}
 
 export default function HexMap({
   width,
@@ -51,18 +77,26 @@ export default function HexMap({
   pathPoints = [],
   attackTarget,
   reachableHexes = new Set(),
-  obsPoints = {},
   onHexClick,
   onUnitClick,
   onPathPointAdd,
 }: HexMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  // Convert hex coordinates to pixel coordinates
+  // Convert hex coordinates to pixel coordinates.
+  // Odd rows are shifted half a cell right, so the board is a rectangle.
   const hexToPixel = useCallback((q: number, r: number) => {
-    const x = HEX_WIDTH * (q + r / 2)
-    const y = HEX_HEIGHT * 0.75 * r
+    const x = PAD_X + HEX_WIDTH * (q + (r & 1) / 2)
+    const y = PAD_Y + ROW_STEP * r
     return { x, y }
+  }, [])
+
+  // Inverse of hexToPixel
+  const pixelToHex = useCallback((px: number, py: number) => {
+    const far = (py - PAD_Y) / ROW_STEP
+    const faq = (px - PAD_X) / HEX_WIDTH - far / 2
+    const a = roundAxial(faq, far)
+    return { q: a.q + (a.r - (a.r & 1)) / 2, r: a.r }
   }, [])
 
   // Draw a single hexagon
@@ -160,7 +194,7 @@ export default function HexMap({
         }
         
         // Draw airport
-        if (cell.airport > 0) {
+        if ((cell.airport ?? 0) > 0) {
           ctx.fillStyle = '#ffffff'
           ctx.font = '10px sans-serif'
           ctx.textAlign = 'center'
@@ -209,49 +243,6 @@ export default function HexMap({
       })
     },
     [units, selectedUnit, hexToPixel]
-  )
-
-  // Draw fog of war overlay
-  const drawFog = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
-      cells.forEach((cell) => {
-        const key = `${cell.q},${cell.r}`
-        const points = obsPoints[key] || 0
-        
-        // Unobserved hexes get dark overlay
-        if (points === 0) {
-          const { x, y } = hexToPixel(cell.q, cell.r)
-          ctx.fillStyle = 'rgba(0,0,0,0.7)'
-          ctx.beginPath()
-          for (let i = 0; i < 6; i++) {
-            const angle = (Math.PI / 3) * i - Math.PI / 6
-            const px = x + HEX_SIZE * Math.cos(angle)
-            const py = y + HEX_SIZE * Math.sin(angle)
-            if (i === 0) ctx.moveTo(px, py)
-            else ctx.lineTo(px, py)
-          }
-          ctx.closePath()
-          ctx.fill()
-        }
-        // Partially observed (E1-E2) get lighter overlay
-        else if (points < 3) {
-          const { x, y } = hexToPixel(cell.q, cell.r)
-          const alpha = 0.3 + (points / 3) * 0.3
-          ctx.fillStyle = `rgba(0,0,0,${alpha})`
-          ctx.beginPath()
-          for (let i = 0; i < 6; i++) {
-            const angle = (Math.PI / 3) * i - Math.PI / 6
-            const px = x + HEX_SIZE * Math.cos(angle)
-            const py = y + HEX_SIZE * Math.sin(angle)
-            if (i === 0) ctx.moveTo(px, py)
-            else ctx.lineTo(px, py)
-          }
-          ctx.closePath()
-          ctx.fill()
-        }
-      })
-    },
-    [cells, obsPoints, hexToPixel]
   )
 
   // Draw hover highlight
@@ -387,8 +378,8 @@ export default function HexMap({
     if (!ctx) return
     
     // Set canvas size
-    const mapWidth = width * HEX_WIDTH + HEX_WIDTH / 2
-    const mapHeight = height * HEX_HEIGHT * 0.75 + HEX_HEIGHT / 2
+    const mapWidth = width * HEX_WIDTH + HEX_WIDTH
+    const mapHeight = (height - 1) * ROW_STEP + HEX_HEIGHT
     canvas.width = mapWidth
     canvas.height = mapHeight
     
@@ -402,41 +393,32 @@ export default function HexMap({
     drawPath(ctx)
     drawUnits(ctx)
     drawAttackTarget(ctx)
-    drawFog(ctx)
     drawHover(ctx)
-  }, [width, height, cells, units, selectedUnit, hoveredHex, pathPoints, attackTarget, reachableHexes, obsPoints, drawTerrain, drawFeatures, drawReachable, drawPath, drawUnits, drawAttackTarget, drawFog, drawHover])
+  }, [width, height, cells, units, selectedUnit, hoveredHex, pathPoints, attackTarget, reachableHexes, drawTerrain, drawFeatures, drawReachable, drawPath, drawUnits, drawAttackTarget, drawHover])
 
   // Handle click events
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
-    
+
     const rect = canvas.getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
-    
-    // Find clicked hex
-    for (const cell of cells) {
-      const { x, y } = hexToPixel(cell.q, cell.r)
-      const dist = Math.sqrt((mouseX - x) ** 2 + (mouseY - y) ** 2)
-      
-      if (dist < HEX_SIZE) {
-        // If drawing path, add point
-        if (onPathPointAdd && pathPoints.length > 0) {
-          onPathPointAdd(cell.q, cell.r)
-          return
-        }
-        
-        // Check if clicking on a unit
-        const unit = units.find(u => u.q === cell.q && u.r === cell.r)
-        if (unit && onUnitClick) {
-          onUnitClick(unit)
-        } else if (onHexClick) {
-          onHexClick(cell.q, cell.r)
-        }
-        break
-      }
+    // CSS 把画布拉伸到容器尺寸，点击坐标需换算回画布像素
+    const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width)
+    const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height)
+
+    const { q, r } = pixelToHex(mouseX, mouseY)
+    if (q < 0 || q >= width || r < 0 || r >= height) return
+    if (!cells.some((c) => c.q === q && c.r === r)) return
+
+    // If drawing path, add point
+    if (onPathPointAdd && pathPoints.length > 0) {
+      onPathPointAdd(q, r)
+      return
     }
+
+    const unit = units.find((u) => u.q === q && u.r === r)
+    if (unit && onUnitClick) onUnitClick(unit)
+    else if (onHexClick) onHexClick(q, r)
   }
 
   return (
@@ -457,13 +439,24 @@ export default function HexMap({
 // Helper: Get unit icon based on type
 function getUnitIcon(type: string): string {
   const icons: Record<string, string> = {
-    infantry: 'I',
+    rifle: 'I',
+    light_inf: 'I',
+    rifle_auto: 'I',
+    engineer: 'E',
+    mec_inf: 'M',
     armor: 'A',
-    mechanized: 'M',
-    artillery: '🎯',
+    tank: 'T',
+    gun: 'G',
+    arty: '⌖',
+    signals: 'S',
+    aa: '∥',
+    recy: '箱',
     hq: '★',
-    depot: '📦',
-    radar: '📡',
+    radar: 'R',
+    airbase: '✈',
+    fighter: 'F',
+    strike_air: 'SA',
+    recon_air: 'SR',
   }
   return icons[type] || '?'
 }

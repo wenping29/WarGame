@@ -30,6 +30,10 @@ body{
 #app{flex:1 1 auto; min-height:0; position:relative; overflow-x:auto}
 #toast{position:fixed; bottom:16px; left:50%; transform:translateX(-50%); z-index:100;
   display:flex; flex-direction:column; gap:6px; align-items:center}
+.toast-item{background:var(--panel2); border:1px solid var(--line); border-left:3px solid var(--accent);
+  padding:8px 14px; border-radius:4px; box-shadow:0 6px 18px rgba(0,0,0,.4); font-size:13px; max-width:520px}
+.toast-item.err{border-left-color:var(--danger)}
+.toast-item.warn{border-left-color:var(--warn)}
 
 h1,h2,h3{margin:0 0 12px; font-weight:600}
 h2{font-size:16px} h3{font-size:13px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px}
@@ -73,6 +77,49 @@ label{display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--
 .lobby-actions button{
   padding:20px; font-size:15px; display:flex; flex-direction:column; align-items:center; gap:8px;
 }
+
+/* 卡片基元（对齐 web/css/app.css，大厅/首页/向导共用） */
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end}
+.card{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:14px}
+.tag{display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px;
+  background:var(--panel2); border:1px solid var(--line); color:var(--dim)}
+.tag.red{color:#f0c9c4; border-color:#7a423c} .tag.blue{color:#c7ddf2; border-color:#3b6186}
+.tag.on{color:#cfe9d6; border-color:#437050; background:#2f4d3a}
+.tag.warn{color:#f0d9a5; border-color:#6e5a2e; background:#4a3d20}
+.spacer{flex:1}
+.home-list{width:min(760px,100%)}
+.btn,.btn-1,.btn-2{
+  background:var(--panel2); color:var(--fg); border:1px solid var(--line);
+  padding:7px 14px; border-radius:4px;
+}
+.btn:hover{border-color:var(--accent)}
+.btn-primary{background:#2f4d3a; border-color:#437050; color:#cfe9d6; font-weight:600}
+.btn-primary:hover{background:#38603f}
+.btn-warn{background:#4a3d20; border-color:#6e5a2e; color:#f0d9a5}
+.btn-red{background:#4a2a28; border-color:#7a423c; color:#f0c9c4}
+.btn:disabled,.btn-primary:disabled{opacity:.45; cursor:not-allowed}
+.btn-sm{padding:3px 8px; font-size:12px}
+.grid-3{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px}
+.scn-card{display:flex; flex-direction:column; gap:8px}
+.scn-card .desc{color:var(--dim); font-size:12px; line-height:1.5; min-height:36px}
+.scn-card .foot{display:flex; gap:8px; align-items:center; margin-top:auto}
+.kv{display:flex; justify-content:space-between; font-size:12px; color:var(--dim);
+  border-top:1px dashed var(--line); padding-top:6px; margin-top:6px}
+.join-bar{display:flex; gap:8px; align-items:flex-end; background:var(--panel); border:1px solid var(--line);
+  border-radius:6px; padding:12px 14px; margin-bottom:16px; flex-wrap:wrap}
+.hero{display:flex; gap:14px; align-items:center; margin-bottom:16px}
+.hero .btn-primary{font-size:15px; padding:12px 22px}
+
+/* 房间卡：码 + 标题 + 状态标签占首行，加入按钮永远贴在卡片底部 */
+.room-card,.save-card{display:flex; flex-direction:column; gap:8px}
+.room-card .hd,.save-card .hd{display:flex; align-items:center; gap:8px}
+.room-card .code,.save-card .code{font-family:var(--mono); font-size:16px; font-weight:700; color:#eef3f7; letter-spacing:1px}
+.room-card .name,.save-card .name{font-weight:600; color:#eef3f7}
+.room-card .sub,.save-card .sub{color:var(--dim); font-size:12px; line-height:1.5}
+.room-card .foot{display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:auto;
+  border-top:1px dashed var(--line); padding-top:8px}.room-card .foot .role-taken{border-color:#7a423c; color:#f0c9c4}
+.save-card .foot{display:flex; gap:8px; align-items:center; margin-top:auto;
+  border-top:1px dashed var(--line); padding-top:8px}
 
 /* Wizard */
 .wizard-form{

@@ -2,68 +2,79 @@
  * 首页：三个入口 - 创建副本 / 一键开局 / 存档副本
  */
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { listSaves } from '../services/api'
-
-interface SaveInfo {
-  id: string
-  name: string
-  savedAt: string
-}
+import { api, type SaveInfo } from '../services/api'
+import { loadMeta } from '../room/useUnitFull'
+import { toast } from '../components/Toast'
 
 export default function Home() {
   const navigate = useNavigate()
   const [saves, setSaves] = useState<SaveInfo[]>([])
   const [showSaves, setShowSaves] = useState(false)
 
-  useEffect(() => {
-    loadSaves()
-  }, [])
-
-  const loadSaves = async () => {
+  const quickStart = async () => {
+    toast('一键开局中…')
     try {
-      const list = await listSaves()
-      setSaves(list)
+      const meta = await loadMeta(true)
+      const s = meta.scenarios[0]
+      if (!s) return toast('没有可用剧本', 'err')
+      const res = await api.createInstance({ scenario: s.id || s.file })
+      if (res.code) {
+        toast('开局成功 · 房间 ' + res.code)
+        navigate(`/room/${res.code}/director`)
+      } else {
+        toast(res.error || res.errors?.join(';') || '创建失败', 'err')
+      }
     } catch (e) {
-      console.error('Failed to load saves:', e)
+      toast('一键开局失败：' + e, 'err')
     }
   }
 
-  const toggleSaves = () => {
-    setShowSaves(!showSaves)
+  const toggleSaves = async () => {
+    const next = !showSaves
+    setShowSaves(next)
+    if (next) {
+      try {
+        const meta = await loadMeta()
+        setSaves(meta.saves || [])
+      } catch {
+        setSaves([])
+      }
+    }
+  }
+
+  const loadSave = async (s: SaveInfo) => {
+    const res = await api.loadSave(s.instance)
+    if (res.code) {
+      toast(`已载入房间 ${res.code}（回合 ${res.resumed_turn}）`)
+      navigate(`/room/${res.code}/director`)
+    } else {
+      toast(res.error || '载入失败', 'err')
+    }
   }
 
   return (
     <div className="page home-page">
       <div className="home">
-        <button 
-          className="home-tile" 
-          onClick={() => navigate('/new')}
-        >
+        <button className="home-tile" onClick={() => navigate('/new')}>
           <b>创建副本</b>
           <span className="hint">按剧本自定义部队与战场环境</span>
         </button>
-        
-        <button 
-          className="home-tile" 
-          onClick={() => navigate('/lobby')}
-        >
+
+        <button className="home-tile" onClick={quickStart}>
           <b>一键开局</b>
           <span className="hint">默认剧本 · 零配置 · 直接进导演部</span>
         </button>
-        
-        <button 
-          className="home-tile" 
-          onClick={toggleSaves}
-        >
+
+        <button className="home-tile" onClick={toggleSaves}>
           <b>存档副本</b>
           <span className="hint">
             {saves.length ? `${saves.length} 个副本可载入` : '暂无存档'}
           </span>
         </button>
       </div>
-      
+
       {showSaves && (
         <div className="home-list">
           <h3>已存副本 ({saves.length})</h3>
@@ -72,25 +83,16 @@ export default function Home() {
           ) : (
             <div className="grid-3">
               {saves.map((save) => (
-                <div key={save.id} className="card scn-card">
-                  <div>
-                    <b>{save.name}</b>
-                  </div>
+                <div key={save.instance} className="card scn-card">
+                  <div><b>{save.name}</b></div>
                   <div className="kv">
-                    <span>保存于: {new Date(save.savedAt).toLocaleString('zh-CN')}</span>
+                    <span>{save.scenario_name || save.scenario}</span>
+                    <span>回合 {save.last_turn}</span>
+                    <span>{new Date(save.created_at).toLocaleString('zh-CN')}</span>
                   </div>
                   <div className="foot">
-                    <button 
-                      className="btn btn-sm btn-primary"
-                      onClick={() => navigate(`/director?load=${save.id}`)}
-                    >
-                      载入
-                    </button>
-                    <button 
-                      className="btn btn-sm"
-                      onClick={() => {/* TODO: delete save */}}
-                    >
-                      删除
+                    <button className="btn btn-sm btn-primary" onClick={() => loadSave(save)}>
+                      载入并导调
                     </button>
                   </div>
                 </div>

@@ -3,6 +3,7 @@
  */
 
 import { useState, useCallback } from 'react'
+import { play } from '../services/sound'
 
 interface ToastMessage {
   id: number
@@ -15,6 +16,7 @@ const toasts: ToastMessage[] = []
 const listeners: Array<() => void> = []
 
 function notify(text: string, type: ToastMessage['type'] = 'info') {
+  play(type === 'err' ? 'err' : type === 'warn' ? 'warn' : 'ok')
   const id = nextId++
   toasts.push({ id, text, type })
   listeners.forEach(fn => fn())

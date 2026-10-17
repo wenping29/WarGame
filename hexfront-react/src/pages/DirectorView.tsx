@@ -1,124 +1,52 @@
 /**
  * 导演部：全知视图 + 双方已受领指令 + 就绪态 + 导调动作（天气/AI/迷雾/全知/注入情报/跳回合）+ 强制结算/存档。
+ * 数据全部来自服务端 director 视图；last_errors 是 JSON 字符串数组，渲染前解析。
  */
 
 import { useState } from 'react'
-import HexMap from '../components/HexMap'
-import { useGameStore } from '../store/gameStore'
-import type { Unit as StoreUnit } from '../store/gameStore'
+import HexMap, { type MapUnit } from '../components/HexMap'
+import { useRoom } from '../room/RoomSocket'
+import { useUnitTypes, useWeatherList } from '../room/useUnitFull'
+import type { WireCommand, WireDirectorView, WireUnit } from '../room/protocol'
+import { play } from '../services/sound'
 
-interface EventLog {
-  turn: number
-  code: string
-  text: string
+const CLS_LABEL: Record<string, string> = {
+  foot: '徒步', motor: '轮式', mech: '装甲', air: '航空', structure: '固定设施',
 }
 
-interface InjectState {
-  side: 'red' | 'blue'
-  unit: string
-}
+const hhmm = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`
 
 export default function DirectorView() {
-  const { 
-    turn, 
-    maxTurns, 
-    units, 
-    selectedUnit, 
-    selectUnit,
-    weather,
-    pendingOrders,
-  } = useGameStore()
-  
-  const [logs] = useState<EventLog[]>([
-    { turn: 1, code: 'start', text: '战斗开始，双方部队进入战场' },
-    { turn: 2, code: 'move', text: 'R001 向东北方向机动 3 格' },
-    { turn: 2, code: 'weather', text: '天气转为多云，能见度降低' },
-    { turn: 3, code: 'contact', text: '发现敌方装甲单位 E001，距离 5 格' },
-    { turn: 3, code: 'fire', text: 'R004 对区域 (7,3) 实施炮击' },
-    { turn: 4, code: 'attack', text: 'R002 突击 E002，造成轻微损伤' },
-    { turn: 5, code: 'supply', text: '红方补给线建立，所有单位恢复补给' },
-  ])
-  
-  const [inject, setInject] = useState<InjectState>({ side: 'red', unit: '' })
+  const room = useRoom()
+  const view = room.view?.kind === 'director' ? (room.view as WireDirectorView) : null
+  const typeMap = useUnitTypes()
+  const weatherList = useWeatherList()
+
+  const [inject, setInject] = useState<{ side: string; unit: string }>({ side: 'red', unit: '' })
   const [newWeather, setNewWeather] = useState('')
   const [jumpTurn, setJumpTurn] = useState(1)
-  
-  // Mock data
-  const mockCells = Array.from({ length: 100 }, (_, i) => ({
-    q: i % 10,
-    r: Math.floor(i / 10),
-    terrain: ['clear', 'woods', 'hills', 'mountain'][i % 4],
-    elev: 50 + (i * 5),
-    slope: 2 + (i % 3),
-    road: i % 7 === 0,
-    river: false,
-    bridge: false,
-    city: 0,
-    railway: false,
-    railStation: false,
-    tunnel: false,
-    powerline: false,
-    powerPlant: false,
-    substation: false,
-    airport: 0,
-  }))
-  
-  // Calculate combat force index for each unit
-  const calculateCF = (u: StoreUnit): number => {
-    const strength = u.hp / 100
-    const mor = Math.max(0.4, Math.min(1.2, 0.5 + (u.morale ?? 0) / 100 * 0.7))
-    return (80) * strength * mor // Simplified CF calculation
-  }
-  
-  const redUnits = units.filter(u => u.side === 'red')
-  const blueUnits = units.filter(u => u.side === 'blue')
-  const cfMax = Math.max(0.001, ...units.map(calculateCF))
-  
-  const sortedRed = [...redUnits].sort((a, b) => calculateCF(b) - calculateCF(a))
-  const sortedBlue = [...blueUnits].sort((a, b) => calculateCF(b) - calculateCF(a))
 
-  const handleForceResolve = () => {
-    console.log('强制结算')
+  const units = view?.units ?? []
+  const cfMax = Math.max(0.001, ...units.map(u => cfIndex(u, typeMap)))
+
+  const mapUnits: MapUnit[] = units.map(u => {
+    const full = typeMap[u.type]?.personnel ?? 0
+    const hp = full > 0 ? Math.max(1, Math.min(100, Math.round(u.personnel / full * 100))) : 50
+    return { id: u.id, side: u.side, type: u.type, q: u.q, r: u.r, hp, morale: u.morale, fatigue: u.fatigue }
+  })
+
+  const send = (o: Record<string, unknown>) => {
+    play('tap')
+    room.directorCmd({ action: o.action as string, ...o })
   }
-  
-  const handleSave = () => {
-    console.log('存档')
-  }
-  
-  const handleSetWeather = () => {
-    console.log('设置天气:', newWeather)
-  }
-  
-  const handleToggleFog = () => {
-    console.log('切换战争迷雾')
-  }
-  
-  const handleToggleOmniscient = () => {
-    console.log('切换观战全知')
-  }
-  
-  const handleToggleAI = (side: 'red' | 'blue') => {
-    console.log('切换AI代管:', side)
-  }
-  
-  const handleInjectIntel = () => {
-    if (!inject.unit) {
-      alert('请选择目标单位')
-      return
-    }
-    console.log('注入情报:', inject.side, inject.unit)
-  }
-  
-  const handleJumpTurn = () => {
-    console.log('跳转到回合:', jumpTurn)
-  }
-  
-  const handleMapPick = (q: number, r: number) => {
-    const u = units.find(x => x.q === q && x.r === r)
-    if (u) {
-      setInject(prev => ({ ...prev, unit: u.id }))
-    }
-  }
+
+  const held = { red: 0, blue: 0 }
+  Object.values(view?.node_holders ?? {}).forEach(s => {
+    if (s === 'red' || s === 'blue') held[s]++
+  })
+
+  const rowsFor = (side: string) =>
+    units.filter(u => u.side === side).sort((a, b) => cfIndex(b, typeMap) - cfIndex(a, typeMap))
 
   return (
     <div className="terminal" style={{ gridTemplateColumns: 'minmax(280px,340px) minmax(420px,1fr) minmax(260px,320px)' }}>
@@ -128,66 +56,25 @@ export default function DirectorView() {
           <h3>全局兵力</h3>
           <div className="scroll">
             <div className="mini">
-              <b className="nred">红 {redUnits.length}</b> · <b className="nblue">蓝 {blueUnits.length}</b> · 合计 {units.length}
+              <b className="nred">红 {units.filter(u => u.side === 'red').length}</b> ·{' '}
+              <b className="nblue">蓝 {units.filter(u => u.side === 'blue').length}</b> · 合计 {units.length}
             </div>
-            
             <div className="legend mini">
-              <span><i className="cs foot" />徒步</span>
-              <span><i className="cs motor" />轮式</span>
-              <span><i className="cs mech" />装甲</span>
-              <span><i className="cs air" />航空</span>
-              <span>兵种 ｜ 战力条 · 士气点按档位着色</span>
+              {['foot', 'motor', 'mech', 'air', 'structure'].map(c => (
+                <span key={c}><i className={`cs ${c}`} />{CLS_LABEL[c]}</span>
+              ))}
+              <span>兵种 ｜ 战力条 · 士气点按档位着色 ｜ 悬停看明细</span>
             </div>
-            
-            {sortedRed.map(u => {
-              const cf = calculateCF(u)
-              const band = cf >= cfMax * 0.6 ? 'hi' : cf >= cfMax * 0.3 ? 'mid' : 'lo'
-              const m = u.morale ?? 0
-              const mband = m >= 70 ? 'hi' : m >= 45 ? 'mid' : m >= 25 ? 'low' : 'crit'
-              
-              return (
-                <div
-                  key={u.id}
-                  className={`urow ${u.side === 'red' ? 'red' : 'blue'}${inject.unit === u.id ? ' sel' : ''}`}
-                  onClick={() => setInject(prev => ({ ...prev, unit: u.id }))}
-                >
-                  <span className="uid">{u.id}</span>
-                  <span className="cls other">{u.type.slice(0, 2)}</span>
-                  <span className={`pwr ${band}`}>
-                    <span className="tk"><i style={{ width: `${Math.round(cf / cfMax * 100)}%` }} /></span>
-                    <b>{cf.toFixed(1)}</b>
-                  </span>
-                  <span className={`mor ${mband}`} title={`士气 ${m}`}>
-                    <i />{m}
-                  </span>
-                </div>
-              )
-            })}
-            
-            {sortedBlue.map(u => {
-              const cf = calculateCF(u)
-              const band = cf >= cfMax * 0.6 ? 'hi' : cf >= cfMax * 0.3 ? 'mid' : 'lo'
-              const m = u.morale ?? 0
-              const mband = m >= 70 ? 'hi' : m >= 45 ? 'mid' : m >= 25 ? 'low' : 'crit'
-              
-              return (
-                <div
-                  key={u.id}
-                  className={`urow ${u.side === 'blue' ? 'blue' : 'red'}${inject.unit === u.id ? ' sel' : ''}`}
-                  onClick={() => setInject(prev => ({ ...prev, unit: u.id }))}
-                >
-                  <span className="uid">{u.id}</span>
-                  <span className="cls other">{u.type.slice(0, 2)}</span>
-                  <span className={`pwr ${band}`}>
-                    <span className="tk"><i style={{ width: `${Math.round(cf / cfMax * 100)}%` }} /></span>
-                    <b>{cf.toFixed(1)}</b>
-                  </span>
-                  <span className={`mor ${mband}`} title={`士气 ${m}`}>
-                    <i />{m}
-                  </span>
-                </div>
-              )
-            })}
+            {rowsFor('red').map(u => (
+              <UnitRow key={u.id} u={u} cf={cfIndex(u, typeMap)} cfMax={cfMax} typeDef={typeMap[u.type]}
+                selected={inject.unit === u.id}
+                onClick={() => setInject(prev => ({ ...prev, unit: u.id }))} />
+            ))}
+            {rowsFor('blue').map(u => (
+              <UnitRow key={u.id} u={u} cf={cfIndex(u, typeMap)} cfMax={cfMax} typeDef={typeMap[u.type]}
+                selected={inject.unit === u.id}
+                onClick={() => setInject(prev => ({ ...prev, unit: u.id }))} />
+            ))}
           </div>
         </div>
       </div>
@@ -196,25 +83,28 @@ export default function DirectorView() {
       <div className="col">
         <div className="mapwrap">
           <HexMap
-            width={10}
-            height={10}
-            cells={mockCells}
-            units={units}
-            selectedUnit={selectedUnit || undefined}
-            obsPoints={{}}
-            onUnitClick={selectUnit}
-            onHexClick={handleMapPick}
+            width={view?.width ?? 10}
+            height={view?.height ?? 10}
+            cells={view?.cells ?? []}
+            units={mapUnits}
+            onHexClick={(q, r) => {
+              const u = units.find(x => x.q === q && x.r === r)
+              if (u) setInject(prev => ({ ...prev, unit: u.id }))
+            }}
+            onUnitClick={(u) => setInject(prev => ({ ...prev, unit: u.id }))}
           />
           <div className="maphud" id="hud">
-            <b>测试副本</b> · 导演部 · 回合 {turn}/{maxTurns} · {weather} · 迷雾 开
-          </div>
-          <div className="mapzoom">
-            <button title="放大">+</button>
-            <button title="缩小">−</button>
-            <button title="复位">⤢</button>
+            {view ? (
+              <>
+                <b>{view.name || ''}</b> · 导演部 · 回合 {view.turn}/{view.max_turns} ·{' '}
+                {hhmm(view.hour)} {view.day?.label || ''} · {view.weather?.label || ''} ·{' '}
+                迷雾 {view.flags?.fog ? '开' : '关'} · 要点 红 {held.red}/蓝 {held.blue}
+                {view.power && <> · 电网 红×{view.power.red} 蓝×{view.power.blue}</>}
+                {view.over && <> · <b>已结束 {view.winner || ''}</b></>}
+              </>
+            ) : '连接中…'}
           </div>
         </div>
-        
         <div className="legend" id="legend">
           <span><i style={{ background: '#c15b4e' }} /> 红方</span>
           <span><i style={{ background: '#4e82b3' }} /> 蓝方</span>
@@ -224,111 +114,96 @@ export default function DirectorView() {
 
       {/* Right column: Controls & Orders & Events */}
       <div className="col">
-        {/* Director controls */}
+        {room.error && (
+          <div className="card warn-card">
+            <span className="warn">{room.error}</span>
+            <button className="btn btn-sm" style={{ marginLeft: 8 }} onClick={room.clearError}>×</button>
+          </div>
+        )}
+
         <div className="panel">
           <h3>导调控制</h3>
           <div className="scroll">
             <div className="toolbar">
-              <button className="btn btn-primary" onClick={handleForceResolve}>强制结算</button>
-              <button className="btn" onClick={handleSave}>存档</button>
+              <button className="btn btn-primary" onClick={() => { play('send'); room.forceResolve() }}>强制结算</button>
+              <button className="btn" onClick={() => { play('tap'); room.save('') }}>存档</button>
             </div>
-            
+
             <div className="row">
               <label>
                 <span>改天气</span>
-                <select value={newWeather} onChange={(e) => setNewWeather(e.target.value)}>
-                  <option value="">选择天气</option>
-                  <option value="clear">晴朗</option>
-                  <option value="cloudy">多云</option>
-                  <option value="rain">雨天</option>
-                  <option value="fog">雾天</option>
+                <select value={newWeather || view?.weather?.id || ''} onChange={e => setNewWeather(e.target.value)}>
+                  {weatherList.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
                 </select>
               </label>
-              <button className="btn btn-sm" onClick={handleSetWeather}>设定</button>
+              <button className="btn btn-sm" onClick={() => send({ action: 'weather', id: newWeather || view?.weather?.id })}>设定</button>
             </div>
-            
+
             <div className="toolbar">
-              <button className="btn btn-sm" onClick={handleToggleFog}>○ 战争迷雾</button>
-              <button className="btn btn-sm" onClick={handleToggleOmniscient}>○ 观战全知</button>
+              <Toggle label="战争迷雾" on={view?.flags?.fog === true} onChange={on => send({ action: 'fog', on })} />
+              <Toggle label="观战全知" on={view?.spectator_omniscient === true} onChange={on => send({ action: 'spectator_omniscient', on })} />
             </div>
-            
+
             <div className="toolbar">
-              <button className="btn btn-sm" onClick={() => handleToggleAI('red')}>○ 红方 AI 代管</button>
-              <button className="btn btn-sm" onClick={() => handleToggleAI('blue')}>○ 蓝方 AI 代管</button>
+              <Toggle label="红方 AI 代管" on={view?.ai?.red === true} onChange={on => send({ action: 'ai', side: 'red', on })} />
+              <Toggle label="蓝方 AI 代管" on={view?.ai?.blue === true} onChange={on => send({ action: 'ai', side: 'blue', on })} />
             </div>
-            
+
             <div className="mini" style={{ margin: '4px 0' }}>
-              就绪：红 ✓ · 蓝 ✓
+              就绪：红 {(view?.ready?.red ? '✓' : '✗')} · 蓝 {(view?.ready?.blue ? '✓' : '✗')}
             </div>
-            
+
             <h3 style={{ marginTop: '8px' }}>注入情报</h3>
             <div className="row">
-              <select 
-                value={inject.side} 
-                onChange={(e) => setInject(prev => ({ ...prev, side: e.target.value as 'red' | 'blue' }))}
-              >
+              <select value={inject.side} onChange={e => setInject(prev => ({ ...prev, side: e.target.value }))}>
                 <option value="red">向红方</option>
                 <option value="blue">向蓝方</option>
               </select>
-              <input 
-                value={inject.unit} 
-                placeholder="目标单位 id" 
-                onChange={(e) => setInject(prev => ({ ...prev, unit: e.target.value }))}
-                style={{ width: '110px' }}
-              />
-              <button className="btn btn-sm" onClick={handleInjectIntel}>暴露</button>
+              <input value={inject.unit} placeholder="目标单位 id" style={{ width: '110px' }}
+                onChange={e => setInject(prev => ({ ...prev, unit: e.target.value }))} />
+              <button className="btn btn-sm" onClick={() => send({ action: 'inject_intel', side: inject.side, unit: inject.unit })}>暴露</button>
             </div>
             <div className="mini">提示：点选地图单位即填入目标 id</div>
-            
-            <h3 style={{ marginTop: '8px' }}>跳回合</h3>
+
+            <h3 style={{ marginTop: '8px' }}>跳回合（引擎暂未开放回跳）</h3>
             <div className="row">
-              <input 
-                type="number" 
-                value={jumpTurn} 
-                min={1} 
-                onChange={(e) => setJumpTurn(parseInt(e.target.value))}
-                style={{ width: '80px' }}
-              />
-              <button className="btn btn-sm" onClick={handleJumpTurn}>跳转</button>
+              <input type="number" value={jumpTurn} min={1} style={{ width: '80px' }}
+                onChange={e => setJumpTurn(parseInt(e.target.value) || 1)} />
+              <button className="btn btn-sm" onClick={() => send({ action: 'jump_turn', turn: jumpTurn })}>跳转</button>
             </div>
           </div>
         </div>
 
-        {/* Orders panel */}
         <div className="panel">
           <h3>双方已受领指令</h3>
           <div className="scroll">
-            <div>
-              <h3>红方指令 ({pendingOrders?.length || 0})</h3>
-              {pendingOrders && pendingOrders.length ? (
-                pendingOrders.map((cmd: any, i: number) => (
-                  <div key={i} className="ordbox">
-                    <div className="o">
-                      <span className="mono">{cmd.unitId}</span>
-                      <span>{cmd.op}</span>
+            {(['red', 'blue'] as const).map(side => {
+              const list = view?.orders?.[side] ?? []
+              return (
+                <div key={side} style={{ marginTop: side === 'blue' ? 12 : 0 }}>
+                  <h3>{side === 'red' ? '红方' : '蓝方'} 指令 ({list.length})</h3>
+                  {list.length ? list.map(c => (
+                    <div key={c.unit} className="ordbox">
+                      <div className="o">
+                        <span className="mono">{c.unit}</span>
+                        <span>{describeCommand(c)}</span>
+                      </div>
                     </div>
-                  </div>
-                ))
-              ) : (
-                <div className="muted small">（无）</div>
-              )}
-            </div>
-            
-            <div style={{ marginTop: '12px' }}>
-              <h3>蓝方指令 (0)</h3>
-              <div className="muted small">（无）</div>
-            </div>
+                  )) : <div className="muted small">（无）</div>}
+                </div>
+              )
+            })}
+            {renderRejected(view)}
           </div>
         </div>
 
-        {/* Event log panel */}
         <div className="panel grow">
           <h3>事件日志</h3>
           <div className="scroll">
-            {logs.length === 0 ? (
+            {room.log.length === 0 ? (
               <div className="muted small">（无事件）</div>
             ) : (
-              logs.slice(-120).reverse().map((e, i) => (
+              room.log.slice(-120).reverse().map((e, i) => (
                 <div key={i} className={`ev ${e.code}`}>
                   <span className="t">T{e.turn}</span>
                   {e.text}
@@ -339,5 +214,99 @@ export default function DirectorView() {
         </div>
       </div>
     </div>
+  )
+}
+
+function renderRejected(view: WireDirectorView | null) {
+  const le = view?.last_errors
+  if (!le) return null
+  const rows: Array<[string, string]> = []
+  for (const side of ['red', 'blue'] as const) {
+    for (const raw of le[side] ?? []) {
+      let msg = raw
+      try { msg = (JSON.parse(raw) as { message?: string }).message ?? raw } catch { /* 原样显示 */ }
+      rows.push([side, msg])
+    }
+  }
+  if (!rows.length) return null
+  return (
+    <div>
+      <h3>上轮被拒</h3>
+      {rows.map(([s, m], i) => <div key={i} className="errrow">[{s}] {m}</div>)}
+    </div>
+  )
+}
+
+function describeCommand(c: WireCommand): string {
+  switch (c.op) {
+    case 'move': return '机动 ' + (c.path?.length ? `${c.path[c.path.length - 1][0]},${c.path[c.path.length - 1][1]}` : '?')
+    case 'attack': return '突击 ' + (c.target ?? '?')
+    case 'fire': return '炮击 ' + (c.zone ? `${c.zone[0]},${c.zone[1]}` : '?')
+    case 'air_mission': return '空任务 ' + (c.mission ?? '?')
+    case 'dig': return '构筑工事'
+    case 'rest': return '休整'
+    case 'halt': return '停止'
+    default: return c.op
+  }
+}
+
+/// 战力指数：复刻引擎 CF 链中与战场上下文无关的因子（不含地形/工事/天候/空权/相克）
+function cfIndex(u: WireUnit, typeMap: Record<string, { personnel?: number }>): number {
+  const t = typeMap[u.type] || {}
+  const strength = t.personnel ? u.personnel / t.personnel : 1
+  const pers = 0.75 + 0.0025 * (u.training ?? 0) + 0.0015 * (u.experience ?? 0)
+  const mor = Math.max(0.4, Math.min(1.2, 0.5 + (u.morale ?? 0) / 100 * 0.7))
+  const sup = Math.max(0.6, Math.min(1, 0.6 + 0.4 * (u.supply ?? 1)))
+  const ammo = u.ammo <= 0 ? 0.3 : Math.max(0.3, Math.min(1, 0.5 + 0.5 * u.ammo))
+  return (u.firepower ?? 0) * strength * pers * mor * sup * ammo
+}
+
+function UnitRow({ u, cf, cfMax, typeDef, selected, onClick }: {
+  u: WireUnit
+  cf: number
+  cfMax: number
+  typeDef?: { personnel?: number }
+  selected: boolean
+  onClick: () => void
+}) {
+  const band = cf >= cfMax * 0.6 ? 'hi' : cf >= cfMax * 0.3 ? 'mid' : 'lo'
+  const m = u.morale ?? 0
+  const mband = m >= 70 ? 'hi' : m >= 45 ? 'mid' : m >= 25 ? 'low' : 'crit'
+  const detail = [
+    `${u.type_label || u.type} · ${u.personnel}/${typeDef?.personnel ?? '-'}人`,
+    `士气 ${m} · 战力 ${cf.toFixed(1)}（编制火力 ${u.firepower ?? 0}）`,
+    `弹 ${u.ammo} 油 ${u.fuel} 粮 ${u.food} · 补给 ${u.supply}`,
+    `(${u.q},${u.r}) · 训练 ${u.training} 经验 ${u.experience}${u.commander ? ' · ' + u.commander : ''}`,
+  ].join('\n')
+
+  return (
+    <div
+      className={`urow ${u.side === 'red' ? 'red' : u.side === 'blue' ? 'blue' : 'neutral'}${u.status === 'destroyed' ? ' dead' : ''}${selected ? ' sel' : ''}`}
+      title={detail}
+      onClick={onClick}
+    >
+      <span className="uid">{u.id}</span>
+      <span className={`cls ${u.cls || 'other'}`}>{(u.type_label || u.type).slice(0, 2)}</span>
+      <span className={`pwr ${band}`}>
+        <span className="tk"><i style={{ width: `${Math.round(cf / cfMax * 100)}%` }} /></span>
+        <b>{cf.toFixed(1)}</b>
+      </span>
+      <span className={`mor ${mband}`} title={`士气 ${m}`}><i />{m}</span>
+      {u.status === 'destroyed' && <span className="al bad" title="状态：已歼灭">亡</span>}
+      {u.status === 'routed' && <span className="al bad" title="状态：溃退">溃</span>}
+      {(u.supply ?? 1) < 0.5 && <span className="al bad" title={`补给率 ${u.supply}`}>断</span>}
+      {(u.supply ?? 1) >= 0.5 && (u.ammo ?? 1) < 0.35 && <span className="al warn" title={`弹药 ${u.ammo}`}>弹</span>}
+      {(u.fuel ?? 1) < 0.35 && <span className="al warn" title={`油料 ${u.fuel}`}>油</span>}
+      {u.fort ? <span className="al" title={`工事等级 ${u.fort}`}>固{u.fort}</span> : null}
+      {u.hq && <span className="al hq" title="指挥所">指</span>}
+    </div>
+  )
+}
+
+function Toggle({ label, on, onChange }: { label: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button className={`btn btn-sm${on ? ' btn-primary' : ''}`} onClick={() => onChange(!on)}>
+      {(on ? '● ' : '○ ') + label}
+    </button>
   )
 }

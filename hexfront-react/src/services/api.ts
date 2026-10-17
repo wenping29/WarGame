@@ -4,7 +4,7 @@
  */
 
 import axios, { type AxiosInstance, AxiosError } from 'axios'
-import type { WireCommand } from '../room/protocol'
+import type { WireWeather } from '../room/protocol'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
@@ -100,6 +100,9 @@ export interface ValidateResult {
 export interface CreateInstanceBody {
   scenario: string
   name?: string
+  seed?: number
+  ai_red?: boolean
+  ai_blue?: boolean
   overrides?: Record<string, unknown>
   gis?: string
   force?: boolean
@@ -109,8 +112,8 @@ export interface ScenariosMeta {
   scenarios: ScenarioInfo[]
   gis: Array<Record<string, unknown>>
   saves: SaveInfo[]
-  weather: Record<string, Record<string, unknown>>
-  unit_types: Record<string, Record<string, unknown>>
+  weather: WireWeather[]
+  unit_types: Array<Record<string, unknown>>
   terrains: Record<string, Record<string, unknown>>
   rules_default: Record<string, unknown>
   tiles: Record<string, unknown>
@@ -120,13 +123,13 @@ export interface ScenariosMeta {
 
 export const api = {
   scenarios: () => get<ScenariosMeta>('/scenarios'),
-  rooms: () => get<RoomInfo[]>('/rooms'),
+  rooms: () => get<{ rooms: RoomInfo[]; count?: number }>('/rooms'),
   room: (code: string) => get<RoomInfo>('/room/' + code),
   frames: (code: string) => get<{ frames: unknown[] }>('/frames/' + code),
   validate: (scenario: string, overrides: Record<string, unknown>) =>
     post<ValidateResult>('/validate', { scenario, overrides }),
   createInstance: (body: CreateInstanceBody) =>
-    post<{ code?: string; instance?: string; room?: RoomInfo; errors?: string[] }>('/instances', body),
+    post<{ code?: string; instance?: string; room?: RoomInfo; error?: string; errors?: string[] }>('/instances', body),
   loadSave: (instance: string) =>
     post<{ code?: string; resumed_turn?: number; room?: RoomInfo; error?: string }>('/saves/load', { instance }),
   gisCapabilities: (refresh?: boolean) =>
@@ -138,8 +141,5 @@ export const api = {
   gisJob: (id: string) => get<Record<string, unknown>>('/gis/jobs/' + id),
   gisStartJob: (spec: Record<string, unknown>) => post<Record<string, unknown>>('/gis/jobs', spec),
 }
-
-/** 供旧组件（OrderSubmission）沿用的指令形状 */
-export type CommandRequest = WireCommand
 
 export default apiClient
