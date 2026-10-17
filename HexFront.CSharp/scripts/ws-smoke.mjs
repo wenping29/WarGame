@@ -7,22 +7,35 @@ function connect(qs) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(BASE + qs);
     const msgs = [];
-    const waiters = [];
+    const perTypeCount = {};
+    const waits = [];
+    const pump = () => {
+      for (const w of [...waits]) {
+        if (perTypeCount[w.type] >= w.need) {
+          waits.splice(waits.indexOf(w), 1);
+          clearTimeout(w.timer);
+          w.resolve(perTypeCount && msgs.filter(m => m.type === w.type).slice(-w.count));
+        }
+      }
+    };
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
       msgs.push(m);
-      waiters.filter(w => w.type === m.type).forEach(w => { w.resolvers.push(m); });
-      while (waiters.length && waiters[0].resolvers.length >= waiters[0].count) {
-        waiters[0].resolve(waiters[0].resolvers.splice(0, waiters[0].count));
-        waiters.shift();
-      }
+      perTypeCount[m.type] = (perTypeCount[m.type] || 0) + 1;
+      pump();
     };
     ws.onopen = () => resolve({
       ws, msgs,
       send: (o) => ws.send(JSON.stringify(o)),
       waitFor: (type, count = 1, ms = 8000) => new Promise((res, rej) => {
-        setTimeout(() => rej(new Error(`timeout waiting ${type} x${count}`)), ms);
-        waiters.push({ type, count, resolvers: msgs ? msgs.filter(x => x.type === type).slice(-count) : [], resolve: res });
+        const have = perTypeCount[type] || 0;
+        if (have >= count) {
+          res(msgs.filter(m => m.type === type).slice(-count));
+          return;
+        }
+        const w = { type, count, need: count, resolve: res };
+        w.timer = setTimeout(() => { waits.splice(waits.indexOf(w), 1); rej(new Error(`timeout waiting ${type} x${count}`)); }, ms);
+        waits.push(w);
       }),
     });
     ws.onerror = (e) => reject(new Error('ws error ' + (e.message || '')));
@@ -36,6 +49,9 @@ const room = 'SMOKE' + Date.now().toString(36);
 const dir = await connect(`?room=${room}&role=director`);
 const [w1] = await dir.waitFor('welcome');
 log('1. director welcome ok, token len', w1.token.length);
+const [dirState0] = await dir.waitFor('state');
+const turn0 = dirState0.turn;
+log('   director units:', (dirState0.view.units || []).length, 'starting turn', turn0);
 
 // 2. red joins and submits a rest order (web format)
 const red = await connect(`?room=${room}&role=red&token=&name=redterm`);
@@ -64,7 +80,7 @@ dir.send({ type: 'resolve' });
 const [ev] = await dir.waitFor('events', 1, 15000);
 const turnNow = dir.msgs.filter(m => m.type === 'state').pop().turn;
 log('5. resolved: events', ev.events.length, 'rejected', ev.rejected.length, 'new turn', turnNow);
-if (turnNow !== 1) fail('expected turn advanced to 1');
+if (turnNow !== turn0 + 1) fail(`expected turn ${turn0} -> ${turn0 + 1}, got ${turnNow}`);
 
 // 5. frames
 red.send({ type: 'frames' });

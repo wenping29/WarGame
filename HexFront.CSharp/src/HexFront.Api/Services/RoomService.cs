@@ -28,6 +28,7 @@ public sealed class RoomService
     private readonly ILogger<RoomService> _logger;
     private readonly string _scenarioDir;
     private readonly string _saveDir;
+    private readonly string _gisDir;
 
     public RoomService(ILogger<RoomService> logger)
     {
@@ -37,6 +38,7 @@ public sealed class RoomService
             ?? Path.Combine(root, "data", "scenarios");
         _saveDir = Environment.GetEnvironmentVariable("HF_SAVE_DIR")
             ?? Path.Combine(root, "saves");
+        _gisDir = Path.Combine(root, "data", "gis");
     }
 
     // ==================== Connection entry point ====================
@@ -571,7 +573,7 @@ public sealed class RoomService
                 : scenarios.FirstOrDefault(s => s.Id == scenarioId) ?? scenarios.FirstOrDefault();
             if (info == null)
                 throw new InvalidOperationException($"目录 {_scenarioDir} 中没有可用剧本");
-            game = ScenarioService.CreateGameState(ScenarioService.LoadFromFile(info.Path));
+            game = ScenarioService.CreateGameState(ScenarioService.LoadFromFile(info.Path), _gisDir);
         }
 
         _logger.LogInformation("room {Code} created from scenario {Scenario} turn {Turn}",
