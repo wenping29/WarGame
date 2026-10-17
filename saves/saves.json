@@ -1,5 +1,121 @@
 [
   {
+    "id": "6fa37f6e4cef",
+    "name": "ui-check",
+    "description": "scenario:rhine_corridor",
+    "saved_at": "2026-10-17T05:03:29.6170072Z",
+    "turn": 1,
+    "weather": "overcast",
+    "unit_count": 36,
+    "file_size": 236830
+  },
+  {
+    "id": "617eac079785",
+    "name": "ws-smoke",
+    "saved_at": "2026-10-17T05:03:12.7109312Z",
+    "turn": 2,
+    "weather": "cloudy",
+    "unit_count": 36,
+    "file_size": 248051
+  },
+  {
+    "id": "2bcb39be525f",
+    "name": "e2e\u5B58\u6863",
+    "saved_at": "2026-10-17T05:03:11.8579622Z",
+    "turn": 3,
+    "weather": "rain",
+    "unit_count": 36,
+    "file_size": 248325
+  },
+  {
+    "id": "9fc23de3933d",
+    "name": "\u7AEF\u5230\u7AEF\u526F\u672C",
+    "description": "scenario:rhine_corridor",
+    "saved_at": "2026-10-17T05:03:10.5758577Z",
+    "turn": 1,
+    "weather": "overcast",
+    "unit_count": 36,
+    "file_size": 236830
+  },
+  {
+    "id": "0e42b9e129a4",
+    "name": "\u5C4F\u969C\u6D4B\u8BD5",
+    "description": "scenario:rhine_corridor",
+    "saved_at": "2026-10-17T05:03:04.8377608Z",
+    "turn": 1,
+    "weather": "overcast",
+    "unit_count": 36,
+    "file_size": 236830
+  },
+  {
+    "id": "249a812047fb",
+    "name": "browser-barrier-test",
+    "description": "scenario:rhine_corridor",
+    "saved_at": "2026-10-17T04:58:12.9758478Z",
+    "turn": 1,
+    "weather": "overcast",
+    "unit_count": 36,
+    "file_size": 236830
+  },
+  {
+    "id": "fafb17d191ba",
+    "name": "ws-smoke",
+    "saved_at": "2026-10-17T04:57:27.1475307Z",
+    "turn": 2,
+    "weather": "clear",
+    "unit_count": 36,
+    "file_size": 248050
+  },
+  {
+    "id": "c9961ca1a696",
+    "name": "e2e\u5B58\u6863",
+    "saved_at": "2026-10-17T04:57:26.2847961Z",
+    "turn": 3,
+    "weather": "clear",
+    "unit_count": 36,
+    "file_size": 248326
+  },
+  {
+    "id": "9b74e5a1ab25",
+    "name": "\u7AEF\u5230\u7AEF\u526F\u672C",
+    "description": "scenario:rhine_corridor",
+    "saved_at": "2026-10-17T04:57:25.1112953Z",
+    "turn": 1,
+    "weather": "overcast",
+    "unit_count": 36,
+    "file_size": 236830
+  },
+  {
+    "id": "f50b5a495cfe",
+    "name": "\u5C4F\u969C\u6D4B\u8BD5",
+    "description": "scenario:rhine_corridor",
+    "saved_at": "2026-10-17T04:57:10.9929751Z",
+    "turn": 1,
+    "weather": "overcast",
+    "unit_count": 36,
+    "file_size": 236830
+  },
+  {
+    "id": "9d3bbe528b64",
+    "name": "\u5C4F\u969C\u6D4B\u8BD5",
+    "description": "scenario:rhine_corridor",
+    "saved_at": "2026-10-17T04:56:52.9075871Z",
+    "turn": 1,
+    "weather": "overcast",
+    "unit_count": 36,
+    "file_size": 236830
+  },
+  {
+    "id": "4ca925de7834",
+    "name": "\u5C4F\u969C\u6D4B\u8BD5",
+    "description": "scenario:rhine_corridor",
+    "saved_at": "2026-10-17T04:56:24.4635819Z",
+    "turn": 1,
+    "weather": "overcast",
+    "unit_count": 36,
+    "file_size": 236830
+  },
+  {
     "id": "3034a266519b",
     "name": "ws-smoke",
     "saved_at": "2026-10-17T04:03:21.107203Z",

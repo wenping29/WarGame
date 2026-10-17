@@ -332,6 +332,10 @@ public sealed class RoomService
                 await HandleOrders(room, conn, root);
                 break;
 
+            case "clear_orders":
+                await HandleClearOrders(room, conn);
+                break;
+
             case "ready":
                 await HandleReady(room, conn, root);
                 break;
@@ -368,18 +372,13 @@ public sealed class RoomService
 
     private async Task HandleOrders(Room room, WsConn conn, JsonElement root)
     {
-        var side = GetStr(root, "side");
-        if (side == null) side = conn.Role is "red" or "blue" ? conn.Role : null;
-        if (side == null)
+        // room.dart submitOrders：仅对抗方，角色即阵营，不接受代发
+        if (conn.Role is not ("red" or "blue"))
         {
-            await conn.SendAsync(ErrorPayload("只有红/蓝方可以提交命令"));
+            await conn.SendAsync(ErrorPayload("只有对抗方可以提交指令"));
             return;
         }
-        if (conn.Role is "red" or "blue" && side != conn.Role)
-        {
-            await conn.SendAsync(ErrorPayload("不能替对方提交命令"));
-            return;
-        }
+        var side = conn.Role;
 
         bool over;
         lock (room.GameLock) over = room.Game.Over;
@@ -389,7 +388,8 @@ public sealed class RoomService
             return;
         }
 
-        var replace = GetBool(root, "replace", false);
+        // Dart: msg['replace'] != false —— 缺省即替换
+        var replace = GetBool(root, "replace", true);
         var cmds = new List<Command>();
         if (root.TryGetProperty("commands", out var arr) && arr.ValueKind == JsonValueKind.Array)
         {
@@ -420,46 +420,120 @@ public sealed class RoomService
         await BroadcastAll(room);
     }
 
-    private async Task HandleReady(Room room, WsConn conn, JsonElement root)
+    private async Task HandleClearOrders(Room room, WsConn conn)
     {
         if (conn.Role is not ("red" or "blue"))
         {
-            await conn.SendAsync(ErrorPayload("只有红/蓝方可以设置准备状态"));
+            await conn.SendAsync(ErrorPayload("无权操作"));
             return;
         }
         lock (room.GameLock)
         {
-            room.Ready[conn.Role] = GetBool(root, "value", true);
+            room.Drafts[conn.Role].Clear();
+            room.Ready[conn.Role] = false;
         }
         await BroadcastAll(room);
+    }
+
+    private async Task HandleReady(Room room, WsConn conn, JsonElement root)
+    {
+        if (conn.Role is not ("red" or "blue"))
+        {
+            await conn.SendAsync(ErrorPayload("无权操作"));
+            return;
+        }
+        var value = GetBool(root, "value", true);
+        string? reject = null;
+        bool bothReady;
+        lock (room.GameLock)
+        {
+            // room.dart setReady：置就绪前先校验草案，有非法指令则报错并保持未就绪
+            if (value)
+            {
+                var errs = CommandValidator.ValidateOrders(
+                    room.Game, conn.Role, room.Drafts[conn.Role].Select(c => c.Clone()).ToList());
+                room.LastErrors[conn.Role] = errs.Select(e => new Dictionary<string, object?>
+                {
+                    ["unit"] = e.UnitId,
+                    ["reason"] = e.Reason,
+                    ["message"] = e.Message,
+                }).ToList();
+                if (errs.Count > 0)
+                    reject = $"存在 {errs.Count} 条非法指令，已剔除后需重新确认";
+                else
+                    room.Ready[conn.Role] = true;
+            }
+            else
+            {
+                room.Ready[conn.Role] = false;
+            }
+            bothReady = !room.Game.Over && SideReadyLocked(room, "red") && SideReadyLocked(room, "blue");
+        }
+
+        if (reject != null)
+        {
+            await conn.SendAsync(ErrorPayload(reject));
+            return;
+        }
+        await BroadcastAll(room);
+        // AI 代管方视为已就绪，否则人类玩家点就绪后会永久等待
+        if (bothReady) ScheduleAutoResolve(room, "auto");
     }
 
     private async Task HandleResolve(Room room, WsConn conn)
     {
         if (conn.Role != "director")
         {
-            await conn.SendAsync(ErrorPayload("只有导演可以结算回合"));
+            await conn.SendAsync(ErrorPayload("只有导演部可以强制结算"));
             return;
         }
-        await ResolveTurnAsync(room);
+        await ResolveTurnAsync(room, "director");
     }
 
-    private async Task ResolveTurnAsync(Room room)
+    /// <summary>AI 代管方按本方视图补全未下令单位（须在 GameLock 内调用）。</summary>
+    private void AiFillLocked(Room room, string side)
+    {
+        var cmds = AiService.GenerateOrders(room.Game, side);
+        var have = room.Drafts[side].Select(c => c.UnitId).ToHashSet();
+        room.Drafts[side].AddRange(cmds.Where(c => !have.Contains(c.UnitId)));
+    }
+
+    private static bool SideReadyLocked(Room room, string side) =>
+        room.Ready[side] || (side == "red" ? room.AiRed : room.AiBlue);
+
+    /// <summary>就绪屏障：双方（含 AI 代管）就绪后延时 300ms 自动结算，重复调度合并。</summary>
+    private void ScheduleAutoResolve(Room room, string byRole)
+    {
+        if (Interlocked.CompareExchange(ref room.AutoResolvePending, 1, 0) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(300);
+            Interlocked.Exchange(ref room.AutoResolvePending, 0);
+            bool go;
+            lock (room.GameLock)
+                go = !room.Game.Over && SideReadyLocked(room, "red") && SideReadyLocked(room, "blue");
+            if (go) await ResolveTurnAsync(room, byRole);
+        });
+    }
+
+    private async Task ResolveTurnAsync(Room room, string byRole = "director")
     {
         TurnResolver.TurnReport report;
         List<Dictionary<string, object?>> rejectedAll;
         var rejectedAllList = new List<Dictionary<string, object?>>();
         lock (room.GameLock)
         {
+            if (room.Game.Over) return;
+
+            // 结算前 AI 副官按本方迷雾视图补全未下令单位
+            if (room.AiRed) AiFillLocked(room, "red");
+            if (room.AiBlue) AiFillLocked(room, "blue");
+
             var orders = new Dictionary<string, List<Command>>
             {
                 ["red"] = room.Drafts["red"].Select(c => c.Clone()).ToList(),
                 ["blue"] = room.Drafts["blue"].Select(c => c.Clone()).ToList(),
             };
-            if (room.AiRed && orders["red"].Count == 0)
-                orders["red"] = AiService.GenerateOrders(room.Game, "red");
-            if (room.AiBlue && orders["blue"].Count == 0)
-                orders["blue"] = AiService.GenerateOrders(room.Game, "blue");
 
             report = TurnResolver.ResolveTurn(room.Game, orders);
             room.Drafts["red"].Clear();
@@ -563,80 +637,123 @@ public sealed class RoomService
     {
         if (conn.Role != "director")
         {
-            await conn.SendAsync(ErrorPayload("只有导演可以执行控制指令"));
+            await conn.SendAsync(ErrorPayload("只有导演部可以导调"));
             return;
         }
         var action = GetStr(root, "action") ?? "";
-        List<WarEvent>? newEvents = null;
+        var newEvents = new List<WarEvent>();
+        bool recheckBarrier = false;
 
         switch (action)
         {
             case "weather":
             {
-                var value = GetStr(root, "value");
-                if (string.IsNullOrEmpty(value)) { await conn.SendAsync(ErrorPayload("缺少天气值")); return; }
-                lock (room.GameLock) { room.Game.Weather = value; }
+                // web 客户端发 { action:'weather', id }；兼容 value
+                var id = GetStr(root, "id") ?? GetStr(root, "value");
+                if (string.IsNullOrEmpty(id) || !room.Game.Weathers.ContainsKey(id))
+                {
+                    await conn.SendAsync(ErrorPayload("未知天气"));
+                    return;
+                }
+                lock (room.GameLock)
+                {
+                    room.Game.Weather = id;
+                    room.Game.WeatherMode = "director";
+                    newEvents.Add(EmitLocked(room, "weather_set",
+                        $"导演部将天气设为 {room.Game.WeatherOf().Label}",
+                        new List<string> { "red", "blue", "spectator" }));
+                    FogService.UpdateObservation(room.Game);
+                }
                 break;
             }
             case "fog":
             {
-                var value = GetBool(root, "value", true);
+                var on = GetBool(root, "on", false);
                 lock (room.GameLock)
                 {
-                    room.Game.Flags["fog"] = value;
+                    room.Game.Flags["fog"] = on;
                     FogService.UpdateObservation(room.Game);
+                    newEvents.Add(EmitLocked(room, "fog",
+                        $"导演部{(on ? "开启" : "关闭")}战争迷雾",
+                        new List<string> { "director" }));
                 }
                 break;
             }
             case "spectator_omniscient":
             {
-                var value = GetBool(root, "value", false);
-                lock (room.GameLock) { room.Game.Flags["spectator_omniscient"] = value; }
+                var on = GetBool(root, "on", false);
+                lock (room.GameLock) { room.Game.Flags["spectator_omniscient"] = on; }
                 break;
             }
             case "ai":
             {
                 var side = GetStr(root, "side");
-                if (side is not ("red" or "blue")) { await conn.SendAsync(ErrorPayload("缺少 side")); return; }
+                if (side is not ("red" or "blue"))
+                {
+                    await conn.SendAsync(ErrorPayload("参数错误"));
+                    return;
+                }
+                var on = GetBool(root, "on", false);
                 lock (room.GameLock)
                 {
-                    room.Drafts[side] = AiService.GenerateOrders(room.Game, side);
+                    if (side == "red") room.AiRed = on; else room.AiBlue = on;
+                    // 导调开启代管后立即检查屏障，避免人类玩家还要再点一次就绪
+                    recheckBarrier = !room.Game.Over
+                        && SideReadyLocked(room, "red") && SideReadyLocked(room, "blue");
                 }
                 break;
             }
             case "inject_intel":
             {
-                var side = GetStr(root, "side") ?? "red";
-                var text = GetStr(root, "text") ?? GetStr(root, "message") ?? "导演注入情报";
+                var side = GetStr(root, "side");
+                var unitId = GetStr(root, "unit");
+                string? text = null;
                 lock (room.GameLock)
                 {
-                    var e = new WarEvent
+                    var target = unitId == null ? null : room.Game.FindUnit(unitId);
+                    if (side is not ("red" or "blue") || target == null)
                     {
-                        Turn = room.Game.Turn,
-                        Code = "intel",
-                        Text = text,
-                        Sides = new List<string> { side },
+                        break; // → 参数错误
+                    }
+                    if (!room.Game.Tracks.TryGetValue(side, out var tracks))
+                    {
+                        tracks = new Dictionary<string, Track>();
+                        room.Game.Tracks[side] = tracks;
+                    }
+                    tracks[target.Id] = new Track
+                    {
+                        UnitId = target.Id,
+                        Level = 3,
+                        LastSeen = target.Pos,
+                        LastSeenTurn = room.Game.Turn,
                     };
-                    room.Game.Events.Add(e);
-                    newEvents = new List<WarEvent> { e };
+                    text = $"导演部向{(side == "red" ? "红方" : "蓝方")}通报敌情：{target.Id}";
+                    newEvents.Add(EmitLocked(room, "intel", text, new List<string> { side }));
+                }
+                if (text == null)
+                {
+                    await conn.SendAsync(ErrorPayload("参数错误"));
+                    return;
                 }
                 break;
             }
             case "jump_turn":
             {
-                var count = Math.Clamp(GetInt(root, "count", 1), 1, 24);
-                for (var i = 0; i < count; i++)
+                var t = GetInt(root, "turn", 0);
+                if (t < 1 || t > room.Game.Turn)
                 {
-                    await ResolveTurnAsync(room);
+                    await conn.SendAsync(ErrorPayload("只能回跳到已推演回合（回放由前端帧完成）"));
+                    return;
                 }
-                return; // ResolveTurnAsync already broadcast
+                // 与 Dart 一致：合法即 no-op，前端用 frames 回放
+                break;
             }
             default:
-                await conn.SendAsync(ErrorPayload($"未知指令: {action}"));
+                await conn.SendAsync(ErrorPayload($"未知导调动作 {action}"));
                 return;
         }
 
-        if (newEvents != null)
+        if (newEvents.Count > 0)
         {
             foreach (var c in room.Slots.Values.ToArray())
             {
@@ -651,6 +768,21 @@ public sealed class RoomService
             }
         }
         await BroadcastAll(room);
+        if (recheckBarrier) ScheduleAutoResolve(room, "director-ai");
+    }
+
+    /// <summary>追加全局事件（须在 GameLock 内调用）。</summary>
+    private static WarEvent EmitLocked(Room room, string code, string text, List<string> sides)
+    {
+        var e = new WarEvent
+        {
+            Turn = room.Game.Turn,
+            Code = code,
+            Text = text,
+            Sides = sides,
+        };
+        room.Game.Events.Add(e);
+        return e;
     }
 
     // ==================== State / views ====================
@@ -713,10 +845,11 @@ public sealed class RoomService
             ["red"] = room.Ready["red"],
             ["blue"] = room.Ready["blue"],
         };
+        // Dart 线上格式：导演部 last_errors 为 JSON 字符串列表（阵营视图 errors 才是对象）
         view["last_errors"] = new Dictionary<string, object?>
         {
-            ["red"] = room.LastErrors["red"],
-            ["blue"] = room.LastErrors["blue"],
+            ["red"] = room.LastErrors["red"].Select(m => JsonSerializer.Serialize(m)).ToList(),
+            ["blue"] = room.LastErrors["blue"].Select(m => JsonSerializer.Serialize(m)).ToList(),
         };
         view["ai"] = new Dictionary<string, object?>
         {
@@ -964,6 +1097,8 @@ public sealed class RoomService
         public List<Dictionary<string, object?>> Frames { get; init; } = new();
         public bool AiRed { get; set; }
         public bool AiBlue { get; set; }
+        // Interlocked 防抖：0=空闲 1=已调度自动结算
+        public int AutoResolvePending;
         public string? InstanceName { get; set; }
         public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
     }

@@ -121,7 +121,7 @@ public sealed class GameState
     public int HourOfDay { get; set; } = 6;
     public string Phase { get; set; } = "orders"; // orders/movement/combat/resolution
     public string? Weather { get; set; } = "clear";
-    public string WeatherMode { get; init; } = "director"; // director/realistic/random
+    public string WeatherMode { get; set; } = "director"; // director/realistic/random
     public bool Over { get; set; }
     public string? Winner { get; set; }
     

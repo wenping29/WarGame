@@ -448,7 +448,7 @@ public static class TurnResolver
         foreach (var c in attacks)
         {
             var atk = g.FindUnit(c.UnitId);
-            var def = g.FindUnit(c.Target);
+            var def = g.FindUnit(c.Target ?? "");
             if (atk == null || def == null || !atk.Alive || !def.Alive) continue;
 
             var res = ResolveCombat(g, atk, def);

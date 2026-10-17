@@ -46,19 +46,22 @@ await sleep(400);
 const rp=red.last('state'); if(rp.pending.red<1) fail('red pending order not registered');
 log('3. 双端命令已登记 pending='+JSON.stringify(rp.pending));
 
-// 4. 双方就绪 + 导演结算
+// 4. 双方就绪 → 屏障自动结算；导演再强制结算一回合
 red.send({type:'ready',value:true}); blue.send({type:'ready',value:true});
-await sleep(200);
-const evBefore=dir.msgs.filter(m=>m.type==='events').length;
+const waitTurn=async(c,t,ms=15000)=>{const end=Date.now()+ms;while(Date.now()<end){const s=c.last('state');if(s&&s.turn>=t)return s;await sleep(100);}fail('timeout waiting turn '+t);};
+const after=await waitTurn(dir,d0.turn+1);
+if(!dir.msgs.some(m=>m.type==='events')) fail('auto-resolve produced no events');
+log('4a. 就绪屏障自动结算：turn '+d0.turn+'→'+after.turn+'（无人工 resolve）');
+const stB=dir.msgs.filter(m=>m.type==='state').length;
 dir.send({type:'resolve'});
-await dir.waitFor('events',evBefore+1,15000);
-const stBefore=dir.msgs.filter(m=>m.type==='state').length;
-const sArr2=await dir.waitFor('state',stBefore+1,8000); const after=sArr2[sArr2.length-1];
-if(after.turn!==d0.turn+1) fail('turn expected '+(d0.turn+1)+' got '+after.turn);
+await dir.waitFor('state',stB+1,8000);
+const after2=dir.last('state');
+if(after2.turn!==d0.turn+2) fail('director force-resolve expected '+(d0.turn+2)+' got '+after2.turn);
+log('4b. 导演强制结算：turn→'+after2.turn);
 await sleep(400);
 const redEv=red.msgs.filter(m=>m.type==='events').flatMap(m=>m.events||[]);
 if(redEv.some(e=>!e.sides.includes('red'))) fail('event leak: red received event not involving red');
-log('4. 回合结算：turn '+d0.turn+'→'+after.turn+' 事件数='+dir.msgs.filter(m=>m.type==='events').flatMap(m=>m.events).length+' 红方可见事件='+redEv.length+'（过滤后无泄漏）');
+log('   事件数='+dir.msgs.filter(m=>m.type==='events').flatMap(m=>m.events).length+' 红方可见事件='+redEv.length+'（过滤后无泄漏）');
 
 // 5. 存档
 dir.send({type:'save',name:'e2e存档'});
