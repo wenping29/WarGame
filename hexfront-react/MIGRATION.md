@@ -48,6 +48,7 @@ css/app.css                   →  App.css + index.css
 ## 搬迁中真踩到的坑（保留，别缩成"已完成"）
 
 - **CSS 溢出规则丢了**。`web/css/app.css:61` 有 `.scroll{overflow:auto}`，搬到 React 时没带上，结果超长的接触列表/事件日志直接画到相邻面板上。修的时候第一版给非 `.grow` 面板加 `flex:0 1 auto`，列一溢出 `.scroll` 就被压成 0 高、整块列表看不见。最终规则：`.panel .scroll{flex:1;min-height:0;overflow:auto}` + `.terminal .col .panel:not(.grow){flex:0 0 auto;max-height:28%}`。**DOM 矩形探针看不出来（元素被裁切时矩形本来就是超界的），必须目视截图**——这条是 §13.6 取证口径的由来。
+- **同一类缺陷不止一处：向导页整块 CSS 没搬过来**。#92 做正反双向 CSS 差分（`web/css/app.css` 199 条 ↔ 本项目 307 条；本项目 105 个 `className` 字面量 token 里有 6 个找不到任何规则）后查出四组，全部只影响观感、不影响点得到，所以之前的功能级 E2E 没发现：`.steps/.st/.st.on`（五个步骤标题竖排成整行纯文本，**当前步与其余步长得一模一样**）、`.wiz/.wiz .body/.wiz .side`（`1fr 320px` 双栏塌成单列、两栏各自滚动丢失）、`.oob-table`（只搬了 `.num` 一条，表格不 `border-collapse`、单元格零内边距）、`#nav a.on` 被改名成 `.nav a.active` 而 `Layout.tsx` 输出的是 `on`（顶栏当前页永不高亮）。**补 `.wiz` 时还有个连锁**：它原本靠内联 `height:calc(100% - 78px)` 撑高，网格一恢复页脚"上一步/下一步"就被顶出视口；改成 `.wizard-page` 做 flex 列 + `.wiz{flex:1 1 auto;min-height:0}` + 独立 `.wiz-foot{flex:0 0 auto}` 才对。逐条数字与截图见设计文档 §13.6 的"移植遗漏对照清单"。
 - **`tsc --noEmit` 不算过**。项目用 project references，门槛命令必须是 `npx tsc -b`。
 - **令牌要活过整页刷新**。同 token 重连才能接管原会话（`RoomSocket.tsx` 存 `localStorage`，按房间码分键），否则会出现"能发指令、收不到推送"的孤儿会话。
 - **顶号与占用要停重连**。阵营位被他人占用时服务端回 `type:error`（不是 HTTP 409）再关连接；前端识别到含"角色位"的错误帧要立刻停在提示态，不能进退避重连——两个标签页互顶会变成死循环。
@@ -55,6 +56,7 @@ css/app.css                   →  App.css + index.css
 - **底图密钥来自服务端**。`GET /api/scenarios` 的 `tiles.tk` 读 `data/tianditu.json`（不进版本库），`HexMap.tsx` 拿到后调 `MapView.setTk()`；没有密钥时底图选择器禁用并在画布左下写明原因，六角格照常上色。
 - **一键开局与存档载入被搬成了两份**。web 版是 `quickStart()` / `saveList()` 由大厅导出、首页复用；React 版 `Home.tsx` 和 `Lobby.tsx` 各写了一份 `quickStart`（`Home.tsx:16` / `Lobby.tsx:61`）与 `loadSave`（`Home.tsx:47` / `Lobby.tsx:92`），行为一致但实现重复。搬迁时没保住"只有一份"这条约束，属于待合并项（设计文档 §12 已如实记录）。
 - **内置浏览器标签会卡死**。Qoder Browser 面板处于隐藏状态时后台标签的 `requestAnimationFrame` 被冻结，canvas 完全不绘制，看起来像"底图坏了"。做像素级验收先把面板打开，或直接用无头 Chrome + CDP。
+- **已知残留（#92 拍板：只标注不删）**。`package.json` 里的 `zustand 5.0.15` 源码零 `import`（本项目没有 store，状态在 `room/RoomSocket.tsx` 的 context + 各页 `useState/useRef`）；`App.css` 里 **58 个类名在整个 `src/` 中一次都没出现**（`.order-*`/`.history-*`/`.command-panel`/`.unit-info`/`.wizard-form`/`.form-group`/`.map-placeholder`/`.conn` 等，占 187 个 CSS 类名的三成）——初版脚手架按规划名写的，组件后来用的是 web 的类名。改样式时别把这些当"在用"，也别顺手删：留着不影响运行，删的风险反而更大。
 
 ## 与后端联调
 

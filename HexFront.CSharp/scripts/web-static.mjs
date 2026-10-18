@@ -1,4 +1,5 @@
 // Static host for the legacy web/ client with same-origin proxy to the C# API (:5018).
+// web/ 已冻结为只读参考（不删除，见仓库根 web/README.md 与设计文档 §13.6）；本脚本保留用于新旧同局渲染对比。
 // Usage: node web-static.mjs [port]
 import http from 'node:http';
 import net from 'node:net';

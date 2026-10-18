@@ -23,7 +23,7 @@ body{
 .nav{display:flex; gap:6px}
 .nav a{color:var(--dim); text-decoration:none; padding:6px 10px; border-radius:4px; font-size:13px}
 .nav a:hover{background:var(--panel2); color:var(--fg)}
-.nav a.active{background:var(--panel2); color:var(--accent)}
+.nav a.on{background:var(--panel2); color:var(--accent)}
 .conn{margin-left:auto; font-size:12px; color:var(--dim)}
 .conn.live{color:var(--accent)} .conn.dead{color:var(--danger)}
 
@@ -122,6 +122,16 @@ label{display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--
   border-top:1px dashed var(--line); padding-top:8px}
 
 /* Wizard */
+.steps{display:flex; gap:4px; margin-bottom:16px; flex-wrap:wrap; flex:0 0 auto;}
+.steps .st{
+  padding:8px 14px; border-radius:4px; background:var(--panel); border:1px solid var(--line);
+  font-size:13px; color:var(--dim); cursor:pointer;
+}
+.steps .st.on{background:var(--panel2); color:var(--accent); border-color:var(--accent);}
+.wiz{display:grid; grid-template-columns:1fr 320px; gap:16px; flex:1 1 auto; min-height:0;}
+.wizard-page{display:flex; flex-direction:column;}
+.wiz-foot{padding:18px 0; display:flex; gap:8px; justify-content:center; flex:0 0 auto;}
+.wiz .body,.wiz .side{overflow:auto; min-height:0;}
 .wizard-form{
   max-width:600px; margin:0 auto;
 }
@@ -686,4 +696,7 @@ label{display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--
 .err-list li{padding:2px 0; border-bottom:1px dashed #5a3330;}
 .warn{color:var(--warn);}
 
+.oob-table{width:100%; border-collapse:collapse; font-size:12px;}
+.oob-table th,.oob-table td{border-bottom:1px solid var(--line); padding:4px; text-align:left;}
+.oob-table input,.oob-table select{padding:3px 5px; font-size:12px; width:100%;}
 .oob-table .num{width:64px;}

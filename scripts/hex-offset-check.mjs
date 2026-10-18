@@ -1,3 +1,5 @@
+// 六角格几何自检：直接 import 冻结中的 web/js/hex.js（odd-r 口径的第一版实现）。
+// web/ 已保留为只读参考、不删除（设计文档 §13.6），所以这条依赖是有意留着的。
 import { hexCenterMeters, metersToHex, neighbors, hexDistance, hexLine, hexRange, dirsRightFor } from '../web/js/hex.js';
 
 const geo = { ox: 1000, oy: 2000, radius: 500 };

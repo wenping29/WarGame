@@ -374,7 +374,7 @@ export default function Wizard() {
       state.sides, state.typeRows, state.typeAttrs, state.scenarioId, oobDirty])
 
   return (
-    <div className="page" style={{ paddingBottom: 0 }}>
+    <div className="page wizard-page" style={{ paddingBottom: 0 }}>
       <div className="steps">
         {STEP_TITLES.map((title, i) => (
           <div key={i} className={`st${i === step ? ' on' : ''}`} onClick={() => setStep(i)}>
@@ -383,7 +383,7 @@ export default function Wizard() {
         ))}
       </div>
 
-      <div className="wiz" style={{ padding: '0 18px 18px', height: 'calc(100% - 78px)' }}>
+      <div className="wiz" style={{ padding: '0 18px' }}>
         <div className="body card">
           {step === 0 && (
             <div>
@@ -441,7 +441,7 @@ export default function Wizard() {
         </div>
       </div>
 
-      <div style={{ padding: '18px', display: 'flex', gap: '8px', justifyContent: 'center' }}>
+      <div className="wiz-foot">
         {step > 0 && <button className="btn" onClick={() => setStep(step - 1)}>上一步</button>}
         {step < 4 ? (
           <button className="btn btn-1" onClick={() => setStep(step + 1)}>{step === 3 ? '审阅' : '下一步'}</button>

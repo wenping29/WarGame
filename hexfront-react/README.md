@@ -1,6 +1,6 @@
 # HEXFRONT-REACT
 
-兵棋对抗系统（HEXFRONT-WEB）的 React 前端，**唯一主前端**；原生 JS 版 `../web/` 已冻结退役（排期 #92）。已接真实 C# 后端并做过四终端浏览器端到端验证。
+兵棋对抗系统（HEXFRONT-WEB）的 React 前端，**唯一主前端**；原生 JS 版 `../web/` 已冻结为**只读参考**（#92 拍板：不删除，理由与成本见 [../web/README.md](../web/README.md)）。已接真实 C# 后端并做过四终端浏览器端到端验证。
 
 产品与协议口径都在 [../HEXFRONT-WEB产品设计文档.md](../HEXFRONT-WEB产品设计文档.md)（下称"设计文档"）：技术选型 §13.3、运行方式 §12、验收基线与取证口径 §13.6。搬迁对照表与踩坑清单在同目录 [MIGRATION.md](MIGRATION.md)。
 

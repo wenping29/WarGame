@@ -4,7 +4,7 @@
 | --- | --- |
 | 文档性质 | **新立项**产品设计与技术架构（目标态），非既有实现说明 |
 | 编制日期 | 2026-10-16 |
-| 更新日期 | 2026-10-18（P7-d 文档一致性：§12 换成 C# + React 运行手册、§13 回填"规划 vs 实收"、新增 §13.6 交付基线与取证口径） |
+| 更新日期 | 2026-10-18（P7-d 文档一致性：§12 换成 C# + React 运行手册、§13 回填"规划 vs 实收"、新增 §13.6 交付基线与取证口径；P7-e `web/` 处置：§13.6 补"移植遗漏对照清单 + 已知残留"，`web/README.md` 落冻结声明） |
 | 产品代号 | HEXFRONT-WEB（铁幕兵棋 · Web 对抗版） |
 | 一句话 | 引擎权威的 Web 多人兵棋：导演部/红/蓝/观战四终端，真实 GIS 生成六角格，在线底图，战争迷雾隔离信息，剧本→副本→存档全链路 |
 | 与既有资产关系 | 复用并大改 `D:\Project\Wargames\hexfront_core`（Dart 确定性内核）；沿用 `wargame-prototype.html` 的深色战术视觉 token |
@@ -233,7 +233,7 @@ OOB 自定义的两条约束（否则内容立刻崩）：
 
 **迷雾纪律**：要点地理（城镇/车站/机场/电厂/变电站的位置与类别）是公开知识，随 `_common` 下发所有视图；但**归属（谁占了哪个要点）是情报**，`sideView` 只给己方占领的归属，`directorView` 给双方，`spectatorView` 不给任何归属。导演部 HUD 额外显示双方电网系数。
 
-**前端渲染**（实装：`hexfront-react/src/map/MapView.ts` + `components/HexMap.tsx`；下列条目最初由 `web/js/map.js` 定口径，web 客户端已冻结退役，见 §13.6）：铁路用深色钢轨底 + 浅色枕木断点（与公路连续实线区分）；输电线用黄色虚线；机场用跑道符号（干线加塔台角标）；电厂用闪电符号；变电站用菱形；火车站用雨棚矩形；隧道用拱形；杆塔只画在线路端点/分叉上；要点归属用阵营色虚线圈。悬停格内显示地物摘要标签（公路/铁路/桥隧/电网/机场/要点名称与归属）。右上角常驻图例（缩略时隐藏）。
+**前端渲染**（实装：`hexfront-react/src/map/MapView.ts` + `components/HexMap.tsx`；下列条目最初由 `web/js/map.js` 定口径，web 客户端已冻结为只读参考（#92 决定不删，见 §13.6））：铁路用深色钢轨底 + 浅色枕木断点（与公路连续实线区分）；输电线用黄色虚线；机场用跑道符号（干线加塔台角标）；电厂用闪电符号；变电站用菱形；火车站用雨棚矩形；隧道用拱形；杆塔只画在线路端点/分叉上；要点归属用阵营色虚线圈。悬停格内显示地物摘要标签（公路/铁路/桥隧/电网/机场/要点名称与归属）。右上角常驻图例（缩略时隐藏）。
 
 ### 6.4 地物玩法验证结果
 
@@ -405,7 +405,7 @@ CF = BasePower(装备·兵种)
 | --- | --- | --- |
 | 引擎语言 | **C#（`HexFront.Core`）** | 与 WebAPI 同进程同类型系统，避免 Dart/JS 双份 DTO；算法口径仍按本节与 §6/§7 的条文，由 `tests/PARITY-CHECKS.md` 逐条锁住 |
 | 服务端 | **ASP.NET Core WebAPI + 原生 `WebSocket` 端点 `/ws`** | 会话协议与迁移前逐字一致（见 §13.2），未采用 SignalR，理由见 §13.2 偏离说明 |
-| 前端 | **React 19 + TypeScript + Vite（`hexfront-react/`）** | 唯一主前端；`web/`（无构建原生 ESM）已冻结，退役排期见 §13.6 |
+| 前端 | **React 19 + TypeScript + Vite（`hexfront-react/`）** | 唯一主前端；`web/`（无构建原生 ESM）已冻结为只读参考，#92 拍板不删，见 §13.6 |
 | 地图渲染 | 原生 `<canvas>` + `requestAnimationFrame` | 未引入 Leaflet/Konva，投影与瓦片自绘，保持与 §6 的几何同源 |
 | 存档格式 | JSONL 指令日志 + JSON 快照 | 与迁移前同格式：可读、可 diff、可重放对拍（`/api/load` 续跑） |
 | 数据库 | **不用**（文件存储） | 原型规模用不上；避开依赖与运维，未来迁移成本低 |
@@ -454,7 +454,7 @@ CF = BasePower(装备·兵种)
 3. **回合时限**：双人同时在线是否强制限时（竞技公平 vs 教学从容）。
 4. **同步深度**：MVP 用"服务端权威 + 回合制下发"，实时帧同步不在范围。
 5. **格距/规模基线**：首发副本选战斗级（1–2 km/格、数百格）还是战役级？影响渲染与节奏。
-6. **前端是否引入构建**：**已定并落地**——上构建工具。React + Vite（`hexfront-react/`）成为唯一主前端，"双击直开"的无构建纯静态模式随 `web/` 一起冻结退役（#92）。代价是审计要认构建产物、部署需要静态托管或把 `dist/` 挂到 Api 上；换来的是类型检查（`tsc -b` 成了门槛）与组件化。§11 早期"保持无构建"的倾向不再有效。
+6. **前端是否引入构建**：**已定并落地**——上构建工具。React + Vite（`hexfront-react/`）成为唯一主前端，"双击直开"的无构建纯静态模式随 `web/` 一起冻结（#92 拍板：`web/` 保留为只读参考，不删除，理由与成本见 §13.6）。代价是审计要认构建产物、部署需要静态托管或把 `dist/` 挂到 Api 上；换来的是类型检查（`tsc -b` 成了门槛）与组件化。§11 早期"保持无构建"的倾向不再有效。
 7. **同角色顶号策略**：**已定并落地**（C# `RoomService.JoinLocked`，与 Dart `room.dart:399-406` 一致）——阵营位（红/蓝）只允许"同 token 重连"或显式 `force=1` 接管，否则回 `type:error`"该角色位已被占用（加 force=1 可接管）"并关闭连接；导演部/观战不是对抗信息位，后来者直接接管、原终端收 `kicked`。教学与误操作场景是否要进一步改成"禁止顶号 + 导演部授权转让"仍待拍板。
 8. **AI 代管与就绪屏障**：现实现为"代管方视为已就绪，人类就绪即自动结算"。是否要保留导演部逐回合确认（防止 AI 在人类未看战报时抢跑）？
    **实测口径（2026-10-18，房间 A9S3M3/LLMWE8，双 AI 代管 + 红方人类终端）**：屏障是**事件驱动**的——只有 `ready`、`director_cmd{action:ai}` 与 `resolve` 会触发一次自动结算，`AutoResolvePending` 互斥位在结算前就清零，结算完成后没有任何东西再排程。所以"双 AI 代管"不会自己连续推演：房间推进一回合后停在原地，等下一次人类 `ready` 或导演部强制结算。这既是"防止 AI 抢跑"的天然实现，也意味着**全自动跑局必须由导演部逐回合 `resolve`**（`scripts/ws-smoke.mjs` 的第 8d 项正是这么打的：15 回合、不到 0.3 秒（2026-10-18 两次跑分别 237ms / 177ms）、两局终局指纹一致）。
@@ -551,7 +551,7 @@ Dart 原型 `hexfront/bin/verify.dart`（61 项）与 `bin/smoke_ws.dart`（32 �
 
 ## 13. C# Core WebAPI 重构（2026-10-17 起 · 规划与实收）
 
-**本节状态（2026-10-18 更新）**：三个阶段（13.1 生成 / 13.2 后端 / 13.3 React）都已交付并确认，P0–P6 逐阶段验收完，P7 收尾进行中（#91 文档一致性、#92 `web/` 退役、#93 性能基线）。规划期的表述保留原文，**每处与实收不同都就地标注了"实收/偏离"**——照这份文档重建 C# 侧时会踩到规划与实现不一致的地方，那些标注就是补丁。
+**本节状态（2026-10-18 更新）**：三个阶段（13.1 生成 / 13.2 后端 / 13.3 React）都已交付并确认，P0–P6 逐阶段验收完，P7 收尾进行中（#91 文档一致性已交、#92 `web/` 处置已定为"保留只读参考 + 移植遗漏对照清单收口"、#93 性能基线待做）。规划期的表述保留原文，**每处与实收不同都就地标注了"实收/偏离"**——照这份文档重建 C# 侧时会踩到规划与实现不一致的地方，那些标注就是补丁。
 
 规划时的起点：Dart 原型（`hexfront/`）已端到端跑通 GIS 六角格生成 → 引擎推演 → WebSocket 多人房间 → Canvas 渲染，共 61 项引擎自检 + 32 项多人冒烟全部通过。这 93 项断言现已由 C# 侧等价实现接手（`dotnet test` 241 项 + `ws-smoke.mjs` 16 项，映射表 `HexFront.CSharp/tests/PARITY-CHECKS.md`），Dart 原型退为对照参考。
 
@@ -570,7 +570,7 @@ Dart 原型 `hexfront/bin/verify.dart`（61 项）与 `bin/smoke_ws.dart`（32 �
 | `validate`（37 项自校验） | `HexPackageValidator` | ✅ `Validation/HexPackageValidator.cs` 完整移植，落盘前跑、不过就不产出（`/api/gis/validate` 与 `/api/validate` 都走它） |
 | 投影换算 | ProjNet | `Geometry/Mercator.cs` 手写球面墨卡托，与瓦片同源 |
 
-> **遗留**：`HexFront.Core.csproj` 里 `NetTopologySuite` 2.6.0 与 `ProjNET` 2.1.0 两个包引用**代码里一处都没用到**（是这张原计划表的残留）。它们不影响构建与运行，但会误导下一个读代码的人以为有 C# 地理链路。要么删引用、要么真用它替换 Python 子进程——属于依赖变更，需要拍板后再动。
+> **遗留**：`HexFront.Core.csproj` 里 `NetTopologySuite` 2.6.0 与 `ProjNET` 2.1.0 两个包引用**代码里一处都没用到**（是这张原计划表的残留）。它们不影响构建与运行，但会误导下一个读代码的人以为有 C# 地理链路。**#92 拍板：不删，只登记为已知残留**（删依赖属于依赖变更，收益只是"看着干净"；真用它替换 Python 子进程则是另一期工程）。同批登记进 §13.6 的还有 `zustand` 与 React `App.css` 里 58 条从未被 JSX 命中的死样式。
 
 **API 设计（实收，注意 `plan`/`jobs` 是 GET+POST 双动词，对齐 web 客户端既有调用）**：
 
@@ -643,7 +643,7 @@ POST     /api/gis/validate            → 指定已有包名，返回 37 项校�
 |---|---|---|
 | 框架 | React 18 + Vite | React **19.2.8** + Vite **8.3.0**（`@vitejs/plugin-react` 6.1.1，没装 SWC 插件） |
 | 语言 | TypeScript 5.x | TypeScript **~6.0.2**；门槛是 `npx tsc -b`（`--noEmit` 会漏掉 project references，不算验过） |
-| 状态管理 | Zustand | **没用 Zustand**：房间状态由 `room/RoomSocket.tsx` 的 hook + 各页 `useState/useRef` 持有，REST 走 `services/api.ts`。zustand 5.0.15 仍在 `package.json` 里但零引用 |
+| 状态管理 | Zustand | **没用 Zustand**：房间状态由 `room/RoomSocket.tsx` 的 hook + 各页 `useState/useRef` 持有，REST 走 `services/api.ts`。zustand 5.0.15 仍在 `package.json` 里但零引用（#92 拍板：不删，登记为已知残留，见 §13.6）|
 | 路由 | React Router v6 + hash 路由 | Router **7.18.4** `BrowserRouter` **路径路由**：`/`、`/lobby`、`/new`、`/room/:code/:role`（不再是 `#/`，见 §12） |
 | UI 组件 | Ant Design 5.x | **没用 AntD**：沿用 web 的深色终端风 CSS（`src/App.css` + `index.css`），图标用 `lucide-react` 1.58.0 |
 | Canvas | react-konva 或原生 canvas ref | **原生 canvas ref**（`src/map/MapView.ts` 1130 行，从 `web/js/map.js` 直移植：DPR / ResizeObserver / 拖拽缩放 / fit / 瓦片退避闸门）；Konva 零引用 |
@@ -772,4 +772,27 @@ Dart 原型（hexfront/）在迁移期间保持可运行状态，作为参考实
 2. 导演部连上后逐回合 `{type:'director_cmd',action:'ai'}` 托管双方 + `{type:'resolve'}` 推屏障（屏障是事件驱动的，不会自己连跑，§11.8）；
 3. 红方在 T9 左右拿到 B23/B26 的 `destroyed`，接触卡转为 `E1 · 已消失`，并在 `staleTurns`=3 个回合后（age 1→2→3）从档案里被剪掉。
 
-**`web/` 原生 ESM 客户端的退役排期**：自 P7 拍板"React 为唯一主前端"后，`web/` 停止接新需求，只作为 CSS 视觉 token 与 `map.js` 移植对照的**只读参考**；§6.3、§9、§10 里凡引用 `web/js/*` 的条目都在说"最初口径来自这里"。删除动作排在 **#92（P7-e）**，删除前要把 `web/css/app.css` 里仍被 React 依赖的视觉 token 与本轮这类"移植遗漏"对照清单收干净——今天这条 `.scroll` 就是第一个样本。`data/tianditu.json` 是访问凭证，`.gitignore` 已挡住，仓库里只留 `data/tianditu.example.json` 占位（§12.2）。
+**`web/` 原生 ESM 客户端的处置（#92 已定：保留为只读参考，不删除）**：自 P7 拍板"React 为唯一主前端"后，`web/` 停止接新需求，只作为 CSS 视觉 token 与 `map.js`/`hex.js` 移植对照的**只读参考**；§6.3、§9、§10 里凡引用 `web/js/*` 的条目都在说"最初口径来自这里"。冻结声明落在 [web/README.md](file:///D:/Project/wargame/web/README.md)，里面同时登记了两处仍在读 `web/` 的脚本——`scripts/hex-offset-check.mjs` 直接 `import ../web/js/hex.js`，`HexFront.CSharp/scripts/web-static.mjs` 是旧客户端的静态托管（`ROOT=../../web`，默认 8080 同源代理到 5018）——两者都还能跑，是"不删"这一决定的直接成本，也是它的直接理由。
+
+**移植遗漏对照清单（#92 收口）**：正反两个方向的 CSS 差分（`web/css/app.css` 199 条规则 ↔ React `App.css`+`index.css` 307 条；React 侧 105 个 `className` 字面量 token ↔ 187 个 CSS 类名），命中的 6 个"React 用了但没有任何规则"的 token 全部用无头 Chrome 读计算样式 + 截图复核，确认是真缺陷而不是"内联样式替代"。逐条结论：
+
+| web 里的规则 | React 实测（修复前） | 结论 |
+|---|---|---|
+| `.scroll{overflow:auto}`（`web/css/app.css:61`） | 面板内容画到相邻面板上 | 已由 P6-d 修复（§13.6 上面那条），本次复核 12 处 `className="scroll"` 全在 `.panel` 内，无第二例 |
+| `.steps` + `.steps .st` + `.st.on`（L91-94） | 五个步骤标题竖排成整行纯文本：pill 宽 1382px、`background:transparent`、`border:0`，**当前步与其余步视觉完全相同** | #92 补回，实测 pill 宽 69–108px 横排、`.st.on` 底色 `rgb(35,43,51)` + 前景/描边 accent 绿 |
+| `.wiz` + `.wiz .body` + `.wiz .side`（L95-97） | `display:block`、`grid-template-columns:none`、两栏 `overflow-y:visible` → 1fr+320px 双栏塌成一条整宽长列，右栏（点数预算/AI 代管/校验/创建按钮）掉到正文下方 | #92 补回，实测 `grid:1010px 320px`、两栏各自 `overflow:auto` |
+| `.oob-table` 基表 + `th/td` + `input/select`（L98-100） | React 只搬了 `.num` 一条 → 表格不 `border-collapse`、单元格零内边距、输入框不撑满列宽 | #92 补回，实测 `collapse` / `padding:4px` / `1px` 下边框 / 输入框 `3px 5px` |
+| `#nav a.on`（L23） | 选择器被改名成 `.nav a.active`，而 `Layout.tsx:20` 输出的是 `on` → 顶栏当前页永不高亮（实测 `color:rgb(139,152,164)`、背景透明，与未选中项一致） | #92 改回 `.nav a.on`，首页截图"首页"已是绿字 + 药丸底色 |
+| `.room-list table/th/td`（L84-86） | React 大厅是卡片列表（`.room-card`），无 `.room-list` 类 | **有意重设计，不是遗漏**（密集列表用卡片不用表格是既定偏好） |
+| `label>span{color:var(--dim)}`（L54） | React 由 `label{color:var(--dim)}` 继承同一颜色 | 等价，不是遗漏 |
+| —— | React 有 `.warn-card`（`SideView.tsx:242`/`DirectorView.tsx:127`/`SpectatorView.tsx:76` 三处）却无规则 | 无害空类：它只是 `.card` 的语义标记，红字由内层 `.warn` 负责，不补规则 |
+
+补 `.wiz` 时踩到一个连带问题，值得记一笔：`.wiz` 原来靠内联 `height:calc(100% - 78px)` 撑高度，网格一恢复，页脚"上一步/下一步"就被顶出视口（截图实测按钮 `bottom > innerHeight`）。改成 `.wizard-page` 做 flex 列、`.wiz{flex:1 1 auto;min-height:0}`、页脚独立成 `.wiz-foot{flex:0 0 auto}` 后，1440×900 下页脚 `bottom=802 == innerHeight=802` 正好贴底可见。**这类"补回规则反而暴露旧内联高度"的连锁，是本轮取证必须看图不能只看 DOM 的又一个理由。**
+
+**已知残留（#92 拍板：只标注，不删）**：
+- `HexFront.Core.csproj` 引了 `NetTopologySuite 2.6.0` + `ProjNET 2.1.0`，源码零引用（§13.1 规划期留下的空间计算方案，实收走了自写 odd-r 几何）。
+- `hexfront-react` 的 `package.json` 里有 `zustand 5.0.15`，源码零 `import`——React 侧没有 store，状态在 `room/RoomSocket.tsx` 的 context 与页面局部 state 里。
+- React `App.css` 里 **58 个类名在 tsx 全文中一次都没出现**（`.order-*`/`.history-*`/`.command-panel`/`.unit-info`/`.wizard-form`/`.form-group`/`.map-placeholder`/`.conn` 等，占 187 个 CSS 类名的三成）：初版脚手架按规划名写的，组件后来用的是 web 的类名。删它风险大于收益，留作死样式，改前端时别误当"在用"。
+- `_probe/` 目录的历史探针产物（§13.5 第 4 条）。
+
+`data/tianditu.json` 是访问凭证，`.gitignore` 已挡住，仓库里只留 `data/tianditu.example.json` 占位（§12.2）。
