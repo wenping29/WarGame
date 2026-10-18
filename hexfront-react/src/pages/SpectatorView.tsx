@@ -7,9 +7,7 @@ import { useState } from 'react'
 import HexMap from '../components/HexMap'
 import { useRoom } from '../room/RoomSocket'
 import type { AnyView, Frame } from '../room/protocol'
-import { sideLabel } from '../room/protocol'
-
-const hhmm = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:00`
+import { hhmm, sideLabel } from '../room/protocol'
 
 export default function SpectatorView() {
   const room = useRoom()
@@ -36,7 +34,7 @@ export default function SpectatorView() {
           <div className="maphud">
             {view ? (
               <>
-                <b>{view.name || ''}</b> · {kindLabel(view, replayIdx >= 0)} ·
+                <b>{view.name || ''}</b> · {kindLabel(view, replayIdx >= 0 ? frames[replayIdx]?.turn ?? null : null)} ·
                 {' '}回合 {view.turn}/{view.max_turns} · {hhmm(view.hour)} {view.day?.label || ''} ·{' '}
                 {view.weather?.label || ''}
               </>
@@ -90,11 +88,14 @@ export default function SpectatorView() {
                 <Kv k="蓝方单位" v={view.summary.blue_units} />
                 <Kv k="红方兵力" v={view.summary.red_personnel} />
                 <Kv k="蓝方兵力" v={view.summary.blue_personnel} />
+                {/* 「接触目标」只有带 contacts 的视图才有的说：导演部/全知视图下发的是 units 全量真值，
+                    没有 contacts 字段（web 在这一档恒显示 0，是个空壳行，这里不复刻） */}
+                <Kv k="接触目标" v={(view.contacts ?? []).length} />
               </div>
             ) : view.kind === 'director' ? (
               <div className="grid2">
-                <Kv k="红方单位" v={(view.units || []).filter(u => u.side === 'red' && u.status !== 'gone').length} />
-                <Kv k="蓝方单位" v={(view.units || []).filter(u => u.side === 'blue' && u.status !== 'gone').length} />
+                <Kv k="红方单位" v={(view.units || []).filter(u => u.side === 'red' && u.status !== 'destroyed').length} />
+                <Kv k="蓝方单位" v={(view.units || []).filter(u => u.side === 'blue' && u.status !== 'destroyed').length} />
                 <Kv k="红方兵力" v={(view.units || []).filter(u => u.side === 'red').reduce((a, u) => a + (u.personnel || 0), 0)} />
                 <Kv k="蓝方兵力" v={(view.units || []).filter(u => u.side === 'blue').reduce((a, u) => a + (u.personnel || 0), 0)} />
                 <Kv k="胜负" v={view.over ? sideLabel(view.winner) : '进行中'} />
@@ -152,9 +153,14 @@ export default function SpectatorView() {
   )
 }
 
-function kindLabel(v: AnyView, replaying: boolean) {
-  const kind = v.kind === 'director' ? '全知（导演部已授予）' : v.kind === 'side' ? '对抗方视图' : '观战情报层'
-  return kind + (replaying ? ' · 回放' : '')
+function kindLabel(v: AnyView, replayTurn: number | null) {
+  // 回放帧带的是 frame.director（全知切片），但「导演部已授予」说的是实时授权状态：
+  // 回放时沿用它会让人以为观战被开了全知，所以单独措辞。
+  // 帧号取 frame.turn（被结算的那一回合），与滑杆、导演部战报同一口径；视图内的 turn 已是结算后。
+  const kind = replayTurn === null
+    ? v.kind === 'director' ? '全知（导演部已授予）' : v.kind === 'side' ? '对抗方视图' : '观战情报层'
+    : `回放帧（导演部全知视角） T${replayTurn}`
+  return kind
 }
 
 function Kv({ k, v }: { k: string; v: unknown }) {

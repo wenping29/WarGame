@@ -227,10 +227,58 @@ export interface SavedMsg {
   meta: Record<string, unknown>
 }
 
+/**
+ * welcome 首包：token 用于同终端重连接管（doc §12.1「重连复用会话」），
+ * room 是 GET /api/room/{code} 那份公开信息，view 是本角色首帧视图。
+ */
+export interface WelcomeMsg {
+  type: 'welcome'
+  token: string
+  role: string
+  room: { code: string; instance: string; turn: number; over: boolean }
+  view: AnyView
+}
+
+/** 结算/导调后的增量事件；rejected 只发给归属方与导演部，观战恒为空。 */
+export interface EventsMsg { type: 'events'; events: WireEvent[]; rejected?: WireCommandError[] }
+export interface FramesMsg { type: 'frames'; frames: Frame[] }
+export interface KickedMsg { type: 'kicked'; reason: string }
+export interface ErrorMsg { type: 'error'; message: string }
+
 /** 线上阵营 id 是英文（与 view.own/contacts 的 side 同源），展示层统一转中文。 */
 export function sideLabel(side?: string | null): string {
   if (side === 'red') return '红方'
   if (side === 'blue') return '蓝方'
   if (!side) return '平局'
   return side
+}
+
+/**
+ * 单位状态线上值只有 ready/moved/combat/rest/dig/routed/destroyed（FogService.StatusStr）。
+ * ready 是常态不显示；后两个跨回合保留。
+ * gone 不属于单位状态：它是接触档案里"这支队伍已经不存在了"的标记（FogService.ContactOf）。
+ */
+const STATUS_LABEL: Record<string, [string, string]> = {
+  routed: ['溃退', 'red'],
+  destroyed: ['被歼灭', 'red'],
+  combat: ['交火', ''],
+  moved: ['机动', ''],
+  dig: ['构筑', ''],
+  rest: ['休整', ''],
+  gone: ['已消失', 'red'],
+}
+
+/** 状态徽标；ready / 未知状态返回 null（不占位）。 */
+export function statusTag(status?: string | null): { text: string; cls: string } | null {
+  const s = status ? STATUS_LABEL[status] : undefined
+  if (!s) return null
+  return { text: s[0], cls: s[1] }
+}
+
+/** 时刻（0–24 的小数）→ hh:mm；按总分钟取整，避免 1.999 → "01:60"。 */
+export function hhmm(hourOfDay: number): string {
+  const total = Math.round((((hourOfDay % 24) + 24) % 24) * 60)
+  const h = Math.floor(total / 60) % 24
+  const m = total % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }

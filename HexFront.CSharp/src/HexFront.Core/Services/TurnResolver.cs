@@ -437,7 +437,11 @@ public static class TurnResolver
         return moved;
     }
 
-    private static double StepCost(TerrainDef td, Cell cell, string cls)
+    /// <summary>
+    /// 单格机动代价（doc §6.4 地物玩法表）。乘序是有意义的：路→铁路→隧道→渡河，
+    /// 先打折后加罚，换序会让路铁叠加格从 0.52 倍变成别的数，所以逐项锁死并对外可测。
+    /// </summary>
+    public static double StepCost(TerrainDef td, Cell cell, string cls)
     {
         var heavy = cls == "motor" || cls == "mech";
         var step = td.Cost.GetValueOrDefault(cls, 2.0);

@@ -78,7 +78,10 @@ public static class ScenarioService
         public List<OobEntry> Oob { get; init; } = new();
     }
 
-    /// <summary>OOB entry: N units of a type deployed around a hex.</summary>
+    /// <summary>
+    /// OOB entry: N units of a type deployed around a hex.
+    /// 人员水平（训练度/经验/指挥官）只能由 OOB 表达（doc §5：兵种属性是本局共用的装备基线），缺省才回落到兵种出厂值。
+    /// </summary>
     public class OobEntry
     {
         public string Type { get; init; } = "rifle";
@@ -91,6 +94,12 @@ public static class ScenarioService
         public double Fuel { get; init; } = 1.0;
         public double Food { get; init; } = 1.0;
         public int Fort { get; init; } = 0;
+        /// <summary>0–100；null 表示沿用兵种出厂训练度。</summary>
+        public double? Training { get; init; }
+        /// <summary>0–100；null 表示沿用兵种出厂经验。</summary>
+        public double? Experience { get; init; }
+        /// <summary>剧本允许 <c>"commander": "姓名"</c> 或 <c>{"name","quality"}</c> 两种写法，故留原始 JSON 到生成时解析。</summary>
+        public JsonElement? Commander { get; init; }
     }
 
     /// <summary>Unit deployment specification.</summary>
@@ -407,6 +416,7 @@ public static class ScenarioService
                     taken.Add(pos.Key);
                     counter++;
                     var personnel = Math.Max(1, (int)Math.Round(t.Personnel * entry.PersonnelRatio));
+                    var (commander, commanderQuality) = CommanderOf(entry);
                     g.Units.Add(new Unit
                     {
                         Id = (prefix.GetValueOrDefault(sideKey, "X")) + counter,
@@ -425,13 +435,26 @@ public static class ScenarioService
                         Airborne = false,
                         Mission = "none",
                         FortLevel = entry.Fort,
-                        Training = t.TrainingDefault,
-                        Experience = t.ExpDefault,
+                        Training = entry.Training ?? t.TrainingDefault,
+                        Experience = entry.Experience ?? t.ExpDefault,
+                        CommanderName = commander,
+                        CommanderQuality = commanderQuality,
                         IsHQ = t.IsHQ,
                     });
                 }
             }
         }
+    }
+
+    /// <summary>指挥官两种写法都要收：裸字符串只给名字，对象可另给 0–1 能力值（doc §5 人员水平）。</summary>
+    private static (string? Name, double Quality) CommanderOf(OobEntry entry)
+    {
+        if (entry.Commander is not { } cmd) return (null, 0.5);
+        if (cmd.ValueKind == JsonValueKind.String) return (cmd.GetString(), 0.5);
+        if (cmd.ValueKind != JsonValueKind.Object) return (null, 0.5);
+        var name = cmd.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
+        var quality = cmd.TryGetProperty("quality", out var q) && q.TryGetDouble(out var v) ? v : 0.5;
+        return (name, quality);
     }
 
     /// <summary>Scenario coords may land on water/edge hexes after real-DEM grids: find nearest passable free hex.</summary>
@@ -562,6 +585,92 @@ public static class ScenarioService
         public string Name { get; init; } = "";
         public string Description { get; init; } = "";
         public string Path { get; init; } = "";
+    }
+
+    /// <summary>
+    /// 剧本校验（doc §5 两条约束：点数预算 + 引用完整性）。
+    /// <paramref name="eff"/> 必须是覆盖后的有效定义库，否则改过装备性能的兵种按出厂价算，预算报红当场失真；
+    /// 缺省按 <c>cfg.UnitTypeDefs</c> 现算一份。
+    /// </summary>
+    public static List<string> Validate(ScenarioConfig cfg, Dictionary<string, UnitTypeDef>? eff = null)
+    {
+        eff ??= UnitTypeDefService.EffectiveLibrary(cfg.UnitTypeDefs);
+        var errs = new List<string>();
+        if (cfg.Sides == null || cfg.Sides.Count == 0)
+        {
+            errs.Add("缺少 sides 阵营定义");
+        }
+        else
+        {
+            foreach (var (side, sc) in cfg.Sides)
+            {
+                if (sc.Oob.Count == 0)
+                {
+                    errs.Add($"阵营 {side} 的 oob 为空");
+                    continue;
+                }
+                foreach (var e in sc.Oob)
+                {
+                    if (!eff.ContainsKey(e.Type)) errs.Add($"阵营 {side} 引用未知兵种 {e.Type}");
+                    if (e.At == null) errs.Add($"阵营 {side} 单位 {e.Type} 缺少坐标 at");
+                }
+                var used = OobPoints(eff, sc.Oob);
+                if (sc.PointsBudget > 0 && used > sc.PointsBudget + 0.001)
+                    errs.Add($"阵营 {side} OOB 点数 {used:F1} 超出预算 {sc.PointsBudget:F1}");
+            }
+        }
+
+        var initial = cfg.Weather?.Initial;
+        if (initial != null && !LibraryService.WEATHER_JSON.ContainsKey(initial))
+            errs.Add($"未知天气 {initial}");
+
+        foreach (var vc in cfg.VictoryConds)
+        {
+            if (!IsVictoryKind(vc.Kind))
+                errs.Add($"未知胜利条件种类 {vc.Kind}（可用：annihilate / capture / nodes / survive）");
+            if (vc.Kind == "capture" && string.IsNullOrWhiteSpace(vc.Target))
+                errs.Add("capture 胜利条件缺少 target 格坐标");
+        }
+
+        return errs;
+    }
+
+    /// <summary>OOB 点数合计：未知兵种计 0（引用错误由 <see cref="Validate"/> 单独报出）。</summary>
+    public static double OobPoints(IReadOnlyDictionary<string, UnitTypeDef> eff, IEnumerable<OobEntry> oob) =>
+        oob.Sum(e => eff.TryGetValue(e.Type, out var t) ? t.Points * e.Qty : 0.0);
+
+    /// <summary>
+    /// 副本覆盖入口（doc §5：每步都是"覆盖/不覆盖"，不覆盖即继承剧本默认）。
+    /// 合并必须发生在反序列化之前：ScenarioConfig 是 init-only，先解析再改对象改不动，
+    /// 而数组（oob / victory / unit_type_defs）本就是整块替换。
+    /// </summary>
+    public static ScenarioConfig MergeOverrides(string scenarioJson, JsonElement? overrides)
+    {
+        var node = JsonNode.Parse(scenarioJson)?.AsObject()
+            ?? throw new InvalidOperationException("剧本 JSON 无效");
+        if (overrides is { } ov && ov.ValueKind == JsonValueKind.Object)
+        {
+            var overNode = JsonNode.Parse(ov.GetRawText())?.AsObject();
+            if (overNode != null) DeepMergeInto(node, overNode);
+        }
+        return LoadFromJson(node.ToJsonString());
+    }
+
+    /// <summary>深合并语义与 Dart 版一致：覆盖里的 null 表示"不改"。</summary>
+    private static void DeepMergeInto(JsonObject target, JsonObject over)
+    {
+        foreach (var (k, v) in over.ToList())
+        {
+            if (v == null) continue;
+            if (v is JsonObject vo && target[k] is JsonObject to)
+            {
+                DeepMergeInto(to, vo);
+            }
+            else
+            {
+                target[k] = v.DeepClone();
+            }
+        }
     }
 
     /// <summary>

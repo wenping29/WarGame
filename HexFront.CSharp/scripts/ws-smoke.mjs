@@ -70,6 +70,11 @@ log('0. 副本创建 code=' + room, 'instance=' + inst.instance, 'seed=' + inst.
 const dir = await connect(`?room=${room}&role=director`);
 const [w1] = await dir.waitFor('welcome');
 log('1. director welcome ok, token len', w1.token.length);
+// 1a. welcome 首包自带视图与房间公开信息（web 各视图读 welcome.view 落第一帧）
+if (!w1.room || w1.room.code !== room) fail('welcome.room 应为公开信息对象: ' + JSON.stringify(w1.room));
+if (w1.room.instance !== inst.instance) fail('welcome.room.instance 不符: ' + w1.room.instance);
+if (!w1.view || w1.view.kind !== 'director') fail('welcome.view 缺失或角色不符: ' + (w1.view && w1.view.kind));
+log('   welcome 带 view(kind=' + w1.view.kind + ") 与 room(instance/roles)");
 const [dirState0] = await dir.waitFor('state');
 const turn0 = dirState0.turn;
 log('   director units:', (dirState0.view.units || []).length, 'starting turn', turn0);
@@ -138,6 +143,13 @@ if ((loaded.replay_warnings || []).length) fail('重放指纹不符: ' + loaded.
 if (loaded.resumed_turn !== turnNow) fail(`resumed_turn 期望 ${turnNow} got ${loaded.resumed_turn}`);
 if (loaded.fingerprint !== liveFp) fail(`载入指纹 ${loaded.fingerprint} ≠ 房间指纹 ${liveFp}`);
 log('8. 存档往返指纹一致', loaded.fingerprint, '重放回合', JSON.stringify(loaded.replayed_turns));
+
+// 8a. 续跑房间的 seed 帧：room.dart 载入存档即补一帧，前端 Frame 类型要求 battles 恒在
+const seedFrames = (await (await fetch(API + '/api/frames/' + loaded.code)).json()).frames;
+if (!seedFrames.length) fail('存档续跑房间没有首帧（CreateRoomFromState 应补 seed 帧）');
+if (!Array.isArray(seedFrames[0].battles))
+  fail('seed 帧缺 battles 数组: ' + JSON.stringify(Object.keys(seedFrames[0])));
+log('8a. 续跑房间首帧带 battles（' + seedFrames.length + ' 帧，turn=' + seedFrames[0].turn + '）');
 
 // 7c. 尾部重放：补令不抽随机数，但结算要落随机源起点 —— 重放只跑指令，rng_at_resolve 拨不回原位就会从第一次抖动开始分叉
 let liveTurn = turnNow;
@@ -417,6 +429,39 @@ blue.send({ type: 'resolve' });
 const [err] = await blue.waitFor('error');
 log('11. blue resolve rejected:', err.message);
 
-dir.ws.close(); red2.ws.close(); blue.ws.close();
+// 10. 回放帧契约：每帧都要带 battles（无交战也是空数组），且裁剪到 200 帧内
+const fr = (await (await fetch(API + '/api/frames/' + room)).json()).frames;
+if (!fr.length) fail('GET /api/frames 返回空帧表');
+for (const f of fr)
+  if (!Array.isArray(f.battles)) fail('回放帧缺 battles 数组（回合 ' + f.turn + '）');
+if (fr.length > 200) fail('回放帧未裁剪到 200 帧：' + fr.length);
+log('12. 回放帧', fr.length, '帧，全部带 battles');
+
+// 10b. 观战同角色顶号不需要 force（doc §12.1「同角色顶号」；只有阵营位要确认接管）
+const sp1 = await connect(`?room=${room}&role=spectator`);
+await sp1.waitFor('welcome');
+const sp2 = await connect(`?room=${room}&role=spectator`);
+try {
+  await sp1.waitFor('kicked', 1, 5000);
+  log('13. 第二个观战终端免 force 直接接管，原观战收到 kicked');
+} catch (e) { fail(String(e.message)); }
+if ((await (await fetch(API + '/api/room/' + room)).json()).roles.spectator !== 1)
+  fail('观战顶号后同角色应只剩一条会话');
+
+// 10c. 阵营位被他人占用且未带 force：拒绝加入并给出原因（doc §12.1「他人占用」）
+const red3 = await connect(`?room=${room}&role=red&token=notmytoken`);
+const [occ] = await red3.waitFor('error', 1, 5000);
+if (!/角色位/.test(occ.message)) fail('占用阵营位应回角色位错误，实际: ' + occ.message);
+log('14. 阵营位占用被拒:', occ.message);
+
+dir.ws.close(); red2.ws.close(); blue.ws.close(); sp2.ws.close(); red3.ws.close();
+await sleep(800);
+
+// 11. 断开即释放：全部终端下线后 roles 归零、side_taken 翻回 false（doc §12.1 实测点）
+const after = await (await fetch(API + '/api/room/' + room)).json();
+const online = Object.entries(after.roles).filter(([, n]) => n > 0).map(([r]) => r);
+if (online.length) fail('全部终端断开后 roles 未归零: ' + online.join('/'));
+if (after.side_taken.red || after.side_taken.blue) fail('断开后 side_taken 仍显示占用');
+log('15. 断开即释放：roles 全归零，side_taken=false');
 log('ALL PASS');
 process.exit(0);

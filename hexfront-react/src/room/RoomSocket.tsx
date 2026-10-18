@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from 'react'
 import type {
-  AnyView, Frame, SavedMsg, StateMsg, WireCommand, WireEvent,
+  EventsMsg, ErrorMsg, Frame, KickedMsg, SavedMsg, ServerMsg, StateMsg, WelcomeMsg,
+  AnyView, WireCommand, WireEvent,
 } from './protocol'
 import { toast } from '../components/Toast'
 import { play } from '../services/sound'
@@ -59,6 +60,11 @@ export interface RoomApi {
 
 const RoomCtx = createContext<RoomApi | null>(null)
 
+/// 上一次握手拿到的令牌（按角色存，与 web/js/ws.js 同一个 key）
+function readStoredToken(role: string): string | null {
+  try { return localStorage.getItem('hf.tok.' + role) } catch { return null }
+}
+
 export function useRoom(): RoomApi {
   const ctx = useContext(RoomCtx)
   if (!ctx) throw new Error('useRoom 必须在 RoomProvider 内使用')
@@ -76,6 +82,8 @@ export function RoomProvider({
 }) {
   const [status, setStatus] = useState<Status>('connecting')
   const [state, setState] = useState<StateMsg | null>(null)
+  // welcome 首包自带的视图：state 还没到时的第一帧（对齐 web 各视图读 welcome.view）
+  const [welcomeView, setWelcomeView] = useState<AnyView | null>(null)
   const [log, setLog] = useState<WireEvent[]>([])
   const [frames, setFrames] = useState<Frame[]>([])
   const [saved, setSaved] = useState<SavedMsg | null>(null)
@@ -87,19 +95,26 @@ export function RoomProvider({
   const forceSentRef = useRef(false)
   const errorRef = useRef<string | null>(null)
   const retryRef = useRef<number | undefined>(undefined)
+  const attemptsRef = useRef(0)
   const snapRef = useRef<Snapshot | null>(null)
   const [epoch, setEpoch] = useState(0)
 
-  const handle = useCallback((m: Record<string, unknown>) => {
+  const handle = useCallback((m: ServerMsg) => {
     switch (m.type) {
-      case 'welcome':
-        tokenRef.current = (m.token as string) || null
+      case 'welcome': {
+        const w = m as unknown as WelcomeMsg
+        tokenRef.current = w.token || null
+        // 令牌要活过整页刷新：doc §12.1 的「同 token 重连接管原会话」靠它把阵营位认回自己人，
+        // 只存在内存里会让每次刷新都变成一次陌生接管。
+        try { if (w.token) localStorage.setItem('hf.tok.' + role, w.token) } catch { /* 无痕模式忽略 */ }
+        setWelcomeView(w.view ?? null)
         setError(null)
         errorRef.current = null
         // 接管成功（或正常入位）后才消费 force，避免 StrictMode 双挂载/重试把接管标志丢掉
         forceRef.current = false
         forceSentRef.current = false
         break
+      }
       case 'state': {
         const s = m as unknown as StateMsg
         const next = snapshotOf(s.view ?? null)
@@ -110,44 +125,55 @@ export function RoomProvider({
         if (Array.isArray(s.events)) setLog(s.events)
         break
       }
-      case 'events':
-        setLog((prev) => [...prev, ...((m.events as WireEvent[]) || [])].slice(-400))
+      case 'events': {
+        const e = m as unknown as EventsMsg
+        setLog((prev) => [...prev, ...(e.events || [])].slice(-400))
         break
+      }
       case 'frames':
-        setFrames(((m.frames as Frame[]) || []).slice())
+        setFrames(((m as unknown as { frames?: Frame[] }).frames || []).slice())
         break
-      case 'saved':
-        setSaved(m as unknown as SavedMsg)
-        toast(`已存档 回合 ${m.turn} 副本 ${m.instance || ''}`)
+      case 'saved': {
+        const s = m as unknown as SavedMsg
+        setSaved(s)
+        toast(`已存档 回合 ${s.turn} 副本 ${s.instance || ''}`)
         break
-      case 'error':
-        errorRef.current = (m.message as string) || '服务器错误'
+      }
+      case 'error': {
+        const e = m as unknown as ErrorMsg
+        errorRef.current = e.message || '服务器错误'
         setError(errorRef.current)
         play('err')
         break
-      case 'kicked':
+      }
+      case 'kicked': {
+        const k = m as unknown as KickedMsg
         kickedRef.current = true
-        setError((m.reason as string) || '本角色已在其他终端打开')
+        setError(k.reason || '本角色已在其他终端打开')
         setStatus('kicked')
         play('kick')
         break
+      }
       default:
         break
     }
-  }, [])
+  }, [role])
 
   useEffect(() => {
     let ws: WebSocket | null = null
     let disposed = false
     let opened = false
     setStatus('connecting')
+    setWelcomeView(null)
     // 重连首包不做差分，否则连接前的回合/敌情变化会被当成刚发生
     snapRef.current = null
 
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     let url = `${proto}://${location.host}/ws?room=${encodeURIComponent(code)}&role=${encodeURIComponent(role)}`
     if (name) url += '&name=' + encodeURIComponent(name)
-    if (tokenRef.current && !forceRef.current) url += '&token=' + tokenRef.current
+    // 内存里没有就认localStorage 里上次握手拿到的令牌：刷新后凭它接回自己的阵营位
+    const stored = tokenRef.current || readStoredToken(role)
+    if (stored && !forceRef.current) { tokenRef.current = stored; url += '&token=' + stored }
     forceSentRef.current = forceRef.current
     if (forceRef.current) url += '&force=1'
 
@@ -161,7 +187,7 @@ export function RoomProvider({
     ws.onmessage = (ev) => {
       try { handle(JSON.parse(String(ev.data))) } catch { /* 忽略坏帧 */ }
     }
-    ws.onopen = () => { opened = true; setStatus('live') }
+    ws.onopen = () => { opened = true; attemptsRef.current = 0; setStatus('live') }
     ws.onclose = () => {
       if (disposed) return
       wsRef.current = null
@@ -197,8 +223,17 @@ export function RoomProvider({
       scheduleRetry()
     }
 
+    // doc §12.1：重试 8 次后停止并给出原因，退避随次数递增（与 web/js/ws.js 一致）
     const scheduleRetry = () => {
-      retryRef.current = window.setTimeout(() => setEpoch((e) => e + 1), 1500)
+      attemptsRef.current += 1
+      if (attemptsRef.current > 8) {
+        setStatus('closed')
+        setError('重连次数过多，已停止（角色位可能被占用或服务离线）')
+        play('err')
+        return
+      }
+      const delay = Math.min(1000 * attemptsRef.current, 5000)
+      retryRef.current = window.setTimeout(() => setEpoch((e) => e + 1), delay)
     }
 
     return () => {
@@ -228,7 +263,7 @@ export function RoomProvider({
     role,
     status,
     state,
-    view: state?.view ?? null,
+    view: state?.view ?? welcomeView,
     log,
     frames,
     saved,
@@ -243,7 +278,7 @@ export function RoomProvider({
     requestFrames: () => send({ type: 'frames' }),
     directorCmd: (cmd) => send({ type: 'director_cmd', ...cmd }),
     rejoin,
-  }), [code, role, status, state, log, frames, saved, error, send, rejoin])
+  }), [code, role, status, state, welcomeView, log, frames, saved, error, send, rejoin])
 
   return <RoomCtx.Provider value={api}>{children}</RoomCtx.Provider>
 }

@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using FluentAssertions;
 using HexFront.Core.Models;
@@ -15,24 +13,10 @@ namespace HexFront.Tests.Engine;
 /// </summary>
 public class FogAndAiP0Tests
 {
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "data", "scenarios", "rhine_corridor.json")))
-            dir = dir.Parent;
-        return dir?.FullName ?? throw new DirectoryNotFoundException("找不到 data/scenarios/rhine_corridor.json");
-    }
-
-    private static GameState NewGame()
-    {
-        var root = RepoRoot();
-        var cfg = ScenarioService.LoadFromFile(Path.Combine(root, "data", "scenarios", "rhine_corridor.json"));
-        return ScenarioService.CreateGameState(cfg, Path.Combine(root, "data", "gis"));
-    }
+    private static GameState NewGame() => RealScenario.Build();
 
     private static List<Dictionary<string, object?>> ContactsOf(GameState g, string side) =>
-        ((IEnumerable<object?>?)FogService.SideView(g, side)["contacts"])!
-            .Cast<Dictionary<string, object?>>().ToList();
+        RealScenario.ContactsOf(g, side);
 
     [Fact]
     public void Fog_Off_Shows_Everything_But_Writes_No_Archive()

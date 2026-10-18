@@ -85,6 +85,7 @@ export interface RoomInfo {
   weather: string
   over: boolean
   winner: string | null
+  /** 会话计数；doc §12.1 每个角色位同时只有一条会话（阵营位并发被拒、导演/观战顶号），所以取值只可能是 0/1 */
   roles: Record<string, number>
   side_taken: Record<string, boolean>
   ai: Record<string, boolean>
@@ -119,7 +120,8 @@ export interface ScenariosMeta {
   saves: SaveInfo[]
   weather: WireWeather[]
   unit_types: Array<Record<string, unknown>>
-  terrains: Record<string, Record<string, unknown>>
+  /** 与 Dart/C# 一致是数组（每项带 id），不是按 id 索引的表 */
+  terrains: Array<Record<string, unknown>>
   rules_default: Record<string, unknown>
   tiles: Record<string, unknown>
 }

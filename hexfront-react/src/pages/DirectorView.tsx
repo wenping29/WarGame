@@ -8,7 +8,7 @@ import HexMap from '../components/HexMap'
 import { useRoom } from '../room/RoomSocket'
 import { useUnitTypes, useWeatherList } from '../room/useUnitFull'
 import type { Frame, WireCommand, WireDirectorView, WireFactors, WireUnit } from '../room/protocol'
-import { sideLabel } from '../room/protocol'
+import { hhmm, sideLabel } from '../room/protocol'
 import { play } from '../services/sound'
 
 const CLS_LABEL: Record<string, string> = {
@@ -25,8 +25,6 @@ const FACTOR_LABEL: Array<[keyof WireFactors, string]> = [
 const BATTLE_KIND: Record<string, string> = {
   combat: '突击', encounter: '遭遇', fire: '炮击', air: '空袭', strike: '打击',
 }
-
-const hhmm = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`
 
 export default function DirectorView() {
   const room = useRoom()

@@ -154,6 +154,22 @@ public class DeterminismP1Tests : IDisposable
     }
 
     [Fact]
+    public void Save_Carries_The_Priced_Type_Definitions()
+    {
+        var cfg = ScenarioService.MergeOverrides(File.ReadAllText(_scenarioPath), RealScenario.Overrides("""
+        { "unit_type_defs": [ { "id": "tank", "firepower": 48, "mobility": 14, "consumption": 1 } ] }
+        """));
+        var live = ScenarioService.CreateGameState(cfg, _gisDir, 2027);
+        StoreService.WriteInit(live, "P1 兵种覆盖", "test", _saveDir);
+
+        var loaded = StoreService.Load(live.InstanceId, _saveDir).Game;
+
+        loaded.UnitTypes["tank"].Firepower.Should().Be(48, "定义库要跟着存档走，载入后不能退回出厂属性");
+        loaded.UnitTypes["tank"].Points.Should().Be(45.9, "成交价也必须在存档里，否则重开一局预算就变了");
+        loaded.TypeOf(loaded.Units.First(u => u.UnitType == "tank")).Firepower.Should().Be(48);
+    }
+
+    [Fact]
     public void Load_Without_Snapshot_Replays_Whole_Log()
     {
         var live = NewGame(31337);

@@ -508,7 +508,7 @@ GET    /api/gis/capabilities  → 报告本机 DEM/LC/roads/airports/vector 可�
 
 ### 13.2 阶段二：推演后端 C# Core WebAPI
 
-**目标**：把 `hexfront/lib/engine/*` (defs, state, turn, mechanics, fog, commands, library, scenario) 重写为 ASP.NET Core WebAPI + SignalR Hub，替代现有 Dart server。
+**目标**：把 `hexfront/lib/engine/*` (defs, state, turn, mechanics, fog, commands, library, scenario) 重写为 ASP.NET Core WebAPI + 实时会话端点，替代现有 Dart server。
 
 **核心移植清单**：
 
@@ -527,31 +527,14 @@ GET    /api/gis/capabilities  → 报告本机 DEM/LC/roads/airports/vector 可�
 | `server/hexgen.dart` (GisJobSpec, GisService) | `Controllers/GisController.cs` | ★★☆ 作业队列 |
 | `server/store.dart` (Store, load/save) | `Persistence/FileStore.cs` | ★★☆ JSON 文件读写 |
 
-**SignalR Hub 设计**：
+**会话传输设计（实装）**：原生 WebSocket 端点 `/ws?room=&role=&token=&name=&force=1`，上行 `orders|clear_orders|ready|resolve|save|frames|state|director_cmd`，下行 `welcome|state|events|saved|frames|error|kicked|pong`（消息语义见 §12.1）。
 
-```csharp
-public class RoomHub : Hub
-{
-    // 客户端 → 服务端
-    Task JoinRoom(string roomId, string role, string nickname);
-    Task SendOrders(List<Command> orders);
-    Task SetReady(bool ready);
-    Task DirectorCmd(DirectorAction action);
-    
-    // 服务端 → 客户端
-    void OnWelcome(WelcomeMessage msg);
-    void OnState(StateUpdate update);
-    void OnEvents(List<EventLog> events);
-    void OnSaved(SaveConfirmation save);
-    void OnKicked(string reason);
-    void OnError(ErrorDetail err);
-}
-```
+> **偏离说明（2026-10-18 拍板）**：本节原计划用 ASP.NET Core SignalR Hub 承载会话。实装与全量验证走的是原生 `/ws` JSON 协议——它与既有 web/React 客户端的线上格式逐字一致，且已由 `HexFront.CSharp/scripts/ws-smoke.mjs`（15 组断言）与四终端浏览器 E2E 验证。曾按本节写过的 `RoomHub`（自带一套与 `RoomService` 平行的房间字典，与 `/ws` 语义不互通、零引用）已删除。若将来要接 SignalR（浏览器自动重连、降级、流式回包），应做成 `RoomService` 之上的薄适配器，而不是第二套房间真相。
 
 **验收标准**：
 
 - [ ] 现有 `bin/verify.dart` 61 项用例全部在 C# 端通过（xUnit 等价实现）
-- [ ] 现有 `bin/smoke_ws.dart` 32 项多人冒烟全部通过（SignalR 替换 WebSocket）
+- [ ] 现有 `bin/smoke_ws.dart` 32 项多人冒烟全部通过（会话传输实装为原生 `/ws`，见上方偏离说明）
 - [ ] 同种子同指令 → 同指纹（确定性对拍）
 - [ ] 存档往返指纹一致（JSON 序列化兼容）
 - [ ] 性能：14 回合全 AI 对抗 < 5s（与 Dart 版持平）
@@ -570,7 +553,7 @@ public class RoomHub : Hub
 | 路由 | React Router v6 | hash 路由兼容现有 `#/new` 等路径 |
 | UI 组件 | Ant Design 5.x | 深色主题支持好，与现有视觉 token 匹配 |
 | Canvas | react-konva 或原生 canvas ref | Konva 有图层管理优势；原生更可控 |
-| SignalR | @microsoft/signalr | 官方客户端，自动重连 |
+| 会话传输 | 原生 WebSocket（`/ws`） | 与 Dart/web 线上格式逐字一致，不引入 SignalR 客户端；理由见 §13.2 偏离说明 |
 | 构建 | Vite + SWC | 比 CRA 快 10 倍+ |
 
 **组件拆分**：
@@ -592,7 +575,7 @@ src/
 │   ├── EventLog.tsx           # 事件日志
 │   └── HudOverlay.tsx         # HUD 浮层
 ── services/
-│   ├── signalr.ts             # SignalR 连接管理
+│   ├── ws.ts                  # /ws 会话连接管理（实装于 src/room/RoomSocket.tsx）
 │   ├── api.ts                 # REST API 调用
 │   └── gameState.ts           # Zustand store
 ├── geometry/
@@ -620,7 +603,7 @@ src/
 Week 1-2:  阶段一 API 骨架 + 单元测试
 Week 3-4:  阶段一完整 + 阶段二 Defs/State/Library
 Week 5-6:  阶段二 Turn/Mechanics/Fog + xUnit 验证
-Week 7-8:  阶段二 SignalR Hub + smoke 测试
+Week 7-8:  阶段二 /ws 会话端点 + smoke 测试
 Week 9-10: 阶段三 React 脚手架 + MapCanvas
 Week 11-12: 阶段三完整视图 + 联调
 Week 13:   集成测试 + 性能对比 + 文档更新
@@ -632,14 +615,14 @@ Week 13:   集成测试 + 性能对比 + 文档更新
 |---|---|---|---|
 | GDAL C# 绑定安装复杂 | 高 | 中 | 备选 RasterSharp 纯 C# 栅格读取；或保留 Python subprocess 调用 hexgen.py |
 | 确定性浮点差异导致指纹不一致 | 中 | 高 | 使用 decimal 代替 double；或允许 ±1e-9 容差比对 |
-| SignalR 消息顺序与 WebSocket 不一致 | 低 | 中 | 加 sequence_number 字段，客户端按序处理 |
+| 双传输并存导致两套房间真相（SignalR Hub 与 /ws） | 已发生 | 中 | 只保留 `/ws`；`RoomHub` 已删除，会话真相收敛到 `RoomService`（§13.2） |
 | React Canvas 性能不如原生 | 中 | 中 | 优先用原生 canvas ref + requestAnimationFrame；Konva 仅用于 UI 覆盖层 |
 | 迁移期间需求变更 | 高 | 高 | Dart 原型作为"活文档"持续维护；C# 每完成一个模块即同步验证 |
 
 **过渡期运行模式**：
 
 ```
-─────────────┐     REST/SignalR      ┌──────────────┐
+─────────────┐     REST + /ws      ┌──────────────┐
 │  React SPA  │ ◄──────────────────►  │ C# WebAPI    │
 │  (localhost:3000)                   │  (localhost:5000)
 └─────────────┘                        └──────┬───────┘

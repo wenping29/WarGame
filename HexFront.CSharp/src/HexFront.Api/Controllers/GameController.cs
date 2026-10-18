@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using HexFront.Api.Services;
 using HexFront.Core.Models;
 using HexFront.Core.Services;
@@ -102,7 +101,7 @@ public class GameController : ControllerBase
         }
 
         var eff = UnitTypeDefService.EffectiveLibrary(cfg.UnitTypeDefs);
-        var errs = ValidateScenario(cfg, eff);
+        var errs = ScenarioService.Validate(cfg, eff);
         errs.AddRange(UnitTypeDefService.Validate(cfg.UnitTypeDefs));
         return Ok(new Dictionary<string, object?>
         {
@@ -125,18 +124,17 @@ public class GameController : ControllerBase
         if (path == null)
             return NotFoundDict($"剧本不存在: {scenarioId}");
 
-        ScenarioConfig? cfg;
+        ScenarioConfig cfg;
         try
         {
-            cfg = LoadMergedConfigJson(System.IO.File.ReadAllText(path), BodyOverrides(body));
+            cfg = ScenarioService.MergeOverrides(System.IO.File.ReadAllText(path), BodyOverrides(body));
         }
         catch (Exception ex)
         {
             return BadRequestDict($"剧本解析失败: {ex.Message}", null);
         }
-        if (cfg == null) return BadRequestDict($"剧本不存在: {scenarioId}", null);
 
-        var errs = ValidateScenario(cfg, UnitTypeDefService.EffectiveLibrary(cfg.UnitTypeDefs));
+        var errs = ScenarioService.Validate(cfg);
         errs.AddRange(UnitTypeDefService.Validate(cfg.UnitTypeDefs));
         if (errs.Count > 0 && !Bool(body, "force", false))
             return BadRequestDict("剧本/覆盖校验未通过", errs);
@@ -344,54 +342,6 @@ public class GameController : ControllerBase
         return outList;
     }
 
-    /// <summary>Scenario validity checks ported from Dart Scenario.validate (sides/oob/types/coords/budget/weather).</summary>
-    /// <param name="eff">覆盖后的有效定义库：预算与点数都必须用它，否则改过属性的兵种按出厂价算。</param>
-    private static List<string> ValidateScenario(ScenarioConfig cfg, Dictionary<string, UnitTypeDef> eff)
-    {
-        var errs = new List<string>();
-        if (cfg.Sides == null || cfg.Sides.Count == 0)
-        {
-            errs.Add("缺少 sides 阵营定义");
-        }
-        else
-        {
-            foreach (var (side, sc) in cfg.Sides)
-            {
-                if (sc.Oob.Count == 0)
-                {
-                    errs.Add($"阵营 {side} 的 oob 为空");
-                    continue;
-                }
-                double used = 0;
-                foreach (var e in sc.Oob)
-                {
-                    if (eff.TryGetValue(e.Type, out var t))
-                        used += t.Points * e.Qty;
-                    else
-                        errs.Add($"阵营 {side} 引用未知兵种 {e.Type}");
-                    if (e.At == null)
-                        errs.Add($"阵营 {side} 单位 {e.Type} 缺少坐标 at");
-                }
-                if (sc.PointsBudget > 0 && used > sc.PointsBudget + 0.001)
-                    errs.Add($"阵营 {side} OOB 点数 {used:F1} 超出预算 {sc.PointsBudget:F1}");
-            }
-        }
-
-        var initial = cfg.Weather?.Initial;
-        if (initial != null && !LibraryService.WEATHER_JSON.ContainsKey(initial))
-            errs.Add($"未知天气 {initial}");
-
-        foreach (var vc in cfg.VictoryConds)
-        {
-            if (!ScenarioService.IsVictoryKind(vc.Kind))
-                errs.Add($"未知胜利条件种类 {vc.Kind}（可用：annihilate / capture / nodes / survive）");
-            if (vc.Kind == "capture" && string.IsNullOrWhiteSpace(vc.Target))
-                errs.Add("capture 胜利条件缺少 target 格坐标");
-        }
-
-        return errs;
-    }
-
     private static Dictionary<string, object?> OobPreview(ScenarioConfig cfg, Dictionary<string, UnitTypeDef> eff)
     {
         var sides = new Dictionary<string, object?>();
@@ -447,36 +397,7 @@ public class GameController : ControllerBase
     private ScenarioConfig? LoadMergedConfig(string scenarioId, JsonElement? overrides)
     {
         var path = FindScenarioPath(scenarioId);
-        return path == null ? null : LoadMergedConfigJson(System.IO.File.ReadAllText(path), overrides);
-    }
-
-    private static ScenarioConfig? LoadMergedConfigJson(string scenarioJson, JsonElement? overrides)
-    {
-        var node = JsonNode.Parse(scenarioJson)?.AsObject()
-            ?? throw new InvalidOperationException("剧本 JSON 无效");
-        if (overrides is { } ov && ov.ValueKind == JsonValueKind.Object)
-        {
-            var overNode = JsonNode.Parse(ov.GetRawText())?.AsObject();
-            if (overNode != null) DeepMergeInto(node, overNode);
-        }
-        return ScenarioService.LoadFromJson(node.ToJsonString());
-    }
-
-    /// <summary>Dart deepMerge semantics: null in overrides means "do not override".</summary>
-    private static void DeepMergeInto(JsonObject target, JsonObject over)
-    {
-        foreach (var (k, v) in over.ToList())
-        {
-            if (v == null) continue;
-            if (v is JsonObject vo && target[k] is JsonObject to)
-            {
-                DeepMergeInto(to, vo);
-            }
-            else
-            {
-                target[k] = v.DeepClone();
-            }
-        }
+        return path == null ? null : ScenarioService.MergeOverrides(System.IO.File.ReadAllText(path), overrides);
     }
 
     private static JsonElement? BodyOverrides(Dictionary<string, JsonElement> body) =>

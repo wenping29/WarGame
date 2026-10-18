@@ -3,12 +3,13 @@
  * 草案经 /ws orders(replace) 落到服务端，就绪走屏障自动结算。
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import HexMap from '../components/HexMap'
 import { toast } from '../components/Toast'
 import { hexLine } from '../map/hex'
 import { useRoom } from '../room/RoomSocket'
 import type { WireCommand, WireSideView } from '../room/protocol'
+import { hhmm, statusTag } from '../room/protocol'
 import { useUnitFull, useUnitTypes } from '../room/useUnitFull'
 import { play } from '../services/sound'
 
@@ -35,12 +36,21 @@ export default function SideView() {
 
   const own = view?.own ?? []
   const contacts = view?.contacts ?? []
-  const draft = view?.draft ?? []
   const errors = view?.errors ?? []
   const side = view?.side ?? room.role
   const selected = own.find(u => u.id === selectedId) ?? null
 
-  // 预览半径取服务端同一条规则（CommandValidator：炮击 dist≤range+1、空任务 dist≤air_range、
+  // 草案以本地镜像为准（点了就上屏，不等一次往返），回合推进时才用服务端回抄一次：
+  // 结算把草案清空并推进回合，回合不变说明还是同一回合的编辑，服务端那份不会比本地新。
+  const [draft, setDraft] = useState<WireCommand[]>([])
+  const turnRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!view || turnRef.current === view.turn) return
+    turnRef.current = view.turn
+    setDraft((view.draft ?? []).map(d => ({ ...d })))
+  }, [view])
+
+  // 服务端指令裁决口径（CommandValidator：炮击 dist≤range+1、空任务 dist≤air_range、
   // 突击 航空兵用 air_range / 地面用 range 或近距 1），画大了会让玩家点出必然被拒的指令
   const typeMap = useUnitTypes()
   const preview = (() => {
@@ -68,9 +78,10 @@ export default function SideView() {
     return full > 0 ? Math.max(1, Math.min(100, Math.round(personnel / full * 100))) : 50
   }
 
-  // 草案改动统一走服务端（replace 全量覆盖），面板回显 view.draft
+  // 草案改动本地立即生效，同时整份覆盖到服务端（replace 语义），就绪态由服务端一并撤销
   const pushDraft = (next: WireCommand[]) => {
     play('tap')
+    setDraft(next)
     room.submitOrders(next, true)
   }
 
@@ -140,7 +151,10 @@ export default function SideView() {
     }
   }
 
-  const heldNodes = Object.values(view?.node_holders ?? {}).filter(s => s === side).length
+  // 视图里的 node_holders 已按本方裁剪（FogService.nodeHolders(onlySide)），数出来就是己方掌握数；
+  // 目标取自 victory 里 kind=nodes 的那条（doc §9 胜利条件），没有节点条件就不显示分母
+  const heldNodes = Object.keys(view?.node_holders ?? {}).length
+  const nodeGoal = (view?.victory ?? []).find(v => v.kind === 'nodes' && v.side === side)
 
   return (
     <div className="terminal">
@@ -156,6 +170,7 @@ export default function SideView() {
             ) : (
               own.map(u => (
                 <UnitCard key={u.id} unit={u} hpPct={hpPct(u.type, u.personnel)}
+                  err={errors.find(e => e.unit === u.id)?.message}
                   isSelected={selected?.id === u.id} onClick={() => setSelectedId(u.id)} />
               ))
             )}
@@ -177,9 +192,9 @@ export default function SideView() {
           <div className="maphud" id="hud">
             <b>{view?.name ?? room.code}</b> · {side === 'red' ? '红方' : '蓝方'} 终端 ·
             {' '}回合 {view?.turn ?? '-'}/{view?.max_turns ?? '-'} ·
-            {' '}{view?.hour ?? '-'}:00 {view?.day?.label ?? ''} ·
-            {' '}{view?.weather?.label ?? '…'} · 迷雾 {view?.fog ? '开' : '关'} ·
-            {' '}掌握要点 {heldNodes}
+            {' '}{view ? hhmm(view.hour) : '-:--'} {view?.day?.label ?? ''} ·
+            {' '}{view?.weather?.label ?? '…'} · 迷雾 {view?.fog ? '开' : '关'}
+            {heldNodes > 0 && <> · 掌握要点 {heldNodes}{nodeGoal?.amount ? `/${nodeGoal.amount}` : ''}</>}
             {room.status !== 'live' && <span className="tag"> {room.status === 'kicked' ? '已顶号' : '连接中…'}</span>}
           </div>
         </div>
@@ -214,7 +229,7 @@ export default function SideView() {
           <div className="spacer" />
 
           {draft.length > 0 && (
-            <button className="btn btn-sm" onClick={() => { play('tap'); room.clearOrders() }}>
+            <button className="btn btn-sm" onClick={() => pushDraft([])}>
               清空草案
             </button>
           )}
@@ -232,9 +247,12 @@ export default function SideView() {
 
         {errors.length > 0 && (
           <div className="card">
-            <h4>本回合校验错误</h4>
+            <h4>被拒指令</h4>
             {errors.map((e, i) => (
-              <div key={i} className="small warn mono">[{e.unit}] {e.message}</div>
+              <div key={i} className="small warn">
+                <code className="mono">{e.reason}</code> {e.message}
+                <span className="muted">({e.unit})</span>
+              </div>
             ))}
           </div>
         )}
@@ -273,15 +291,16 @@ export default function SideView() {
                   <div className="hd">
                     <span className="id">{c.id}</span>
                     <span className="tag red">E{c.level}</span>
-                    {c.stale && <span className="tag">T+{c.known_turns_ago} 情报</span>}
+                    {c.stale && <span className="tag">{c.known_turns_ago}回合前</span>}
                   </div>
                   <div className="meta">
                     <span>{c.q},{c.r}</span>
                     {c.strength_band && <span>兵力{c.strength_band}</span>}
                     {c.type_label && <span>{c.type_label}</span>}
-                    {c.status && <span>{c.status}</span>}
+                    {c.status && <span>{statusTag(c.status)?.text ?? c.status}</span>}
                     {c.fort ? <span>工事{c.fort}</span> : null}
                     {c.personnel != null && <span>{c.personnel}人</span>}
+                    {c.commander && <span>指挥 {c.commander.name}</span>}
                   </div>
                 </div>
               ))
@@ -316,18 +335,20 @@ export default function SideView() {
   )
 }
 
-function UnitCard({ unit, hpPct, isSelected, onClick }: {
+function UnitCard({ unit, hpPct, err, isSelected, onClick }: {
   unit: WireSideView['own'][number]
   hpPct: number
+  err?: string
   isSelected: boolean
   onClick: () => void
 }) {
+  const st = statusTag(unit.status)
   return (
     <div className={`unit${isSelected ? ' sel' : ''}`} onClick={onClick}>
       <div className="hd">
         <span className="id">{unit.id}</span>
         <span>
-          {unit.status && unit.status !== 'ready' && <span className="tag">{unit.status}</span>}
+          {st && <span className={`tag ${st.cls}`}>{st.text}</span>}
           <span className="tag">{unit.type_label}</span>
         </span>
       </div>
@@ -342,6 +363,7 @@ function UnitCard({ unit, hpPct, isSelected, onClick }: {
         {unit.hq && <span className="tag">指挥所</span>}
         {unit.fort > 0 && <span className="tag">工事{unit.fort}</span>}
       </div>
+      {err && <div className="small warn">⚠ {err}</div>}
     </div>
   )
 }

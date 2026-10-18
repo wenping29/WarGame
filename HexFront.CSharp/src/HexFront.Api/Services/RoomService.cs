@@ -73,14 +73,7 @@ public sealed class RoomService
         {
             lock (room.GameLock)
             {
-                room.Frames.Add(new Dictionary<string, object?>
-                {
-                    ["turn"] = game.Turn - 1,
-                    ["hour"] = game.HourOfDay,
-                    ["weather"] = game.Weather,
-                    ["director"] = FogService.DirectorView(game),
-                    ["events"] = EventsToMaps(game.Events.TakeLast(200).ToList()),
-                });
+                room.Frames.Add(FrameOf(game, game.Turn - 1, EventsToMaps(game.Events.TakeLast(200).ToList()), null));
             }
         }
 
@@ -97,6 +90,9 @@ public sealed class RoomService
         {
             var g = room.Game;
             bool Taken(string role) => room.Slots.TryGetValue(role, out var c) && c.IsOpen;
+            // roles 是会话计数（room.dart:214 roleSessions(s).length）。本实现的 Slots 是角色→单条连接，
+            // 因为 doc §12.1 规定每个角色位同时只有一条会话（阵营位并发直接拒，导演/观战顶号），
+            // 所以计数取值只能是 0 或 1；终端关闭后归零即"断开即释放"的验收点。
             return new Dictionary<string, object?>
             {
                 ["code"] = room.Code,
@@ -201,13 +197,15 @@ public sealed class RoomService
             Token = Guid.NewGuid().ToString("N"),
         };
 
-        // Role takeover: same token (reconnect) or force=1 replaces the current occupant.
+        // Role takeover: 阵营位（红/蓝）只能由同 token 重连或 force 接管；
+        // 导演部/观战不是对抗信息位，后来者直接接管（doc §12.1「同角色顶号」，与 room.dart:399-406 一致）。
         WsConn? kickedOld = null;
         lock (room.GameLock)
         {
             if (room.Slots.TryGetValue(role, out var old) && !ReferenceEquals(old, conn) && old.IsOpen)
             {
-                if (force || (!string.IsNullOrEmpty(token) && token == old.Token))
+                var sameTerminal = !string.IsNullOrEmpty(token) && token == old.Token;
+                if (force || sameTerminal || role is "director" or "spectator")
                 {
                     kickedOld = old;
                 }
@@ -241,13 +239,21 @@ public sealed class RoomService
 
         _logger.LogInformation("room {Code}: {Role} connected ({Name})", code, role, conn.Name ?? "-");
 
-        await conn.SendAsync(new Dictionary<string, object?>
+        // 首包带视图与房间信息：Dart server.dart:418 与 web 各视图都直接读 welcome.view，
+        // 缺它就要等第二包 state 才能落第一帧。
+        Dictionary<string, object?> welcome;
+        lock (room.GameLock)
         {
-            ["type"] = "welcome",
-            ["token"] = conn.Token,
-            ["room"] = room.Code,
-            ["role"] = role,
-        });
+            welcome = new Dictionary<string, object?>
+            {
+                ["type"] = "welcome",
+                ["token"] = conn.Token,
+                ["room"] = PublicInfo(room.Code),
+                ["role"] = role,
+                ["view"] = ViewFor(room, role),
+            };
+        }
+        await conn.SendAsync(welcome);
         await conn.SendAsync(BuildState(room, role));
 
         try
@@ -571,15 +577,9 @@ public sealed class RoomService
                 if (side is "red" or "blue") room.LastErrors[side].Add(map);
             }
 
-            room.Frames.Add(new Dictionary<string, object?>
-            {
-                ["turn"] = room.Game.Turn - 1,
-                ["hour"] = room.Game.HourOfDay,
-                ["weather"] = room.Game.Weather,
-                ["director"] = FogService.DirectorView(room.Game),
-                ["events"] = EventsToMaps(report.Events),
-                ["battles"] = report.Battles.Select(BattleToMap).ToList(),
-            });
+            room.Frames.Add(FrameOf(room.Game, room.Game.Turn - 1, EventsToMaps(report.Events),
+                report.Battles.Select(BattleToMap).ToList()));
+            TrimFrames(room);
 
             PersistTurn(room, byRole, rngAtResolve, orders, report);
         }
@@ -835,15 +835,7 @@ public sealed class RoomService
         lock (room.GameLock)
         {
             var g = room.Game;
-            var omniscient = FlagBool(g, "spectator_omniscient", false);
-            Dictionary<string, object?> view = role switch
-            {
-                "director" => WithDirectorExtras(room, FogService.DirectorView(g)),
-                "spectator" => omniscient
-                    ? FogService.DirectorView(g)
-                    : FogService.SpectatorView(g),
-                _ => WithSideExtras(room, role, FogService.SideView(g, role)),
-            };
+            var view = ViewFor(room, role);
 
             List<Dictionary<string, object?>>? draftMaps = null;
             if (role is "red" or "blue")
@@ -873,6 +865,21 @@ public sealed class RoomService
                 ["draft"] = draftMaps,
             };
         }
+    }
+
+    /// <summary>按角色裁剪的权威视图（对齐 room.dart viewFor）。须在 GameLock 内调用。</summary>
+    private Dictionary<string, object?> ViewFor(Room room, string role)
+    {
+        var g = room.Game;
+        var omniscient = FlagBool(g, "spectator_omniscient", false);
+        return role switch
+        {
+            "director" => WithDirectorExtras(room, FogService.DirectorView(g)),
+            "spectator" => omniscient
+                ? FogService.DirectorView(g)
+                : FogService.SpectatorView(g),
+            _ => WithSideExtras(room, role, FogService.SideView(g, role)),
+        };
     }
 
     /// <summary>导演部视图附加：双方已受领指令、准备态、被拒错误、AI 托管标记（对齐 room.dart viewFor）。</summary>
@@ -950,6 +957,28 @@ public sealed class RoomService
             ["text"] = e.Text,
             ["sides"] = e.Sides,
         }).ToList();
+
+    /// <summary>回放帧上限：房间是常驻内存的，不设上限则长局会把整局底牌留在帧表里。</summary>
+    private const int MaxFrames = 200;
+
+    private static Dictionary<string, object?> FrameOf(
+        GameState g, int turn, List<Dictionary<string, object?>> events,
+        List<Dictionary<string, object?>>? battles) => new()
+    {
+        ["turn"] = turn,
+        ["hour"] = g.HourOfDay,
+        ["weather"] = g.Weather,
+        ["director"] = FogService.DirectorView(g),
+        ["events"] = events,
+        // 前端 Frame 类型要求 battles 恒在（无交战的回合是空数组，不是缺字段）
+        ["battles"] = battles ?? new List<Dictionary<string, object?>>(),
+    };
+
+    private static void TrimFrames(Room room)
+    {
+        if (room.Frames.Count > MaxFrames)
+            room.Frames.RemoveRange(0, room.Frames.Count - MaxFrames);
+    }
 
     /// <summary>
     /// 战报帧：CF 因子链逐项随战报下发（doc M6「战报可解释各系数贡献」），
