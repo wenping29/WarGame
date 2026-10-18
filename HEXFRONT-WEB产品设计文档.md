@@ -4,7 +4,7 @@
 | --- | --- |
 | 文档性质 | **新立项**产品设计与技术架构（目标态），非既有实现说明 |
 | 编制日期 | 2026-10-16 |
-| 更新日期 | 2026-10-17（地物层 + C# 重构规划） |
+| 更新日期 | 2026-10-18（P7-d 文档一致性：§12 换成 C# + React 运行手册、§13 回填"规划 vs 实收"、新增 §13.6 交付基线与取证口径） |
 | 产品代号 | HEXFRONT-WEB（铁幕兵棋 · Web 对抗版） |
 | 一句话 | 引擎权威的 Web 多人兵棋：导演部/红/蓝/观战四终端，真实 GIS 生成六角格，在线底图，战争迷雾隔离信息，剧本→副本→存档全链路 |
 | 与既有资产关系 | 复用并大改 `D:\Project\Wargames\hexfront_core`（Dart 确定性内核）；沿用 `wargame-prototype.html` 的深色战术视觉 token |
@@ -193,7 +193,7 @@ OOB 自定义的两条约束（否则内容立刻崩）：
 - **对边距 = 实地口径（唯一的格距单位约定）**：用户填的"对边距"永远是**地面公里**，墨卡托侧要乘 `1/cos(纬度)`（51.4°N ⇒ ×1.603）。因此 `radius_m` 存的是墨卡托半径、`cell_ground_m` 存的是实地口径，坡度基线也一律用实地距离。数据包 `meta` 同时记 `mercator_scale` 与全精度 `center_lonlat`，缺 `mercator_scale` 的旧包按 1.0 处理（`--only-validate` 会 WARN 而不是 FAIL）。
 - **推荐对边距**：`--plan` 按"格数 ≈ 面积 /(0.866·c²)"在档位阶梯 `0.5/1/1.5/2/2.5/3/5/7.5/10/15/20 km` 上取最接近目标 2400 格、且每边不少于 12 格、不低于高程栅格分辨率（1.0 km）的档位，并把**推荐理由**逐条返回给前端；服务端 `GET /api/gis/plan` 带键缓存，向导进入"按范围生成"即自动请求，档位快选与"用推荐对边距"都读同一份方案，前端不自己算几何。
 - **格距与规模**：战斗级 1–2 km/格、战役级 5–10 km/格；单包上限 30000 格（`gisMaxCells`，超限直接拒），生成作业串行排队、20 分钟超时。
-- **几何只能来自数据包**：引擎建格时优先用 `meta.ox/oy/radius_m/cell_km/mercator_scale`，**不再**回落到 `environment.cell_km` 默认值——这条曾经是真 bug（换包不改几何，格网与底图错位），已由 `verify.dart` 第 [7] 组 7 项锁住。
+- **几何只能来自数据包**：引擎建格时优先用 `meta.ox/oy/radius_m/cell_km/mercator_scale`，**不再**回落到 `environment.cell_km` 默认值——这条曾经是真 bug（换包不改几何，格网与底图错位），最初由 Dart `verify.dart` 第 [7] 组 7 项锁住，现在由 C# 侧的等价 xUnit 用例守着（映射见 `HexFront.CSharp/tests/PARITY-CHECKS.md`）。
 - **离线可玩**：数据包是静态 JSON，无 DEM 时可用程序化地形降级（`meta.source` 标注来源）；底图瓦片要密钥且需要联网，加载失败即降级为纯 GIS 上色六角，**玩法不受联网影响**。
 - **数据层诚实标注**：`meta.layers` 逐层记 `elevation/landcover/roads/hydrology/settlements/railway/power/tunnels/airports` 的真实/派生/关闭状态，前端元信息卡片直接展示；水系层标注实际用了哪些图层（`natural-earth-rivers+natural-earth-lakes+dem-spine` 等）并附 `meta.water` 溯源（河/湖要素数、缓冲宽度、命中格数）；道路是真实矢量路网（World_Roads RANK=1 干道 + 地形派生走廊补齐渡河点），不冒充实测路网；铁路/电网/隧道/机场按真实源或派生算法分别标注。`--water off` 或本机无 gpkg/无 geopandas 时，水文降级为 DEM 派生河带并在 note 里说明，玩法不受影响。
 - **复现命令**：`python tools/gis/hexgen.py --bbox 6.8,51.2,7.3,51.6 --cell-km 1 --name my_site --out data/gis/my_site.json`；`--plan --bbox ...` 只出方案不生成；`--capabilities` 报告 python/GDAL/DEM/土地覆盖/**水系 gpkg/矢量地物**可用性；`--water auto|off` 开关真实矢量水系叠加；`--network auto|off` 开关真实矢量地物（World_Roads + NE 机场）；`--features on|off` 开关派生地物玩法层（铁路/电网/车站/隧道/电厂/变电站/机场）；`--only-validate --out data/gis/xxx.json` 只校验已有数据包（37 项）。浏览器里等价的入口是创建副本向导第 2 步。
@@ -202,7 +202,7 @@ OOB 自定义的两条约束（否则内容立刻崩）：
 
 通行代价（四类机动 foot/horse/motor/mech）、防御加成、观察限制、**通视遮挡（新）**、渡河与桥梁、构筑工事上限。
 
-#### 6.4 地物层玩法（已实现 · 2026-10-17）
+#### 6.3.1 地物层玩法（已实现 · 2026-10-17）
 
 真实矢量地物（World_Roads 干道 + Natural Earth 机场/桥隧标注）与派生地物层（铁路/火车站/公路桥/隧道/电网/电厂/变电站/野战/干线机场）共同构成战场基础设施网络，直接影响机动、补给与胜利条件。
 
@@ -221,21 +221,23 @@ OOB 自定义的两条约束（否则内容立刻崩）：
 
 **引擎玩法集成**：
 
-| 机制 | 规则 | 代码位置 |
+| 机制 | 规则 | 代码位置（C# 实收 ← Dart 原口径） |
 |---|---|---|
-| 铁路机动 | motor/mech ×0.8（与公路 0.65 可叠加 → 0.52）；foot 不搭车不受惠 | `turn.dart:stepCost()` |
-| 隧道限行 | motor/mech ×1.5，foot ×1.2 | `turn.dart:stepCost()` |
-| 机场补给节点 | 夺下场站格 + 该方仍有航空兵在场 ⇒ 距离归 0；航空兵撤离后失效 | `mechanics.dart:supplyDistances()` |
-| 电网系数 | 必须同时掌握「电厂」和「至少一处变电站」才通电；红利 = 1.0 + 0.15×held/nodes，封顶 +15% | `mechanics.dart:powerFactor()` |
-| 电网进补给 | supply_rate × power_factor | `mechanics.dart:computeSupply()` |
-| 要点归属 | 争夺中（两方同格）不算占；双盲视图只披露己方占领 | `fog.dart:nodeHolders()` |
+| 铁路机动 | motor/mech ×0.8（与公路 0.65 可叠加 → 0.52）；foot 不搭车不受惠 | `TurnResolver.StepCost()`（← `turn.dart:stepCost()`） |
+| 隧道限行 | motor/mech ×1.5，foot ×1.2 | `TurnResolver.StepCost()`（← `turn.dart:stepCost()`） |
+| 机场补给节点 | 夺下场站格 + 该方仍有航空兵在场 ⇒ 距离归 0；航空兵撤离后失效 | `MechanicsService.SupplyDistances()`（← `mechanics.dart:supplyDistances()`） |
+| 电网系数 | 必须同时掌握「电厂」和「至少一处变电站」才通电；红利 = 1.0 + 0.15×held/nodes，封顶 +15% | `MechanicsService.PowerFactor()`（← `mechanics.dart:powerFactor()`） |
+| 电网进补给 | supply_rate × power_factor | `MechanicsService.ComputeSupply()`（← `mechanics.dart:computeSupply()`） |
+| 要点归属 | 争夺中（两方同格）不算占；双盲视图只披露己方占领 | `MechanicsService.NodeHoldersByHex()` + `FogService.SideView()`（← `fog.dart:nodeHolders()`） |
 | 要点胜利 | `kind: "nodes", amount: N` ⇒ 同时掌握 N 处要点即达成 | `turn.dart:_checkVictory()` |
 
 **迷雾纪律**：要点地理（城镇/车站/机场/电厂/变电站的位置与类别）是公开知识，随 `_common` 下发所有视图；但**归属（谁占了哪个要点）是情报**，`sideView` 只给己方占领的归属，`directorView` 给双方，`spectatorView` 不给任何归属。导演部 HUD 额外显示双方电网系数。
 
-**前端渲染**（map.js）：铁路用深色钢轨底 + 浅色枕木断点（与公路连续实线区分）；输电线用黄色虚线；机场用跑道符号（干线加塔台角标）；电厂用闪电符号；变电站用菱形；火车站用雨棚矩形；隧道用拱形；杆塔只画在线路端点/分叉上；要点归属用阵营色虚线圈。悬停格内显示地物摘要标签（公路/铁路/桥隧/电网/机场/要点名称与归属）。右上角常驻图例（缩略时隐藏）。
+**前端渲染**（实装：`hexfront-react/src/map/MapView.ts` + `components/HexMap.tsx`；下列条目最初由 `web/js/map.js` 定口径，web 客户端已冻结退役，见 §13.6）：铁路用深色钢轨底 + 浅色枕木断点（与公路连续实线区分）；输电线用黄色虚线；机场用跑道符号（干线加塔台角标）；电厂用闪电符号；变电站用菱形；火车站用雨棚矩形；隧道用拱形；杆塔只画在线路端点/分叉上；要点归属用阵营色虚线圈。悬停格内显示地物摘要标签（公路/铁路/桥隧/电网/机场/要点名称与归属）。右上角常驻图例（缩略时隐藏）。
 
-**验证结果**（bin/verify.dart [9] 节，23 项全部通过）：
+### 6.4 地物玩法验证结果
+
+**验证结果**（原 Dart `bin/verify.dart` [9] 节的 23 项，条目名保留当时的口径；现在跑的是 C# xUnit 等价实现，映射表见 `HexFront.CSharp/tests/PARITY-CHECKS.md`）：
 
 ```
 ✓ 铁路/隧道/电网/机场写入引擎格网
@@ -258,12 +260,16 @@ OOB 自定义的两条约束（否则内容立刻崩）：
 ✓ 双盲视图只披露己方占领（敌方归属属情报）
 ✓ 导演部视图给出双方电网系数
 ✓ 观战视图不给要点归属
-✓ 落位后红方确握 3 处要点
+✓ 落位后红方确握 3 处要点（odd-r 重采样后实测为 5 处，见 §6.5 与 #90 取证）
 ✓ 要点数量达成即终局（kind=nodes）
 ✓ 带地物地图可连续推演（14 回合）且无异常
 ```
 
-总引擎自检：**61 通过 / 0 失败**（原地物前 38/38）。
+**当前回归基线**（2026-10-18 实测）：`dotnet test HexFront.CSharp/tests/HexFront.Tests` **241/241 通过**（引擎侧 201 + 协议侧 40），
+`node HexFront.CSharp/scripts/ws-smoke.mjs` 0–15 共 **16 组全 PASS**。原 Dart 侧的 61 项与 32 项是同一批断言的上游口径，映射表在
+`HexFront.CSharp/tests/PARITY-CHECKS.md`；Dart 原型（`hexfront/`）自 P7 起只作对照参考，不再是验收入口。
+
+**情报档位与"已消失"卡片的浏览器取证（2026-10-18，四终端无头 Chrome + CDP）**：E1 接触卡只有兵力档（没有 `type`/`personnel`/`commander` 键）、E2 才出现兵种、E3 才给精确兵员与装备；阵亡且仍在本方观测档案里的单位保留一张 `E1 · 已消失`（`status=gone`）卡片，并按 `staleTurns`=3 个回合（age 1→2→3）从档案里剪掉。复现步骤见 §13.6 —— 纯 AI 局 14 回合零歼灭（§11.12），必须用 `personnel_ratio` 压 OOB 才能拿到歼灭链路。
 
 ### 6.5 坐标基线（odd-r 偏移格网）· 2026-10-18 定稿
 
@@ -356,7 +362,7 @@ CF = BasePower(装备·兵种)
 
 ## 8. 回合与指令模型
 
-- **阶段序**（内核现为 补给→状态→受理→战斗→损耗→回合终；新增侦察与空战）：
+- **阶段序**（内核现为 补给→状态→受理→战斗→损耗→回合终；新增侦察与空战）。C# `TurnResolver` 在①之前还有一个 **Phase 0 服务端指令校验**，遭遇战挂在机动之后（Phase 4b），所以代码里看到的是 0–7 共八段编号、语义上仍是下面这七步：
 
 ```
 ① 空中阶段（空战→制空权重算→对地空袭）
@@ -369,7 +375,7 @@ CF = BasePower(装备·兵种)
 ```
 
 - **双盲同时提交**：红蓝各自填令→ `ready` 屏障→双方都 ready 或导演部强制→引擎按稳定序（单位 id 序 + 明确跨方冲突仲裁）结算。**顺序不能由 id 命名决定** —— 内核现状是个可被利用的漏洞。
-- **指令校验在服务端**：路径相邻性、MP 预算、射程与目标合法性、单位归属、每格堆叠规则。客户端预览用同一段 Dart（dart2js 编译）做**本地预测**，最终以服务端裁决为准。
+- **指令校验在服务端**：路径相邻性、MP 预算、射程与目标合法性、单位归属、每格堆叠规则。前端**只做几何预览**（射程圈 / 任务区圆 / 草案路径高亮，`hexfront-react/src/map/hex.ts:95` 的 `rangeHexes` + `SideView.tsx` 的 `preview`），不预测 MP 是否够用、也不本地判合法，最终以服务端 `CommandValidator` 的 `rejected` 回执为准。
 - **AI 副官**：按迷雾可见情报生成合法指令，可代管缺席阵营或全 AI 自动对抗。
 - **断线重连**：房间保留指令草案，回合结算只等 `ready` 屏障 + 导演部可强制超时提交。
 
@@ -377,29 +383,34 @@ CF = BasePower(装备·兵种)
 
 ## 9. 技术架构
 
+**当前实装栈**（2026-10-18，P7 起为唯一交付形态；§9 末尾保留迁移前的选型理由作为历史依据）：
+
 ```
-┌─ Web 前端（无构建，静态）
+┌─ React 前端（Vite + TypeScript，hexfront-react/）
 │   首页(三入口) / 大厅 / 副本创建向导 / 红蓝指挥终端 / 导演部 / 观战 / 回放 / 数据管理
-│   在线底图 + 六角格叠加 + 迷雾渲染   同引擎 dart2js 预览
-└────────── WebSocket(JSON) / REST ──────────
-┌─ 服务端（Dart VM）
-│   Room Manager：房间/角色/会话/重连
-│   Fog Service：观测累计、通视、暴露分级 → 裁剪 side_view（唯一真相边界）
-│   Engine：hexfront_core(扩展) 权威裁决，SeededRNG，纯函数 step
-│   Persistence：剧本库 / 副本 / 追加指令日志 / 周期快照 / 回放帧
-│   GIS Package Store：terrain.json 静态数据包
-└──────────────────────────────────────────
+│   原生 canvas 渲染（src/map/MapView.ts）+ 天地图 WMTS 底图 + 六角格叠加 + 迷雾/兵力块
+│   REST：axios（src/services/api.ts，经 Vite 代理到 :5018）  会话：原生 WebSocket /ws（src/room/）
+└──────────────────────────────────────────────────────────
+┌─ 服务端（ASP.NET Core，HexFront.CSharp/）
+│   HexFront.Api：GameController（REST）+ /ws 端点 + RoomService（房间/角色/会话/重连/就绪屏障）
+│   HexFront.Core：FogService（观测累计·通视·暴露分级→裁剪 side_view，唯一真相边界）
+│                  TurnResolver（七阶段权威裁决，SeededRNG 纯函数 step）
+│                  MechanicsService · CommandValidator · AiService · ScenarioService · LibraryService
+│                  HexGenService（六角格现场生成，替代 Python 依赖）
+│   Persistence：StoreService（剧本库 / 副本 / JSONL 指令日志 / 周期快照 / 回放帧）
+└──────────────────────────────────────────────────────────
 ```
 
-选型决策与理由：
-
-| 项 | 选择 | 理由 |
+| 项 | 现在的选择 | 说明 |
 | --- | --- | --- |
-| 引擎语言 | **Dart**（`hexfront_core` 扩展） | 唯一已有可核对资产；纯逻辑无渲染依赖；一份代码 dart2js 到浏览器做预览、VM 在服务端做权威 |
-| 服务端 | **`dart:io` HttpServer + WebSocket，零三方依赖** | 环境无 pub 网络访问保障，不赌 `pub get` 能否成功；确定性内核本就零依赖，服务端也保持零依赖 |
-| 前端 | 原生 ESM + Canvas，**无框架、无构建、无 CDN** | 与原型同族、可双击直开；瓦片投影自己实现（`web/js/map.js`），底图直连天地图 WMTS，不引入 Leaflet 之类的地图库 |
-| 存档格式 | JSONL 指令日志 + JSON 快照 | 可读、可 diff、可 CLI 重放对拍 |
+| 引擎语言 | **C#（`HexFront.Core`）** | 与 WebAPI 同进程同类型系统，避免 Dart/JS 双份 DTO；算法口径仍按本节与 §6/§7 的条文，由 `tests/PARITY-CHECKS.md` 逐条锁住 |
+| 服务端 | **ASP.NET Core WebAPI + 原生 `WebSocket` 端点 `/ws`** | 会话协议与迁移前逐字一致（见 §13.2），未采用 SignalR，理由见 §13.2 偏离说明 |
+| 前端 | **React 19 + TypeScript + Vite（`hexfront-react/`）** | 唯一主前端；`web/`（无构建原生 ESM）已冻结，退役排期见 §13.6 |
+| 地图渲染 | 原生 `<canvas>` + `requestAnimationFrame` | 未引入 Leaflet/Konva，投影与瓦片自绘，保持与 §6 的几何同源 |
+| 存档格式 | JSONL 指令日志 + JSON 快照 | 与迁移前同格式：可读、可 diff、可重放对拍（`/api/load` 续跑） |
 | 数据库 | **不用**（文件存储） | 原型规模用不上；避开依赖与运维，未来迁移成本低 |
+
+**迁移前的选型（历史，2026-10-17 之前）**：引擎与服务端均为 Dart（`hexfront_core` + `dart:io` HttpServer/WebSocket，零三方依赖，环境无 pub 网络保障），前端为无框架构建的原生 ESM + Canvas（`web/js/map.js` 自实现瓦片投影、直连天地图 WMTS），并计划用 dart2js 把同一份内核编到浏览器做预览。该形态的产物仍在仓库内（`hexfront/`、`web/`）作为算法与协议的对照参考，不再是验收入口。
 
 **内核必补清单（阻塞性，非优化）**：`toMap/fromMap/toJson/fromJson`（含 RNG 状态）→ 否则存档不可实现；兵种/地形枚举改**数据驱动**（现 `firstWhere` 遇未知直接抛）→ 否则自定义 OOB 不可实现；剥离 `BalanceData.load` 的 `dart:io`（→ `fromJson(String)`）否则无法编译进浏览器；移动路径相邻性校验；跨方行动顺序显式仲裁；`supplyRate==0` 时 CF 保底（不得为 0）；溃退恢复不可达分支修正；`Axial.fromKey` 负坐标修正；`log` 改结构化事件流并限长。
 
@@ -426,75 +437,97 @@ CF = BasePower(装备·兵种)
 
 | 里程碑 | 内容 | 验收 | 状态 |
 | --- | --- | --- | --- |
-| **M1 引擎地基** | 序列化 + 数据驱动兵种/地形 + 指令校验 + 缺陷修复 + CLI 双跑对拍 | `dart run bin/verify.dart` 全绿；存档→载入→续跑与原局逐字节一致 | ✅ 全绿（含"单位出生在可通行陆地"） |
-| **M2 迷雾与观测** | 观测累计、LOS、暴露 E0–E3、`side_view` 裁剪 | 单测断言红方视图不含蓝方未暴露单位任何字段 | ✅ 含"未暴露不可开火"断言 |
-| **M3 多人房间** | 四角色接入、双盲屏障、导演部控局、重连 | 三浏览器真实对局可跑通 | ✅ 协议 27 项冒烟全绿 + 浏览器三终端实时对局通过 |
+| **M1 引擎地基** | 序列化 + 数据驱动兵种/地形 + 指令校验 + 缺陷修复 + CLI 双跑对拍 | 当年用 `dart run bin/verify.dart` 全绿验收；**现在的门槛是 `dotnet test`（引擎 201 项）**，存档→载入→续跑与原局指纹一致 | ✅ 全绿（含"单位出生在可通行陆地"） |
+| **M2 迷雾与观测** | 观测累计、LOS、暴露 E0–E3、`side_view` 裁剪 | 单测断言红方视图不含蓝方未暴露单位任何字段 | ✅ 含"未暴露不可开火"断言；档位颗粒与"要点地理公开/归属私有"由 `FogViewP7Tests` 锁住（§6.4） |
+| **M3 多人房间** | 四角色接入、双盲屏障、导演部控局、重连 | 三浏览器真实对局可跑通 | ✅ 协议侧回归：xUnit 40 项 + `scripts/ws-smoke.mjs` 0–15 共 16 组全 PASS + 四终端浏览器实时对局通过 |
 | **M4 剧本→副本→存档** | 剧本库、创建向导（OOB/兵种属性/天气/环境覆盖）、存档列表与载入 | 从剧本造副本、改 OOB、改兵种性能、开局、存档、再载入 | ✅ 五步向导浏览器内跑通（3 辆坦克覆盖 OOB、降雨、后勤关；兵种属性覆盖坦克 26→45.9 点并触发预算报红）|
 | **M5 GIS 与在线底图** | `tools/gis` 生成器 + 真实底图叠加 + 零漂移对齐 + 向导内按需生成 | 真实栅格生成六角格，瓦图上目视对齐；范围/数据层/对边距（含推荐值）在浏览器里可选可跑 | ✅ 本地 GeoTIFF DEM + ESA WorldCover 按面积聚合；`--plan` 推荐对边距；服务端作业 API（`/api/gis/capabilities·plan·jobs`）；向导第 2 步现场生成 36×52 格包并建成副本（房间 L52TYZ，格数与包一致）；天地图真实瓦片像素级已验收（z9–z11，格网西缘贴合真实莱茵河） |
 | **M6 战力耦合** | 天气/人员/指挥官/制空权/后勤三资源入 CF，系数外置 | 参数可调、战报可解释各系数贡献 | ✅ 系数逐项随战报下发 |
-| M7 及后 | AI 副官、回放时间轴、观战档位、账号与权限、移动端适配、部署 | — | 🟡 AI 副官/观战档位/回放帧已在服务端 |
+| M7 及后 | AI 副官、回放时间轴、观战档位、账号与权限、移动端适配、部署 | — | 🟡 AI 副官（双盲情报口径）、回放帧（200 帧上限）、观战档位（公开/全知）已在 C# 服务端并经浏览器取证；账号与权限仍是"房间码 + 令牌"（§11.2），移动端适配与部署未开工 |
 
 ---
 
 ## 11. 待拍板问题
 
 1. **题材与合规**：高敏感近现代题材（抗战/解放/援朝/军阀）在既有文档被列为"法务/版号前置"。Web 多人对外是否走内部/教学先行？首发副本题材建议选低风险（一战/二战国际战场）。
-2. **账号体系**：是否要登录（决定房间是否私密、观战是否可公开链接）。原型阶段先做房间号 + 令牌。
+2. **账号体系**：**已定——原型与 MVP 都不上登录**。角色会话就是"房间码 + 令牌"，观战可以是公开链接，房间私密性靠房间码不外传。React 把令牌存 `localStorage`（按房间码分键），整页刷新后仍能同 token 接管原会话。JWT/OAuth 与用户系统留 v2，见 §13.5-2。
 3. **回合时限**：双人同时在线是否强制限时（竞技公平 vs 教学从容）。
 4. **同步深度**：MVP 用"服务端权威 + 回合制下发"，实时帧同步不在范围。
 5. **格距/规模基线**：首发副本选战斗级（1–2 km/格、数百格）还是战役级？影响渲染与节奏。
-6. **前端是否引入构建**：保持"无构建纯静态"（利于双击直开与审计）还是上打包工具？
-7. **同角色顶号策略**：现实现为"后加入者接管、原终端收到 kicked 提示并停止重连"。对抗局是否应改为"禁止顶号 + 导演部授权转让"？（教学与误操作场景差别很大）
+6. **前端是否引入构建**：**已定并落地**——上构建工具。React + Vite（`hexfront-react/`）成为唯一主前端，"双击直开"的无构建纯静态模式随 `web/` 一起冻结退役（#92）。代价是审计要认构建产物、部署需要静态托管或把 `dist/` 挂到 Api 上；换来的是类型检查（`tsc -b` 成了门槛）与组件化。§11 早期"保持无构建"的倾向不再有效。
+7. **同角色顶号策略**：**已定并落地**（C# `RoomService.JoinLocked`，与 Dart `room.dart:399-406` 一致）——阵营位（红/蓝）只允许"同 token 重连"或显式 `force=1` 接管，否则回 `type:error`"该角色位已被占用（加 force=1 可接管）"并关闭连接；导演部/观战不是对抗信息位，后来者直接接管、原终端收 `kicked`。教学与误操作场景是否要进一步改成"禁止顶号 + 导演部授权转让"仍待拍板。
 8. **AI 代管与就绪屏障**：现实现为"代管方视为已就绪，人类就绪即自动结算"。是否要保留导演部逐回合确认（防止 AI 在人类未看战报时抢跑）？
-9. **重新开雾是否回收情报**：**已在浏览器实测确认行为**（2026-10-16，房间 YZEPCV）：导演部关雾→再开雾后，红方"敌情接触"11 项、暴露档位 **E3**（精确人数、指挥官姓名、工事等级、状态）与开雾期间完全一致，而 HUD 显示"迷雾 开"——界面自相矛盾。根因在 `hexfront/lib/engine/fog.dart:121` 的 `if (allSeeing) tracks[e.id]!.level = 3;`：全知时把档位**写死为 3**，此后只能靠 `staleTurns` 逐轮衰减，等于误点一次按钮就给双方各发一份永久敌军档案。**建议**（待确认再改）：`!fogOn` 分支不写入双方 `tracks`，让"关雾"只影响导演/观战视图，使重新开雾成为不残留记忆的操作。
-10. **进程重启与房间**：房间是内存态，重启后仅存存档（`/api/frames` 已提示"重启后请用存档回放"）。对外服务需要房间落盘或热恢复。
-11. **离线判类的数据源（OSM 已排除）—— 已定并落地**：土地覆盖用 **ESA WorldCover 2020 10m**（AWS 开放桶，本机可达；注意 GDAL/schannel 对该桶 https 报"证书链不完整"，必须走 `http://`），高程用本地 GeoTIFF DEM，水系用"DEM 谷底带 + WorldCover 真实水体占比"，聚落用 WorldCover 建筑区占比。**道路在无 OSM 前提下仍只能是地形派生走廊**，已在 `meta.layers` 里标注为派生，不冒充实测路网。天地图仅用于底图显示，不用于派生判类（其服务条款限制二次建模）。
+   **实测口径（2026-10-18，房间 A9S3M3/LLMWE8，双 AI 代管 + 红方人类终端）**：屏障是**事件驱动**的——只有 `ready`、`director_cmd{action:ai}` 与 `resolve` 会触发一次自动结算，`AutoResolvePending` 互斥位在结算前就清零，结算完成后没有任何东西再排程。所以"双 AI 代管"不会自己连续推演：房间推进一回合后停在原地，等下一次人类 `ready` 或导演部强制结算。这既是"防止 AI 抢跑"的天然实现，也意味着**全自动跑局必须由导演部逐回合 `resolve`**（`scripts/ws-smoke.mjs` 的第 8d 项正是这么打的：15 回合、不到 0.3 秒（2026-10-18 两次跑分别 237ms / 177ms）、两局终局指纹一致）。
+   同一批取证还量到一个平衡事实：**14 回合双 AI 对抗的歼灭数为 0**（3 个种子：红 7597→6615、蓝 4054→3450 人，约 13% 减员，`destroyed` 事件 0 条；交战回合数逐轮增加但单位人员从不清零）。终局靠的是要点/控制判定而不是歼灭，所以"歼灭"标签在纯 AI 局里几乎不出现——见 §11.12。
+9. **重新开雾是否回收情报**：**已定并落地**。Dart 版原行为已在浏览器实测确认（2026-10-16，房间 YZEPCV）：关雾→再开雾后红方仍保留 11 项 E3 精确档案，而 HUD 显示"迷雾 开"——界面自相矛盾；根因是 `hexfront/lib/engine/fog.dart:121` 在全知时把档位写死为 3。C# 版按建议实现：`FogService.UpdateObservation` 的 `!fogOn` 分支**只放开观测场、不写 `tracks`**（明牌展示由 `SideView` 按 E3 实时合成），因此重新开雾不留永久记忆。该行为由 `ws-smoke.mjs` 第 10 组锁住（明牌 15/15 接触 → 开雾后回落到 1 条真实档案）。
+10. **进程重启与房间**：**已定——房间保持内存态，不做落盘**（实时对抗语义下，"重启后回到半个回合"比"房间没了、用存档重开"更危险）。重启后用存档重建：`POST /api/saves/load` 走"快照 + 尾部重放"回到原指纹，剧本/覆盖/OOB 都从存档里来，不需要重新配一遍；`GET /api/frames` 在房间不存在时直接提示"重启后请用存档回放"。真要做热恢复得先定义"回合中掉线多久算弃局"，属于对外服务阶段的事，见 §13.5-3。
+11. **离线判类的数据源（OSM 已排除）—— 已定并落地**：土地覆盖用 **ESA WorldCover 2020 10m**（AWS 开放桶，本机可达；注意 GDAL/schannel 对该桶 https 报"证书链不完整"，必须走 `http://`），高程用本地 GeoTIFF DEM，水系用"DEM 谷底带 + WorldCover 真实水体占比"，聚落用 WorldCover 建筑区占比。天地图仅用于底图显示，不用于派生判类（其服务条款限制二次建模）。
+    **道路与铁路的真实来源已在数据包 `meta.layers` 里分档标注**（以 `data/gis/rhine_2p5km.json` 为准）：
+    - 公路 `kind: natural-earth-world-roads+derived-corridors`——**干线来自 Natural Earth 10m `roads` 真实矢量**（RANK 1，231/493 条要素落进 601 格，命名干线 1/221/224/227/288/326/46/52），只有**渡河段**由派生走廊补齐（渡河点 20 处；另有 4 段沿河公路贴水不跨水，不记桥）。
+    - 铁路 `kind: derived-route`——**无公开真实铁路矢量**，按首府/次级聚落 + 河谷低地 + 既有公路走廊派生，渡河只走既有桥位。
+    即"派生"这个限定词只适用于铁路和公路的渡河补齐段，不要把整条路网说成地形派生走廊。
+12. **纯 AI 局的歼灭率（待拍板）**：`rhine_corridor` 剧本 14 回合双 AI 对抗，3 个种子（20261018/90210/7）实测**歼灭数 0**——红 7597→6615、蓝 4054→3450 人（约 13% 减员），`destroyed` 事件 0 条，`rejected` 0 条，交战回合数逐轮增加但单位人员从不清零。终局靠要点/控制判定而不是歼灭，所以前端的"已消失"卡片在纯 AI 跑局里几乎不出现。
+    这是**平衡参数问题，不是缺陷**：结算把损耗摊到人员池上，而一个连级单位要被打穿 100% 人员才会 `Personnel=0`（`GameState.Alive` 的定义），AI 又不会把火力集中到残兵上。取证时用 `overrides` 把蓝方 OOB 的 `personnel_ratio` 压到 0.004（每单位 2 人），B23/B26 在第 9 回合、B24/B25 在第 11 回合阵亡，才拿到"歼灭→gone→按 `staleTurns`=3 衰减消失"的完整链路（见 §11.9 的档案老化口径）。
+    待拍板的是要不要改节奏：延长 `max_turns`、提高火力系数、或让 AI 优先补射残兵与撤退单位。建议放到引擎调参轮次，不在 P7 交付范围内动。
 
 ---
 
 ## 12. 原型运行方式
-对局与底图本身仍是**零第三方依赖**（只有 Dart SDK）；只有"在向导里现场生成六角格"这条链路额外需要本机有 **Python 3 + numpy**（读 WorldCover 走 rasterio/GDAL，缺 GDAL 时该层自动降级并在 `--capabilities` 里报不出来）。没有 python 时服务端只是禁用生成作业，其余功能照常。
+
+引擎、房间协议、REST 与**原生六角格生成**都是零第三方依赖的 C#（`HexFront.Core` + `HexFront.Api`）；前端是 Vite + React 19 + TypeScript，运行时依赖只有 axios / react-router-dom / lucide-react，地图绘制是原生 canvas（无 Leaflet/Konva，也没有 Ant Design）。只有"在向导里现场生成真实栅格六角格"这一条链路额外需要本机 **Python 3 + numpy（读 WorldCover 走 rasterio/GDAL）**——`GisService` 会探测 `python`/`py`/`python3`（可用 `HEXGEN_PYTHON` 指定），探测不到或缺 GDAL 时**自动降级为原生 C# 合成地形**并在作业日志与 `/api/gis/capabilities` 里明说（`engine` 从 `python-hexgen` 变成 `synthetic`），其余功能照常。
 
 ```bash
-cd D:/Project/wargame/hexfront
-dart pub get                 # 无第三方依赖，仅生成本地 package 解析
-dart run bin/server.dart 8770
-# → HEXFRONT-WEB  http://localhost:8770  剧本 1 个 · GIS 数据包 N 个 · 存档 M 个
-# 生成作业用的 python 可用 HEXGEN_PYTHON 指定，否则依次探测 python / py / python3
+# 1) 后端（.NET SDK 10）
+cd D:/Project/wargame/HexFront.CSharp
+dotnet build HexFront.slnx
+dotnet run --project src/HexFront.Api --urls http://127.0.0.1:5018
+#   REST 前缀 /api，房间 WebSocket 是原生端点 ws://127.0.0.1:5018/ws?room={码}&role={red|blue|director|spectator}
+#   端口占用者会顶掉 dotnet build —— 重新编译 Api 前先停掉 5018 上的进程
+
+# 2) 前端（另开终端）
+cd D:/Project/wargame/hexfront-react
+npm install
+npm run dev        # http://localhost:5173（5173 被占则顺延到 5174）
+#   vite.config.ts 把 /api 与 /ws 代理到 5018，前端代码一律走同源相对路径，不写死后端端口
 ```
 
-浏览器开 `http://localhost:8770/`（即 `#/`，首页），四终端为同一路径的不同角色，可多标签页并开：
+浏览器开 `http://localhost:5173/`（首页），四终端是**路径路由**（React Router v7 `BrowserRouter`，不再是 Dart 时代的 hash 路由），可多标签页并开：
 
 | 终端 | 入口 | 说明 |
 | --- | --- | --- |
-| 首页 | `#/`（默认） | **只有三个入口**：创建副本 → 向导、一键开局 → 默认剧本零覆盖直进导演部、存档副本 → 原地展开存档表载入导调。房间列表、剧本列表、按码加入都不在这里 |
-| 大厅 | `#/lobby` | 一键开局（默认剧本、无覆盖）、按房间码加入、活跃房间、可用剧本、存档载入（保持原样） |
-| 创建副本 | `#/new` | 5 步向导；未改动字段不发覆盖，服务端沿用剧本默认 |
-| 红/蓝指挥 | `#/room/{码}/red`·`/blue` | 仅本方全量 + 敌方已暴露接触；双盲指令 + 就绪 |
-| 导演部 | `#/room/{码}/director` | 全知态势、双方已受领指令、强制结算、导调、存档 |
-| 观战 | `#/room/{码}/spectator` | 公开情报层；导演部可切全知；可拉回放帧 |
+| 首页 | `/` | **只有三个入口**：创建副本 → 向导、一键开局 → 默认剧本零覆盖直进导演部、存档副本 → 原地展开存档表载入导调。房间列表、剧本列表、按码加入都不在这里 |
+| 大厅 | `/lobby` | 一键开局（默认剧本、无覆盖）、按房间码加入、活跃房间、可用剧本、存档载入（保持原样） |
+| 创建副本 | `/new` | 5 步向导；未改动字段不发覆盖，服务端沿用剧本默认 |
+| 红/蓝指挥 | `/room/{码}/red`·`/blue` | 仅本方全量 + 敌方已暴露接触；双盲指令 + 就绪 |
+| 导演部 | `/room/{码}/director` | 全知态势、双方已受领指令、强制结算、导调、存档 |
+| 观战 | `/room/{码}/spectator` | 公开情报层；导演部可切全知；可拉回放帧 |
 
-顶部导航只留「首页 / 大厅」两项；`quickStart()` 与 `saveList()` 由大厅导出、首页复用，两个页面走同一套开局与载入逻辑，不存在第二份实现。
+顶部导航只留「首页 / 大厅」两项。**注意一条实收偏差**：`quickStart()` 在 React 版是**两份实现**（`pages/Home.tsx:16` 与 `pages/Lobby.tsx:61`）——行为一致（取 `scenarios[0]` 零覆盖建副本 → 跳导演部 → toast 反馈），差别只在 Home 现取 `loadMeta(true)`、Lobby 用列表里已有的 `scenarios`，以及 async/await 与 `.then` 两种写法。web 版当年是"大厅导出、首页复用"的一份，搬迁时没保住。这属于可合并的重复，不影响功能，建议随 #92 一并整理——同一个形状的问题在 `loadSave()` 上也有两份（`Home.tsx:47` 与 `Lobby.tsx:92`，都是 `api.loadSave(s.instance)` 后跳导演部），存档表也各自渲染了一份。
 
-自检与回归：
+自检与回归（这三条就是交付基线，取证口径见 §13.6）：
 
 ```bash
-cd D:/Project/wargame/hexfront
-dart run bin/verify.dart        # 引擎 61 项全绿（原地物前 38 项 + 地物玩法 23 项）：迷雾裁剪 / 确定性对拍 / 存档往返 / 覆盖 / 全 AI 终局 / 出生格可通行 / GIS 包→几何同源 / 兵种属性覆盖与计价 / 铁路机动 / 隧道限行 / 机场补给节点 / 电网系数 / 要点归属与胜利
-dart run bin/smoke_ws.dart 8770 # 多人 32 项：角色接入 / 占用 / 双盲 / 拒令 / 导调 / 存档载入 / 断线重连 / 顶号 / AI 就绪屏障 / 兵种覆盖计价与拒非法字段
+cd D:/Project/wargame/HexFront.CSharp
+dotnet test tests/HexFront.Tests           # 241 项全绿（引擎 201 + 协议 40）
+node scripts/ws-smoke.mjs                  # 多人 0–15 共 16 组全 PASS（需 5018 在跑）
 cd D:/Project/wargame/tools/gis
-python hexgen.py --only-validate  # 只校验现有 GIS 数据包（37 项自校验，含地物层不变式）
+python hexgen.py --only-validate           # 只校验现有 GIS 数据包（37 项自校验，含地物层不变式）
+cd D:/Project/wargame/hexfront-react
+npx tsc -b                                 # 前端类型门槛（build 脚本就是 tsc -b && vite build）
 ```
+
+Dart 原型 `hexfront/bin/verify.dart`（61 项）与 `bin/smoke_ws.dart`（32 项）自 P7 起**只作对照参考，不再是验收入口**；C# 等价实现的逐项映射表在 `HexFront.CSharp/tests/PARITY-CHECKS.md`。
 
 ### 12.1 会话生命周期（多人可用的前提）
 
 - **断开即释放**：终端关闭后该阵营位立刻腾出（指令草案挂在房间的阵营上，不随会话消失），重连后照常带回。
-- **重连复用会话**：同 token 重连接管原会话对象，保证 `pushState` 推得到；否则会出现"能发指令、收不到推送"的孤儿会话。
-- **同角色顶号**：后来者接管，原终端收到 `kicked`、弹出提示并停止重连（避免两个标签页互相顶号死循环）。
-- **他人占用**：不带 `force` 加入已占用阵营位返回 409；前端重试 8 次后停止并给出原因。大厅点已占用阵营位时先 `confirm` 确认接管。
-- **AI 代管即视为就绪**：对面托管时人类点就绪就自动结算，不再空等。
+- **重连复用会话**：同 token 重连接管原会话对象，保证推送发得到；否则会出现"能发指令、收不到推送"的孤儿会话。React 端把 token 存在 `localStorage`（按房间码分键），所以整页刷新后仍认得自己人。
+- **同角色顶号**：导演部/观战后来者直接接管，原终端收到 `kicked`、弹出提示并停止重连（避免两个标签页互相顶号死循环）。
+- **他人占用**：阵营位（红/蓝）不带 `force=1` 加入已占用位时，服务端**先回一帧 `type:error`"该角色位已被占用（加 force=1 可接管）"再关闭连接，不是 HTTP 409**（WS 握手已经成功，状态码此时没有意义；`RoomService.JoinLocked`）。React 端识别到含"角色位"的错误帧立即停在 `kicked` 态不再重连，其他断线才走退避重连、超过 8 次放弃。大厅点已占用阵营位时先 `confirm` 确认接管（带 `force=1` 重连）。
+- **房间码必须是已存在的副本**：`/ws?room=` 的码查不到或该副本没有 `GameState` 时直接 HTTP 404 拒绝握手——未知码静默建局会让打错码的人开出一局没人知道的仗，也和 `GET /api/room/{码}` 的 404 自相矛盾。
+- **AI 代管即视为就绪**：对面托管时人类点就绪就自动结算，不再空等。屏障是事件驱动的，详见 §11.8。
 
-浏览器实测（2026-10-16，同页隐藏 iframe 双终端）：红方"R1 构筑工事"草案在整页刷新后仍带回（同 token 复用会话）；两个终端关闭后 `/api/rooms` 的 `roles` 全归零、`side_taken.red` 立即变 `false`，无会话泄漏；导演部关雾/开雾时红方 HUD"迷雾 开/关"字样跟随翻转。
+浏览器实测（2026-10-16 于 Dart 版同页隐藏 iframe 双终端；2026-10-18 在 C# + React 上复验）：红方"R1 构筑工事"草案在整页刷新后仍带回（同 token 复用会话）；两个终端关闭后 `/api/rooms` 的 `roles` 全归零、`side_taken.red` 立即变 `false`，无会话泄漏；导演部关雾/开雾时红方 HUD"迷雾 开/关"字样跟随翻转。阵营位顶号 / 观战顶号 / 阵营位占用被拒 / 断开即释放这四条由 `scripts/ws-smoke.mjs` 的第 9、13、14、15 项锁住，未知房间码 404 是第 0 项。
 
 数据落盘位置：`data/scenarios/`（剧本）、`data/gis/`（六角地形数据包）、`data/saves/<实例>/`（`meta.json` + `init.json` + `turns.jsonl` + `snapshot_t<N>.json`）。删目录即清空全部副本。
 
@@ -504,7 +537,7 @@ python hexgen.py --only-validate  # 只校验现有 GIS 数据包（37 项自校
 
 1. 在天地图开放平台申请**浏览器端**密钥（控制台里选"浏览器端"，本地调试先不要锁 IP/域名白名单，否则 127.0.0.1 会被拒）。
 2. 写入 `data/tianditu.json`：`{"tk": "你的密钥"}`（刷新页面即生效，无需重启服务端；也可用环境变量 `TIANDITU_TK`，优先级高于文件）。**这把 key 属于访问凭证，不能进版本库**：仓库根 `.gitignore` 需含 `data/tianditu.json`，仓库里保留 `data/tianditu.example.json` 占位即可；密钥一旦出现在提交历史里，只能到天地图控制台重置，删文件并不能收回历史。
-3. 服务端把它放进 `/api/scenarios` 的 `tiles.tk`，前端引导时在挂载视图前调用 `configureTiles()`，之后每个 `MapView` 自带密钥。
+3. 服务端把它放进 `/api/scenarios` 响应的 `tiles.tk`（`GameController` 从 `RoomServiceStaticPaths.DataDir` 读文件，别踩这个坑：改工作目录会让它去找 `<repo根>/tianditu.json` 而不是 `data/tianditu.json`，密钥静默失效）。React 端 `components/HexMap.tsx` 从场景元数据取 `tiles.tk` 后调 `MapView.setTk()`，密钥为空时底图选择器直接禁用。
 
 无密钥时的表现是**可控降级**，不是坏：底图选择器禁用并在 `title` 里说明原因，画布左下写着"在线底图未配置…"，六角格照常按 GIS 地形上色、对局功能完全不受影响。密钥错/过期时请求返回 HTTP 418，`onerror` 计数到 6 次即停发瓦片请求，不会刷屏打爆配额。
 
@@ -516,44 +549,54 @@ python hexgen.py --only-validate  # 只校验现有 GIS 数据包（37 项自校
 
 ---
 
-## 13. C# Core WebAPI 重构规划（2026-10-17 起）
+## 13. C# Core WebAPI 重构（2026-10-17 起 · 规划与实收）
 
-当前 Dart 原型（hexfront/）已端到端跑通：GIS 六角格生成 → 引擎推演 → WebSocket 多人房间 → Canvas 渲染，共 61 项引擎自检 + 32 项多人冒烟全部通过。以下规划将现有成果迁移至 .NET 技术栈，分三个阶段推进。
+**本节状态（2026-10-18 更新）**：三个阶段（13.1 生成 / 13.2 后端 / 13.3 React）都已交付并确认，P0–P6 逐阶段验收完，P7 收尾进行中（#91 文档一致性、#92 `web/` 退役、#93 性能基线）。规划期的表述保留原文，**每处与实收不同都就地标注了"实收/偏离"**——照这份文档重建 C# 侧时会踩到规划与实现不一致的地方，那些标注就是补丁。
+
+规划时的起点：Dart 原型（`hexfront/`）已端到端跑通 GIS 六角格生成 → 引擎推演 → WebSocket 多人房间 → Canvas 渲染，共 61 项引擎自检 + 32 项多人冒烟全部通过。这 93 项断言现已由 C# 侧等价实现接手（`dotnet test` 241 项 + `ws-smoke.mjs` 16 项，映射表 `HexFront.CSharp/tests/PARITY-CHECKS.md`），Dart 原型退为对照参考。
 
 ### 13.1 阶段一：六角格生成 C# Core WebAPI
 
-**目标**：把 `tools/gis/hexgen.py` + `rasters.py` 的完整能力重写为 ASP.NET Core Minimal API，提供 RESTful 接口供后续 React 前端调用。
+**目标**：把 `tools/gis/hexgen.py` + `rasters.py` 的完整能力重写为 ASP.NET Core WebAPI，提供 RESTful 接口供后续 React 前端调用。
 
-**输入资产**：
+**原计划的输入资产与实收的差别（交付后回填）**：规划时假设用 C# 地理库替换整条 Python 栅格/矢量链路，实收是**两条腿**：
 
-| Python 模块 | C# 对应 | 关键依赖 |
+| Python 模块 | 原计划 C# 对应 | 实收 |
 |---|---|---|
-| `hexgen.py` (2300+ lines) | `HexGenService` | NetTopologySuite, ProjNet |
-| `rasters.py` (DEM/LC 取样) | `RasterSampler` | GDAL C# bindings / RasterSharp |
-| `roads_by_hex` (pyogrio OpenFileGDB) | `RoadVectorReader` | OGR C# / GeoPackage.Net |
-| `airports_by_hex` (NE shapefile) | `AirportVectorReader` | SharpMap / DotSpatial |
-| `build_features` (rail/power/tunnel/plant) | `FeatureBuilder` | QuickGraph (Dijkstra), NetTopologySuite |
-| `validate` (37 项自校验) | `HexPackageValidator` | xUnit / FluentAssertions |
+| `hexgen.py` (2300+ lines) | `HexGenService` + NetTopologySuite/ProjNet | `Services/HexGenService.cs` **只实现原生合成地形**（无 Python 时的降级路径，确定性噪声代理）；真实栅格仍由 `Services/GisService.cs` 起子进程调 `tools/gis/hexgen.py` |
+| `rasters.py`（DEM/LC 取样） | `RasterSampler` + GDAL 绑定 | 未做 C# 绑定：读 WorldCover 走 rasterio/GDAL（Python 侧），`/api/gis/capabilities` 探测后如实上报 |
+| `roads_by_hex`（pyogrio OpenFileGDB） | `RoadVectorReader` | 同上，留在 Python 侧；C# 只消费产出的数据包 |
+| `build_features`（rail/power/tunnel/plant） | `FeatureBuilder` + QuickGraph | 同上；`GisPlanService` 只做对边距推荐阶梯 |
+| `validate`（37 项自校验） | `HexPackageValidator` | ✅ `Validation/HexPackageValidator.cs` 完整移植，落盘前跑、不过就不产出（`/api/gis/validate` 与 `/api/validate` 都走它） |
+| 投影换算 | ProjNet | `Geometry/Mercator.cs` 手写球面墨卡托，与瓦片同源 |
 
-**API 设计**：
+> **遗留**：`HexFront.Core.csproj` 里 `NetTopologySuite` 2.6.0 与 `ProjNET` 2.1.0 两个包引用**代码里一处都没用到**（是这张原计划表的残留）。它们不影响构建与运行，但会误导下一个读代码的人以为有 C# 地理链路。要么删引用、要么真用它替换 Python 子进程——属于依赖变更，需要拍板后再动。
+
+**API 设计（实收，注意 `plan`/`jobs` 是 GET+POST 双动词，对齐 web 客户端既有调用）**：
 
 ```
-POST   /api/gis/plan          → 给定 bbox + cell_km，返回推荐对边距 + 格网方案
-POST   /api/gis/generate      → 异步作业，返回 job_id；轮询 GET /api/gis/jobs/{id}
-GET    /api/gis/packages      → 列出 data/gis/ 下所有可用数据包及其 meta
-GET    /api/gis/packages/{name}/meta → 单个数据包的完整元信息（含地物 stats）
-POST   /api/gis/validate      → 上传或指定已有包名，返回 37 项校验结果
-GET    /api/gis/capabilities  → 报告本机 DEM/LC/roads/airports/vector 可用性
+GET/POST /api/gis/capabilities        → 报告本机 DEM/LC/roads/airports/vector 可用性（真探测，不是硬编码）
+GET/POST /api/gis/plan?bbox=&cell_km= → 推荐对边距 + 格网方案（含 --plan 阶梯）
+POST     /api/gis/jobs                → 异步生成作业，返回 job_id
+GET      /api/gis/jobs                → 作业列表
+GET      /api/gis/jobs/{id}           → 轮询进度与日志
+POST     /api/gis/generate            → 同步生成入口（保留旧名）
+GET      /api/gis/packages            → 列出 data/gis/ 下所有可用数据包及其 meta
+GET      /api/gis/packages/{name}/meta → 单个数据包的完整元信息（含地物 stats 与 layers 出处）
+POST     /api/gis/validate            → 指定已有包名，返回 37 项校验结果
 ```
 
-**数据格式兼容**：生成的 JSON 结构与现有 Python 版完全一致（`hexes[]`, `meta{width,height,radius_m,cell_ground_m,mercator_scale,layers,stats,...}`），确保现有 Dart 引擎和 React 前端无需改动即可消费。
+响应字段一律 snake_case（`JsonNamingPolicy.SnakeCaseLower`），与 Dart/web 线上格式一致。
+
+**数据格式兼容**：生成的 JSON 结构与现有 Python 版完全一致（`hexes[]`, `meta{width,height,radius_m,cell_ground_m,mercator_scale,layers,stats,...}`），前端无需改动即可消费；`data/gis/` 现有 11 个包已按 odd-r 布局重采样重生成（axial 旧版备份在 `data/gis_axial_backup`）。
 
 **验收标准**：
 
-- [ ] `rhine_ruhr_2p5km.json` 重新生成后与原版 diff 为零（确定性种子相同）
-- [ ] 37 项自校验全部通过（含地物不变式）
-- [ ] 性能：2.5km 格距 1645 格生成 < 30s（本机 i7 + SSD）
-- [ ] Swagger UI 可交互测试所有端点
+- [x] 37 项自校验全部通过（含地物不变式）——`python hexgen.py --only-validate` 与 `HexPackageValidator` 双侧一致
+- [x] Swagger UI 可交互测试所有端点（`Swashbuckle.AspNetCore.SwaggerUI`，开发环境挂 `/swagger`）
+- [x] 向导第 2 步在浏览器里现场生成 36×52 格包并建成副本（房间 L52TYZ，格数与包一致，M5 取证）
+- [ ] `rhine_ruhr_2p5km.json` 重新生成后与原版 diff 为零——**这条按原写法不成立**：C# 没有复刻 Python 的栅格取样，重生成必然来自同一个 Python 脚本；真正锁住的是"同种子同参数 ⇒ 同包"，由 37 项自校验 + odd-r 重生成实测覆盖
+- [ ] 性能：2.5km 格距 1645 格生成 < 30s（本机 i7 + SSD）——未在本轮重测，归 #93 性能基线
 
 ### 13.2 阶段二：推演后端 C# Core WebAPI
 
@@ -568,85 +611,90 @@ GET    /api/gis/capabilities  → 报告本机 DEM/LC/roads/airports/vector 可�
 | `library.dart` (STANDARD_TERRAIN/UNIT_TYPES/WEATHER_JSON) | `Services/LibraryService.cs` | ★☆☆ 常量表 |
 | `scenario.dart` (deepMerge, validate) | `Services/ScenarioService.cs` | ★★☆ 递归合并 |
 | `commands.dart` (Command, validateOrders) | `Services/CommandValidator.cs` | ★★★ 相邻性/视野/弹药校验 |
-| `turn.dart` (_movementPhase, _combatPhase, resolveTurn) | `Services/TurnResolver.cs` | ★★★ 六阶段裁决 |
+| `turn.dart` (_movementPhase, _combatPhase, resolveTurn) | `Services/TurnResolver.cs` | ★★★ 七阶段裁决（代码里 Phase 0 校验 + ①–⑦，遭遇战是 4b） |
 | `mechanics.dart` (supplyDistances, computeSupply, powerFactor, nodeHolders, objectiveNodes) | `Services/MechanicsService.cs` | ★★★ BFS + 电网算法 |
 | `fog.dart` (updateObservation, sideView, directorView, spectatorView) | `Services/FogService.cs` | ★★★ 观测累计 + 视图裁剪 |
-| `hex.dart` (Hex, cube rounding, neighbors) | `Geometry/Hex.cs` | ★★☆ 轴向↔立方体转换 |
-| `ai.dart` (aiOrders) | `Services/AiService.cs` | ★★☆ 启发式决策 |
-| `server/hexgen.dart` (GisJobSpec, GisService) | `Controllers/GisController.cs` | ★★☆ 作业队列 |
-| `server/store.dart` (Store, load/save) | `Persistence/FileStore.cs` | ★★☆ JSON 文件读写 |
+| `hex.dart` (Hex, cube rounding, neighbors) | `Geometry/Hex.cs`·`HexGrid.cs` | ★★☆ 轴向↔立方体转换（odd-r 布局） |
+| `ai.dart` (aiOrders) | `Services/AiService.cs` | ★★☆ 启发式决策，只吃迷雾内情报 |
+| `server/hexgen.dart` (GisJobSpec, GisService) | `Controllers/GisController.cs` + `Services/GisService.cs`(Api) | ★★☆ 作业队列；真实栅格仍调 `tools/gis/hexgen.py`，无 Python 时降级 |
+| `server/store.dart` (Store, load/save) | `Services/StoreService.cs` | ★★☆ JSON 文件读写 |
 
-**会话传输设计（实装）**：原生 WebSocket 端点 `/ws?room=&role=&token=&name=&force=1`，上行 `orders|clear_orders|ready|resolve|save|frames|state|director_cmd`，下行 `welcome|state|events|saved|frames|error|kicked|pong`（消息语义见 §12.1）。
+**C# 侧新增（Dart 没有对应模块，按本文档重写时补的）**：`Services/CombatChain.cs`（11 因子战力链，doc §5）、`Services/SeededRng.cs`（确定性随机源，doc §8「同种子同指令同指纹」的前提）、`Services/CommandWire.cs`（指令 JSON 线上格式双向）、`Services/UnitTypeDefService.cs`（兵种属性覆盖与计价）、`Services/GisPlanService.cs`（对边距推荐阶梯）、`Services/HexGenService.cs`（原生合成地形）、`Validation/HexPackageValidator.cs`（37 项数据包自校验）、`Geometry/Mercator.cs`（与瓦片同源投影）。
 
-> **偏离说明（2026-10-18 拍板）**：本节原计划用 ASP.NET Core SignalR Hub 承载会话。实装与全量验证走的是原生 `/ws` JSON 协议——它与既有 web/React 客户端的线上格式逐字一致，且已由 `HexFront.CSharp/scripts/ws-smoke.mjs`（15 组断言）与四终端浏览器 E2E 验证。曾按本节写过的 `RoomHub`（自带一套与 `RoomService` 平行的房间字典，与 `/ws` 语义不互通、零引用）已删除。若将来要接 SignalR（浏览器自动重连、降级、流式回包），应做成 `RoomService` 之上的薄适配器，而不是第二套房间真相。
+**会话传输设计（实装）**：原生 WebSocket 端点 `/ws?room=&role=&token=&name=&force=1`（`Program.cs` 用 `UseWebSockets` + `app.Map("/ws")`，心跳 `KeepAliveInterval=30s`）；上行 `ping|orders|clear_orders|ready|resolve|save|frames|state|director_cmd`（`director_cmd` 的动作字段是 `action`，取值 `weather|fog|spectator_omniscient|ai|inject_intel|jump_turn`），下行 `welcome|state|events|saved|frames|error|kicked|pong`（消息语义见 §12.1）。房间码必须是已存在的副本，未知码握手直接 404。
+
+> **偏离说明（2026-10-18 拍板）**：本节原计划用 ASP.NET Core SignalR Hub 承载会话。实装与全量验证走的是原生 `/ws` JSON 协议——它与既有 web/React 客户端的线上格式逐字一致，且已由 `HexFront.CSharp/scripts/ws-smoke.mjs`（编号 0–15 共 16 组断言）与四终端浏览器 E2E 验证。曾按本节写过的 `RoomHub`（自带一套与 `RoomService` 平行的房间字典，与 `/ws` 语义不互通、零引用）已删除。若将来要接 SignalR（浏览器自动重连、降级、流式回包），应做成 `RoomService` 之上的薄适配器，而不是第二套房间真相。
 
 **验收标准**：
 
-- [ ] 现有 `bin/verify.dart` 61 项用例全部在 C# 端通过（xUnit 等价实现）
-- [ ] 现有 `bin/smoke_ws.dart` 32 项多人冒烟全部通过（会话传输实装为原生 `/ws`，见上方偏离说明）
-- [ ] 同种子同指令 → 同指纹（确定性对拍）
-- [ ] 存档往返指纹一致（JSON 序列化兼容）
-- [ ] 性能：14 回合全 AI 对抗 < 5s（与 Dart 版持平）
+- [x] 现有 `bin/verify.dart` 61 项用例全部在 C# 端通过（xUnit 等价实现）——引擎侧 201 项，逐项映射见 `HexFront.CSharp/tests/PARITY-CHECKS.md`；Dart 原型自 P7 起只作对照，不再是验收入口
+- [x] 现有 `bin/smoke_ws.dart` 32 项多人冒烟全部通过（会话传输实装为原生 `/ws`，见上方偏离说明）——协议侧 xUnit 40 项 + `ws-smoke.mjs` 16 组全 PASS
+- [x] 同种子同指令 → 同指纹（确定性对拍）：`dotnet test` 的 P1 用例 + `ws-smoke` 第 8 项（存档往返指纹一致）
+- [x] 存档往返指纹一致（JSON 序列化兼容）：`ws-smoke` 第 7/7b/8/8b 项覆盖"快照 + 尾部重放"两条路径
+- [ ] 性能：14 回合全 AI 对抗 < 5s（与 Dart 版持平）——目前只有 `ws-smoke` 第 8d 项顺带量到的"15 回合不到 0.3 秒"，正式基线另立任务 #93
 
 ### 13.3 阶段三：React 前端
 
 **目标**：把 `web/js/*` (map.js, views/*.js, api.js, ws.js, router.js, util.js, hex.js) 重写为 React + TypeScript SPA，Canvas 渲染保留但封装为组件。
 
-**技术选型建议**：
+**技术选型（左列是 2026-10-17 的建议，右列是实收与版本）**：
 
-| 层级 | 推荐 | 理由 |
+| 层级 | 原建议 | 实收 |
 |---|---|---|
-| 框架 | React 18 + Vite | 轻量、HMR 快、生态成熟 |
-| 语言 | TypeScript 5.x | 类型安全，与 C# DTO 对齐 |
-| 状态管理 | Zustand | 比 Redux 轻，适合游戏状态 |
-| 路由 | React Router v6 | hash 路由兼容现有 `#/new` 等路径 |
-| UI 组件 | Ant Design 5.x | 深色主题支持好，与现有视觉 token 匹配 |
-| Canvas | react-konva 或原生 canvas ref | Konva 有图层管理优势；原生更可控 |
-| 会话传输 | 原生 WebSocket（`/ws`） | 与 Dart/web 线上格式逐字一致，不引入 SignalR 客户端；理由见 §13.2 偏离说明 |
-| 构建 | Vite + SWC | 比 CRA 快 10 倍+ |
+| 框架 | React 18 + Vite | React **19.2.8** + Vite **8.3.0**（`@vitejs/plugin-react` 6.1.1，没装 SWC 插件） |
+| 语言 | TypeScript 5.x | TypeScript **~6.0.2**；门槛是 `npx tsc -b`（`--noEmit` 会漏掉 project references，不算验过） |
+| 状态管理 | Zustand | **没用 Zustand**：房间状态由 `room/RoomSocket.tsx` 的 hook + 各页 `useState/useRef` 持有，REST 走 `services/api.ts`。zustand 5.0.15 仍在 `package.json` 里但零引用 |
+| 路由 | React Router v6 + hash 路由 | Router **7.18.4** `BrowserRouter` **路径路由**：`/`、`/lobby`、`/new`、`/room/:code/:role`（不再是 `#/`，见 §12） |
+| UI 组件 | Ant Design 5.x | **没用 AntD**：沿用 web 的深色终端风 CSS（`src/App.css` + `index.css`），图标用 `lucide-react` 1.58.0 |
+| Canvas | react-konva 或原生 canvas ref | **原生 canvas ref**（`src/map/MapView.ts` 1130 行，从 `web/js/map.js` 直移植：DPR / ResizeObserver / 拖拽缩放 / fit / 瓦片退避闸门）；Konva 零引用 |
+| REST | — | `axios` 1.20.0，`services/api.ts` 统一 `/api` 前缀，开发期由 Vite 代理到 5018 |
+| 会话传输 | 原生 WebSocket（`/ws`） | 与 Dart/web 线上格式逐字一致，不引入 SignalR 客户端；理由见 §13.2 偏离说明。实装 `src/room/RoomSocket.tsx`（welcome/state/events/saved/frames/error/kicked/pong + token 持久化 + 退避重连） |
+| 构建 | Vite + SWC | Vite 默认（esbuild + plugin-react），`npm run build` = `tsc -b && vite build`；lint 用 `oxlint` |
 
-**组件拆分**：
+**组件拆分（实收目录，`hexfront-react/src/`）**：
 
 ```
-src/
-── App.tsx                    # 路由容器
-├── routes/
-│   ├── Home.tsx               # 首页三入口
-│   ├── Lobby.tsx              # 大厅
-│   ├── Wizard.tsx             # 5步创建向导
-│   └── Room.tsx               # 房间视图（按 role 分支）
-├── components/
-│   ├── MapCanvas.tsx          # Canvas 渲染组件（map.js 移植）
-│   ├── UnitPanel.tsx          # 兵力列表
-│   ├── DraftBar.tsx           # 指令草案栏
-│   ├── ContactList.tsx        # 接触目标列表
-│   ├── DirectorControls.tsx   # 导调面板
-│   ├── EventLog.tsx           # 事件日志
-│   └── HudOverlay.tsx         # HUD 浮层
-── services/
-│   ├── ws.ts                  # /ws 会话连接管理（实装于 src/room/RoomSocket.tsx）
-│   ├── api.ts                 # REST API 调用
-│   └── gameState.ts           # Zustand store
-├── geometry/
-│   └── hex.ts                 # hex.js 移植
-└── styles/
-    └── dark-theme.css         # 现有 app.css 移植
+App.tsx / main.tsx          # BrowserRouter + / 、/lobby、/new、/room/:code/:role 四条路由
+pages/
+  Home.tsx                  # 首页三入口（创建副本 / 一键开局 / 存档副本）
+  Lobby.tsx                 # 大厅（一键开局 / 按码加入 / 存档载入；quickStart 与 loadSave 在 Home 各有一份，见 §12）
+  Wizard.tsx                # 5 步创建向导（GIS 现场生成作业轮询、/api/validate 实时回显、预算报红）
+  RoomPage.tsx              # 按 role 分支的容器
+  SideView.tsx              # 红/蓝：己方全量 + 接触情报 + 草案 + 就绪 + 射程圈预览
+  DirectorView.tsx          # 导演部：全知态势 + 双方已受领指令 + 强制结算 + 导调 + 战报因子链
+  SpectatorView.tsx         # 观战：公开情报层 + 回放帧
+components/
+  HexMap.tsx                # MapView 的 React 外壳（tk 注入、底图切换、图例、禁用态提示）
+  Layout.tsx                # 顶栏 + 三列终端布局
+  Toast.tsx                 # 提示层（配 services/sound.ts 的提示音）
+map/
+  MapView.ts                # canvas 渲染内核（相机 / 瓦片退避闸门 / 地物连线 / 兵力块 / HUD）
+  hex.ts                    # odd-r 几何、hexRing / rangeHexes 稳定序
+room/
+  RoomSocket.tsx            # /ws 连接、退避重连、顶号与占用的停连判定、token 持久化
+  protocol.ts               # REST/WS 契约类型（snake_case 字段）
+  useUnitFull.ts            # 单位详情按需取全量
+services/
+  api.ts                    # axios 封装全部 /api 端点（统一 /api 前缀，同源相对路径）
+  sound.ts                  # 指令 / 交战 / 顶号提示音
 ```
+
+原建议里的 `routes/`、`components/MapCanvas.tsx`、`UnitPanel/DraftBar/ContactList/DirectorControls/EventLog/HudOverlay`、`services/ws.ts`、`services/gameState.ts`、`geometry/hex.ts`、`styles/dark-theme.css` 都没有按这个名字出现：面板与日志直接写在三个视图页里（它们各自只有一处使用），画布外壳叫 `components/HexMap.tsx`、内核叫 `map/MapView.ts`，几何在 `map/hex.ts`，样式在 `App.css` + `index.css`。**没有 Zustand store**。
 
 **验收标准**：
 
-- [ ] 创建副本向导 5 步流程完整可用（含真实数据包选择 + 地物层展示）
-- [ ] 导演部视图：全局兵力 + 地图 + 导调控制 + 双方指令 + 事件日志
-- [ ] 红/蓝视图：己方单位 + 接触目标 + 指令草案 + 迷雾隔离
-- [ ] 观战视图：公开情报层 + 无归属披露
-- [ ] 地图渲染：天地图瓦片 + 六角格 + 道路/河流/铁路/电网/机场/电厂/变电站/车站/隧道 + 悬停格信息 + 图例
-- [ ] 缩放/拖拽/双击放大流畅（60fps）
-- [ ] 断线重连恢复会话 + 顶号提示
-- [ ] 响应式布局（最小 1024×768 可用）
+- [x] 创建副本向导 5 步流程完整可用（含真实数据包选择 + 地物层展示）——浏览器实测：3 辆坦克覆盖 OOB、降雨、后勤关、兵种属性覆盖（坦克 26→45.9 点）触发预算报红；第 2 步现场生成 36×52 格包并建成副本（房间 L52TYZ，格数与包一致）
+- [x] 导演部视图：全局兵力 + 地图 + 导调控制 + 双方指令 + 事件日志 + 战报逐因子贡献
+- [x] 红/蓝视图：己方单位 + 接触目标（E1 只给兵力档、E2 给兵种、E3 才给精确兵员；阵亡单位保留 `gone`"已消失"卡片并按 `staleTurns`=3 衰减）+ 指令草案 + 迷雾隔离
+- [x] 观战视图：公开情报层 + 无归属披露（`node_holders` 不下发）+ 导演部可切全知
+- [x] 地图渲染：天地图瓦片 + 六角格 + 道路/河流/铁路/电网/机场/电厂/变电站/车站/隧道 + 悬停格信息 + 图例（像素级已验收 z9–z11，格网西缘贴合真实莱茵河）
+- [ ] 缩放/拖拽/双击放大流畅（60fps）——手感已验，帧率数字未测，归 #93 性能基线
+- [x] 断线重连恢复会话 + 顶号提示（token 存 localStorage 按房间码分键；`kicked` 停在提示态不再重连；阵营位占用收 `type:error` 立即停连，其他断线退避重连超 8 次放弃）
+- [x] 响应式布局（最小 1024×768 可用）；面板滚动条回归已修（见 §13.6 的 P6-d 遗留缺陷一条）
 
 ### 13.4 迁移策略与风险控制
 
-**并行开发**：三个阶段不必串行等待，可在 Dart 原型稳定运行的前提下并行推进：
+**并行开发**：三个阶段不必串行等待，可在 Dart 原型稳定运行的前提下并行推进（下面这份周次表是 2026-10-17 的排期设想，**保留仅作历史记录**；实际按 §10 的里程碑 P0–P7 逐阶段交付、每阶段确认后再开下一阶段，与"三阶段并行"的假设不同）：
 
 ```
 Week 1-2:  阶段一 API 骨架 + 单元测试
@@ -660,38 +708,68 @@ Week 13:   集成测试 + 性能对比 + 文档更新
 
 **风险与缓解**：
 
-| 风险 | 概率 | 影响 | 缓解措施 |
+| 风险 | 概率 | 影响 | 缓解措施（括号内为实收结果） |
 |---|---|---|---|
-| GDAL C# 绑定安装复杂 | 高 | 中 | 备选 RasterSharp 纯 C# 栅格读取；或保留 Python subprocess 调用 hexgen.py |
-| 确定性浮点差异导致指纹不一致 | 中 | 高 | 使用 decimal 代替 double；或允许 ±1e-9 容差比对 |
+| GDAL C# 绑定安装复杂 | 高 | 中 | 备选 RasterSharp 纯 C# 栅格读取；或保留 Python subprocess 调用 hexgen.py（**实收：保留 Python 子进程**，无 Python 时降级为 `HexGenService` 原生合成地形并在 capabilities/作业日志里明说） |
+| 确定性浮点差异导致指纹不一致 | 中 | 高 | 使用 decimal 代替 double；或允许 ±1e-9 容差比对（**实收：都不必**——`SeededRng` 固定运算顺序，同种子同指令存档往返指纹逐字相等，由 `ws-smoke` 第 7b/8/8b 项锁住） |
 | 双传输并存导致两套房间真相（SignalR Hub 与 /ws） | 已发生 | 中 | 只保留 `/ws`；`RoomHub` 已删除，会话真相收敛到 `RoomService`（§13.2） |
-| React Canvas 性能不如原生 | 中 | 中 | 优先用原生 canvas ref + requestAnimationFrame；Konva 仅用于 UI 覆盖层 |
-| 迁移期间需求变更 | 高 | 高 | Dart 原型作为"活文档"持续维护；C# 每完成一个模块即同步验证 |
+| React Canvas 性能不如原生 | 中 | 中 | 优先用原生 canvas ref + requestAnimationFrame；Konva 仅用于 UI 覆盖层（**实收：全原生 canvas，Konva 零引用**；60fps 数字待 #93 测） |
+| 迁移期间需求变更 | 高 | 高 | Dart 原型作为"活文档"持续维护；C# 每完成一个模块即同步验证（**实收：P7 起 Dart 版只做对照参考，验收入口换成 xUnit + ws-smoke + 浏览器 E2E**） |
 
-**过渡期运行模式**：
+**过渡期运行模式（实收端口）**：
 
 ```
-─────────────┐     REST + /ws      ┌──────────────┐
-│  React SPA  │ ◄──────────────────►  │ C# WebAPI    │
-│  (localhost:3000)                   │  (localhost:5000)
-└─────────────┘                        └──────┬───────┘
-                                              │
-                                     ┌────────▼────────┐
-                                     │  Python hexgen  │ ← 可选：GDAL 未就绪时
-                                     │  (subprocess)   │   保留 Python 生成能力
-                                     └─────────────────┘
+┌─────────────────────┐   REST /api + WS /ws   ┌──────────────────────┐
+│  React SPA (Vite)   │ ◄────────────────────►  │  HexFront.Api        │
+│  localhost:5173     │   （vite 代理到 5018）   │  localhost:5018      │
+└─────────────────────┘                          └────────┬───────────┘
+                                                          │
+                                                 ┌────────▼────────┐
+                                                 │ Python hexgen   │ ← 仅"真实栅格生成"这一条链路
+                                                 │ (subprocess)    │   缺 Python/GDAL 时自动降级
+                                                 └─────────────────┘
 ```
 
-Dart 原型（hexfront/）在迁移期间保持可运行状态，作为参考实现和回归基准。所有 C# 代码的验收都以"Dart 版能通过 → C# 版也能通过"为标准。
+Dart 原型（hexfront/）在迁移期间保持可运行状态，作为参考实现。**P7 起它不再是验收入口**：C# 侧已有等价 xUnit 用例集（映射表 `HexFront.CSharp/tests/PARITY-CHECKS.md`），后续以 `dotnet test` + `ws-smoke.mjs` + 浏览器 E2E 为准；"Dart 版能通过 → C# 版也能通过"这条准则已完成使命，保留为回归期的历史依据。
 
 ### 13.5 待拍板事项（§11 遗留问题）
 
-以下设计决策在 §11 中标记为"待拍板"，需在 C# 重构启动前明确：
+以下四条是 C# 重构启动前列出的待拍板项。四条都已定，其中两条与 §11 的正式条目重复（重复的以 §11 为准，这里只留结论）：
 
-1. **重新开雾是否回收情报**（§11.2）：当前 Dart 实现中，导演部关闭再开启战争迷雾时，已暴露的 contacts **不会**被回收（情报一旦获得就永久保留）。这是合理的设计选择（模拟真实战争中"侦察到的情报不会因为云层变厚就忘记"），但需要在 C# 版中显式确认此行为。**推荐：保持现状，不回收**。
+1. **重新开雾是否回收情报**（正式条目见 **§11.9**）：当初的假设是"情报一旦获得就永久保留，重开雾不回收"，并推荐保持。**实收与推荐相反**：Dart 版这个行为是 bug（`fog.dart:121` 在全知时把档位写死为 3，导致明牌期间凭空长出 E3 精确档案），HUD 还显示"迷雾 开"，自相矛盾。C# 版改成关雾期间**不写 `tracks`**（明牌展示由 `SideView` 按 E3 实时合成），所以重新开雾不留永久记忆；由 `ws-smoke.mjs` 第 10 项锁住。
 
-2. **账号体系**（§11.1）：当前原型无登录系统，角色会话用 `roomId + sessionToken` 标识。C# 版是否需要接入身份认证（JWT/OAuth）？**推荐：MVP 阶段保持无账号模式，用 localStorage 存 sessionToken；v2 再加用户系统**。
+2. **账号体系**（正式条目见 **§11.2**）：**已定——MVP 不上 JWT/OAuth**。角色会话仍是"房间码 + 令牌"，React 把令牌存 `localStorage`（按房间码分键）以支持同 token 重连接管原会话。用户系统留 v2（M7 之后）。
 
-3. **进程重启丢房间**（§11.3）：当前 Dart 版服务端重启后所有房间丢失（内存态）。C# 版是否需要持久化房间状态？**推荐：房间本身仍是内存态（符合实时对抗语义），但加入房间的配置（剧本/覆盖/OOB）应从存档重建，而非从零开始**。
+3. **进程重启丢房间**（正式条目见 **§11.10**）：**已定并按推荐落地**——房间保持内存态（符合实时对抗语义），不做房间落盘；重启后用存档重建：`POST /api/saves/load` 走"快照 + 尾部重放"回到原指纹，剧本/覆盖/OOB 都从存档里来，不用重新配一遍。`GET /api/frames` 在房间不存在时提示"重启后请用存档回放"。
 
-4. **Git 大文件治理**（§12.1 脚注）：`.git` 目录已达 92MB（102MB roads_pkg + 24MB global_water.gpkg 已在历史中）。**推荐：新增 `.gitattributes` 声明 `*.gdb/** binary` + `*.gpkg binary`，未来大文件走 Git LFS；本次不 rewrite history（成本过高）**。
+4. **Git 大文件治理**：`.git` 目前 **105MB**（102MB `roads_pkg` + 24MB `global_water.gpkg` 已在历史里）。**已定：不 rewrite history**（成本过高，且历史里的密钥只能靠控制台重置解决）。本轮只新增 `.gitignore` 规则挡住编译产物与 `saves/`；**`.gitattributes`（`*.gdb/** binary` + `*.gpkg binary`）和 Git LFS 仍未做**，等真要对外分发数据时再开一条任务。
+
+> 顺带一条清理项：仓库根有 `_probe/`（4 张 10 月 16 日的浏览器探针截图 + `probe_rasters.py` + `server.log`）和 `_probe_plan.txt`，已被提交进版本库。它们是排查过程的临时产物，不属于交付内容，建议随 #92 一起处置。
+
+### 13.6 交付基线与取证口径（P7 起生效）
+
+这一节回答两个问题：**"验收看哪几条命令的什么数字"**，以及**"截图证据怎么复现"**。前面 §12/§13.1/§13.2/§13.3 的验收项全部指向这里，不再各写一份。
+
+**四条门槛命令（本机 i7 + SSD，.NET SDK 10.0.113 / Node 24）**：
+
+| 命令 | 当前基线 | 锁的是什么 |
+|---|---|---|
+| `dotnet build HexFront.slnx` | 0 warning / 0 error | 后端可编译；注意 5018 上的进程会占用输出，重编前先停 API |
+| `dotnet test tests/HexFront.Tests` | **241 通过 / 0 失败**（引擎 201 + 协议 40） | 引擎语义 + 会话协议；`tests/PARITY-CHECKS.md` 是 Dart `verify.dart` 61 项到 xUnit 的逐项映射表 |
+| `node scripts/ws-smoke.mjs` | **编号 0–15 共 16 组 ALL PASS**（需 5018 在跑） | 真实 WS 往返：接入/占用/顶号/双盲/拒令/导调/存档往返与尾部重放/回放帧 200 上限/迷雾回收/AI 就绪屏障/全 AI 终局指纹 |
+| `npx tsc -b`（`hexfront-react/`） | exit 0 | 前端类型门槛。**`--noEmit` 不算**：项目用 project references，只有 `-b` 会全量检查 |
+
+另有 `python tools/gis/hexgen.py --only-validate`（37 项数据包自校验，含地物层不变式）——只在动 GIS 生成链路时要求。
+
+**尚未取证、显式挂着两项**（都在 #93）：14 回合全 AI < 5s（目前只有 `ws-smoke` 第 8d 项顺带量到的"15 回合不到 0.3 秒"，2026-10-18 两次跑 237ms / 177ms）、地图缩放拖拽 60fps。文档里所有 `[ ]` 的验收项都归这两条，不许口头声称通过。
+
+**浏览器 E2E 取证口径**：验收必须在真实浏览器里跑通，不接受"逻辑层单测过了"替代。做法是起 5018 + `npm run dev`，用无头 Chrome（`--headless=new --remote-debugging-port` + 每次新建 `--user-data-dir`）经 CDP 同时驱动 4 个标签页，按角色路径打开 `/room/{码}/{red|blue|director|spectator}`，读 DOM 断言 + 截图存 `<tmp>/hf-e2e/<用例>-<随机>/`。脚本要点（都是踩过的坑）：`/json/new` 必须用 `PUT`；每个 target 一条独立 WS；己方卡与接触卡选择器要分开（`.unit:not(.contact)` 与 `.unit.contact`）；回合数读 `.maphud` 的 innerText；重开 Qoder 内置浏览器标签会永久卡死，不要用。**取完证要目视截图**——本轮的 `.scroll{overflow:auto}` 缺陷就是只有截图能看出来，DOM 矩形探针反而会误报。
+
+**本轮由浏览器取证翻出的一条 P6-d 遗留缺陷**：React `App.css` 在移植时丢了 web 版 `.scroll{overflow:auto}`（对照 `web/css/app.css:61`），结果是超长的接触列表/事件日志直接画到相邻面板上；第一版修复给非 `.grow` 面板加了 `flex:0 1 auto`，反而让列溢出时 `.scroll` 被压成 0 高、整块列表看不见。最终规则是 `.panel .scroll{flex:1;min-height:0;overflow:auto}`（[hexfront-react/src/App.css:476](file:///D:/Project/wargame/hexfront-react/src/App.css#L476)）+ `.terminal .col .panel:not(.grow){flex:0 0 auto;max-height:28%}`（同文件 L479），三视图各面板可见高度 ≥137px、两个列表各自独立滚动，红/蓝/导演部/观战四张截图复核通过。
+
+**复现"已消失（gone）"情报卡的最短路径**（纯 AI 局 14 回合零歼灭，见 §11.12，所以必须压 OOB）：
+1. `POST /api/instances`，`scenario=rhine_corridor`，`overrides.sides.blue.oob` 里把 4 个 r rifle 条目的 `personnel_ratio` 设 `0.004`（每单位 2 人）；
+2. 导演部连上后逐回合 `{type:'director_cmd',action:'ai'}` 托管双方 + `{type:'resolve'}` 推屏障（屏障是事件驱动的，不会自己连跑，§11.8）；
+3. 红方在 T9 左右拿到 B23/B26 的 `destroyed`，接触卡转为 `E1 · 已消失`，并在 `staleTurns`=3 个回合后（age 1→2→3）从档案里被剪掉。
+
+**`web/` 原生 ESM 客户端的退役排期**：自 P7 拍板"React 为唯一主前端"后，`web/` 停止接新需求，只作为 CSS 视觉 token 与 `map.js` 移植对照的**只读参考**；§6.3、§9、§10 里凡引用 `web/js/*` 的条目都在说"最初口径来自这里"。删除动作排在 **#92（P7-e）**，删除前要把 `web/css/app.css` 里仍被 React 依赖的视觉 token 与本轮这类"移植遗漏"对照清单收干净——今天这条 `.scroll` 就是第一个样本。`data/tianditu.json` 是访问凭证，`.gitignore` 已挡住，仓库里只留 `data/tianditu.example.json` 占位（§12.2）。

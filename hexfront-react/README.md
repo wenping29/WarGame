@@ -1,60 +1,63 @@
 # HEXFRONT-REACT
 
-兵棋对抗系统的 React 前端，替代原有的纯 HTML/JS 实现。
+兵棋对抗系统（HEXFRONT-WEB）的 React 前端，**唯一主前端**；原生 JS 版 `../web/` 已冻结退役（排期 #92）。已接真实 C# 后端并做过四终端浏览器端到端验证。
 
-## 技术栈
+产品与协议口径都在 [../HEXFRONT-WEB产品设计文档.md](../HEXFRONT-WEB产品设计文档.md)（下称"设计文档"）：技术选型 §13.3、运行方式 §12、验收基线与取证口径 §13.6。搬迁对照表与踩坑清单在同目录 [MIGRATION.md](MIGRATION.md)。
 
-- **React 18** + TypeScript
-- **Vite** - 构建工具
-- **React Router v6** - 路由管理
-- **Zustand** - 轻量级状态管理
-- **Axios** - HTTP 客户端（暂未启用）
-- **Lucide React** - 图标库
+## 技术栈（实收）
 
-## 项目结构
+- **React 19** + TypeScript ~6.0 + Vite 8
+- **React Router 7**（`BrowserRouter`，路径路由）
+- **axios**（REST）+ 原生 WebSocket `/ws`（**不是 SignalR**）
+- **原生 canvas** 地图渲染（`src/map/MapView.ts`）——没有 Konva、没有 Ant Design
+- 状态由 `room/RoomSocket.tsx` 的 hook + 各页 `useState/useRef` 持有；**没有 Zustand store**（依赖里的 `zustand` 零引用）
+- 图标 `lucide-react`，lint `oxlint`
+
+## 目录
 
 ```
 src/
-├── components/          # 可复用组件
-│   └── Layout.tsx      # 页面布局（顶栏 + 导航）
-├── pages/              # 页面组件
-│   ├── Home.tsx        # 首页（三入口）
-│   ├── Lobby.tsx       # 大厅
-│   ├── Wizard.tsx      # 游戏创建向导
-│   ├── SideView.tsx    # 红/蓝方视角
-│   ├── DirectorView.tsx # 导演部视角
-│   └── SpectatorView.tsx # 观战视角
-├── App.tsx             # 根组件（路由配置）
-├── App.css             # 全局样式
-└── main.tsx            # 入口文件
+├── App.tsx / main.tsx        # 路由：/  /lobby  /new  /room/:code/:role
+├── pages/                    # Home · Lobby · Wizard（5 步创建向导）· RoomPage
+│   ├── SideView.tsx          # 红/蓝：己方全量 + 接触情报 + 指令草案 + 就绪
+│   ├── DirectorView.tsx      # 导演部：全知态势 + 导调 + 强制结算 + 战报因子链
+│   └── SpectatorView.tsx     # 观战：公开情报层 + 回放帧
+├── components/               # HexMap（canvas 外壳）· Layout（顶栏 + 三列终端）· Toast
+├── map/                      # MapView.ts（渲染内核）· hex.ts（odd-r 几何与稳定序）
+├── room/                     # RoomSocket.tsx（连接/重连/顶号）· protocol.ts · useUnitFull.ts
+├── services/                 # api.ts（axios 封装全部 /api）· sound.ts（提示音）
+└── App.css · index.css       # 深色终端风视觉 token（从 web/css/app.css 移植）
 ```
 
 ## 运行
 
+需要后端先在 5018 上跑着（`../HexFront.CSharp`，见设计文档 §12）：
+
 ```bash
-npm install      # 安装依赖
-npm run dev      # 开发模式（http://localhost:5173）
-npm run build    # 生产构建
-npm run preview  # 预览生产构建
+npm install
+npm run dev        # http://localhost:5173（被占则顺延到 5174），/api 与 /ws 由 vite 代理到 5018
+npm run build      # = tsc -b && vite build
+npm run preview
+npm run lint       # oxlint
 ```
 
-## 当前状态
+四终端入口：`/`（首页三入口）· `/lobby` · `/new` · `/room/{房间码}/red|blue|director|spectator`。
 
-✅ 基础页面结构和路由
-✅ 响应式布局和样式
-✅ 本地模式运行（不调用 API）
+## 验收门槛
 
-⏳ 待集成：
-- 六角格地图渲染引擎
-- 游戏状态管理（Zustand store）
-- API 接口调用（连接 C# WebAPI）
-- WebSocket/SignalR 实时通信
-- 单位指令系统
-- 战争迷雾可视化
+```bash
+npx tsc -b         # 类型门槛。--noEmit 不算：项目用 project references，只有 -b 会全量检查
+```
+
+后端侧的 `dotnet test`（241 项）与 `node scripts/ws-smoke.mjs`（16 组）在 `../HexFront.CSharp`，数字含义见设计文档 §13.6。UI 改动必须在真实浏览器里跑通并截图复核，不接受只看单测绿。
+
+## 已知未测
+
+地图缩放/拖拽的 60fps 数字（归 #93 性能基线）。移动端适配与对外部署未开工。
 
 ## 设计原则
 
-1. **零配置开局** - 一键进入导演部体验完整功能
-2. **渐进式增强** - 先保证核心流程可用，再添加高级功能
-3. **类型安全** - 全面使用 TypeScript，避免运行时错误
-4. **组件化** - 地图、单位卡片、指令面板等拆分为独立组件
+1. **零配置开局** —— 一键进入导演部体验完整功能，首页只留三个入口
+2. **信息分级即玩法** —— E1 只给兵力档、E2 给兵种、E3 才给精确兵员；视图裁剪错了就是泄漏对手底牌
+3. **类型与协议对齐后端** —— REST/WS 字段一律 snake_case，契约类型集中在 `room/protocol.ts`
+4. **提示要有反馈** —— 指令受理、交战、顶号都有提示音与 Toast；异常态（房间不存在、角色位占用、密钥未配置）在界面上写明原因而不是空白
