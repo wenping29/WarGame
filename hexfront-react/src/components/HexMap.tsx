@@ -1,462 +1,97 @@
 /**
- * Canvas-based hex grid map renderer.
- * Renders terrain, features, units, and fog of war overlay.
+ * 地图组件：只负责挂载命令式 MapView、把服务端视图喂进去、随容器尺寸重算相机。
+ * 相机、图层与 LOD 全在 src/map/MapView.ts；React 不做逐帧 diff，也不重建 canvas，
+ * 否则每包 state 都会把瓦片缓存与缩放位置一起丢掉。
  */
 
-import { useEffect, useRef, useCallback } from 'react'
-import type { WireCell } from '../room/protocol'
-
-export interface MapUnit {
-  id: string
-  side: string
-  type: string
-  q: number
-  r: number
-  hp: number // 0-100 percentage
-  morale: number
-  fatigue: number
-}
+import { useEffect, useRef, useState } from 'react'
+import { BASEMAPS, MapView } from '../map/MapView'
+import { useMeta } from '../room/useUnitFull'
+import type { AnyView } from '../room/protocol'
 
 interface HexMapProps {
-  width: number
-  height: number
-  cells: WireCell[]
-  units: MapUnit[]
-  selectedUnit?: MapUnit | null
-  hoveredHex?: { q: number; r: number } | null
-  pathPoints?: Array<{ q: number; r: number }>
-  attackTarget?: MapUnit | null
-  reachableHexes?: Set<string>
-  onHexClick?: (q: number, r: number) => void
-  onUnitClick?: (unit: MapUnit) => void
-  onPathPointAdd?: (q: number, r: number) => void
-}
-
-// Terrain colors matching the design system
-const TERRAIN_COLORS: Record<string, string> = {
-  clear: '#7a9e6b',      // 平原 - green
-  rough: '#8b7355',      // 荒地 - brown
-  woods: '#4a7c3f',      // 林地 - dark green
-  hills: '#a0826d',      // 丘陵 - tan
-  mountain: '#6b5d52',   // 山地 - gray-brown
-  city: '#808080',       // 城镇 - gray
-  swamp: '#5a7a6a',      // 沼泽 - dark teal
-  river: '#4a90e2',      // 河流 - blue
-  water: '#3a7bd5',      // 水域 - deep blue
-}
-
-// Hex geometry constants (pointy-top, odd-r offset "brick" board)
-const HEX_SIZE = 25 // circumradius in px (center -> corner)
-const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE // flat-to-flat == horizontal neighbour pitch
-const HEX_HEIGHT = 2 * HEX_SIZE
-const ROW_STEP = HEX_HEIGHT * 0.75
-const PAD_X = HEX_WIDTH / 2
-const PAD_Y = HEX_SIZE
-
-// Convert axial fractional coords to the nearest hex (cube rounding)
-function roundAxial(faq: number, far: number): { q: number; r: number } {
-  const fas = -faq - far
-  let rq = Math.round(faq)
-  let rr = Math.round(far)
-  const rs = Math.round(fas)
-  const dq = Math.abs(rq - faq)
-  const dr = Math.abs(rr - far)
-  const ds = Math.abs(rs - fas)
-  if (dq > dr && dq > ds) rq = -rr - rs
-  else if (dr > ds) rr = -rq - rs
-  return { q: rq, r: rr }
+  view: AnyView | null
+  selection?: { q: number; r: number } | null
+  draftPath?: [number, number][] | null
+  rangeCenter?: [number, number] | null
+  rangeRadius?: number
+  onPick?: (p: { q: number; r: number }) => void
 }
 
 export default function HexMap({
-  width,
-  height,
-  cells,
-  units,
-  selectedUnit,
-  hoveredHex,
-  pathPoints = [],
-  attackTarget,
-  reachableHexes = new Set(),
-  onHexClick,
-  onUnitClick,
-  onPathPointAdd,
+  view, selection = null, draftPath = null, rangeCenter = null, rangeRadius = 0, onPick,
 }: HexMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const mapRef = useRef<MapView | null>(null)
+  const pickRef = useRef(onPick)
+  pickRef.current = onPick
+  const meta = useMeta()
 
-  // Convert hex coordinates to pixel coordinates.
-  // Odd rows are shifted half a cell right, so the board is a rectangle.
-  const hexToPixel = useCallback((q: number, r: number) => {
-    const x = PAD_X + HEX_WIDTH * (q + (r & 1) / 2)
-    const y = PAD_Y + ROW_STEP * r
-    return { x, y }
-  }, [])
-
-  // Inverse of hexToPixel
-  const pixelToHex = useCallback((px: number, py: number) => {
-    const far = (py - PAD_Y) / ROW_STEP
-    const faq = (px - PAD_X) / HEX_WIDTH - far / 2
-    const a = roundAxial(faq, far)
-    return { q: a.q + (a.r - (a.r & 1)) / 2, r: a.r }
-  }, [])
-
-  // Draw a single hexagon
-  const drawHex = useCallback(
-    (ctx: CanvasRenderingContext2D, q: number, r: number, color: string, alpha = 1) => {
-      const { x, y } = hexToPixel(q, r)
-      
-      ctx.save()
-      ctx.globalAlpha = alpha
-      ctx.fillStyle = color
-      
-      ctx.beginPath()
-      for (let i = 0; i < 6; i++) {
-        const angle = (Math.PI / 3) * i - Math.PI / 6
-        const px = x + HEX_SIZE * Math.cos(angle)
-        const py = y + HEX_SIZE * Math.sin(angle)
-        if (i === 0) ctx.moveTo(px, py)
-        else ctx.lineTo(px, py)
-      }
-      ctx.closePath()
-      ctx.fill()
-      
-      // Draw border
-      ctx.strokeStyle = 'rgba(0,0,0,0.3)'
-      ctx.lineWidth = 1
-      ctx.stroke()
-      
-      ctx.restore()
-    },
-    [hexToPixel]
-  )
-
-  // Draw terrain layer
-  const drawTerrain = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
-      cells.forEach((cell) => {
-        const color = TERRAIN_COLORS[cell.terrain] || TERRAIN_COLORS.clear
-        drawHex(ctx, cell.q, cell.r, color)
-      })
-    },
-    [cells, drawHex]
-  )
-
-  // Draw features (roads, rivers, bridges, etc.)
-  const drawFeatures = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
-      cells.forEach((cell) => {
-        const { x, y } = hexToPixel(cell.q, cell.r)
-        
-        // Draw roads
-        if (cell.road) {
-          ctx.strokeStyle = '#d4a574'
-          ctx.lineWidth = 2
-          ctx.beginPath()
-          ctx.moveTo(x - HEX_SIZE * 0.7, y)
-          ctx.lineTo(x + HEX_SIZE * 0.7, y)
-          ctx.stroke()
-        }
-        
-        // Draw railways
-        if (cell.railway) {
-          ctx.strokeStyle = '#8b4513'
-          ctx.lineWidth = 2
-          ctx.setLineDash([4, 2])
-          ctx.beginPath()
-          ctx.moveTo(x - HEX_SIZE * 0.7, y)
-          ctx.lineTo(x + HEX_SIZE * 0.7, y)
-          ctx.stroke()
-          ctx.setLineDash([])
-        }
-        
-        // Draw rivers
-        if (cell.river) {
-          ctx.strokeStyle = '#2a6cb8'
-          ctx.lineWidth = 3
-          ctx.beginPath()
-          ctx.moveTo(x, y - HEX_SIZE * 0.6)
-          ctx.lineTo(x, y + HEX_SIZE * 0.6)
-          ctx.stroke()
-        }
-        
-        // Draw bridge
-        if (cell.bridge) {
-          ctx.fillStyle = '#8b7355'
-          ctx.fillRect(x - 4, y - 2, 8, 4)
-        }
-        
-        // Draw city
-        if (cell.city > 0) {
-          ctx.fillStyle = '#ffffff'
-          ctx.font = 'bold 12px sans-serif'
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-          ctx.fillText('🏙', x, y)
-        }
-        
-        // Draw airport
-        if ((cell.airport ?? 0) > 0) {
-          ctx.fillStyle = '#ffffff'
-          ctx.font = '10px sans-serif'
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-          ctx.fillText('✈', x, y + 8)
-        }
-      })
-    },
-    [cells, hexToPixel]
-  )
-
-  // Draw units
-  const drawUnits = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
-      units.forEach((unit) => {
-        const { x, y } = hexToPixel(unit.q, unit.r)
-        const isSelected = selectedUnit?.id === unit.id
-        
-        // Unit circle background
-        ctx.fillStyle = unit.side === 'red' ? '#c15b4e' : '#4e82b3'
-        if (isSelected) {
-          ctx.fillStyle = '#ffd700' // Gold for selected
-        }
-        
-        ctx.beginPath()
-        ctx.arc(x, y, 10, 0, Math.PI * 2)
-        ctx.fill()
-        
-        // Border
-        ctx.strokeStyle = isSelected ? '#fff' : 'rgba(0,0,0,0.5)'
-        ctx.lineWidth = isSelected ? 3 : 1.5
-        ctx.stroke()
-        
-        // Unit icon/text
-        ctx.fillStyle = '#fff'
-        ctx.font = 'bold 10px sans-serif'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        const icon = getUnitIcon(unit.type)
-        ctx.fillText(icon, x, y)
-        
-        // HP bar (using hp field from store Unit)
-        const hpPercent = unit.hp / 100 // Assuming 100 is max HP
-        ctx.fillStyle = hpPercent > 0.7 ? '#4caf50' : hpPercent > 0.4 ? '#ff9800' : '#f44336'
-        ctx.fillRect(x - 10, y + 12, 20 * hpPercent, 3)
-      })
-    },
-    [units, selectedUnit, hexToPixel]
-  )
-
-  // Draw hover highlight
-  const drawHover = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
-      if (!hoveredHex) return
-      
-      const { x, y } = hexToPixel(hoveredHex.q, hoveredHex.r)
-      ctx.strokeStyle = '#fff'
-      ctx.lineWidth = 3
-      ctx.beginPath()
-      for (let i = 0; i < 6; i++) {
-        const angle = (Math.PI / 3) * i - Math.PI / 6
-        const px = x + HEX_SIZE * Math.cos(angle)
-        const py = y + HEX_SIZE * Math.sin(angle)
-        if (i === 0) ctx.moveTo(px, py)
-        else ctx.lineTo(px, py)
-      }
-      ctx.closePath()
-      ctx.stroke()
-    },
-    [hoveredHex, hexToPixel]
-  )
-
-  // Draw movement path
-  const drawPath = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
-      if (pathPoints.length < 2) return
-
-      // Draw path line
-      ctx.strokeStyle = '#ffd700'
-      ctx.lineWidth = 3
-      ctx.setLineDash([5, 3])
-      ctx.beginPath()
-
-      pathPoints.forEach((point, i) => {
-        const { x, y } = hexToPixel(point.q, point.r)
-        if (i === 0) ctx.moveTo(x, y)
-        else ctx.lineTo(x, y)
-      })
-
-      ctx.stroke()
-      ctx.setLineDash([])
-
-      // Draw path points
-      pathPoints.forEach((point, i) => {
-        const { x, y } = hexToPixel(point.q, point.r)
-        
-        // Start point
-        if (i === 0) {
-          ctx.fillStyle = '#4caf50'
-          ctx.beginPath()
-          ctx.arc(x, y, 6, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        // End point
-        else if (i === pathPoints.length - 1) {
-          ctx.fillStyle = '#f44336'
-          ctx.beginPath()
-          ctx.arc(x, y, 6, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        // Intermediate points
-        else {
-          ctx.fillStyle = '#ffd700'
-          ctx.beginPath()
-          ctx.arc(x, y, 4, 0, Math.PI * 2)
-          ctx.fill()
-        }
-      })
-    },
-    [pathPoints, hexToPixel]
-  )
-
-  // Draw reachable hexes
-  const drawReachable = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
-      if (reachableHexes.size === 0) return
-
-      reachableHexes.forEach((key) => {
-        const [q, r] = key.split(',').map(Number)
-        const { x, y } = hexToPixel(q, r)
-        
-        ctx.fillStyle = 'rgba(76, 175, 80, 0.2)'
-        ctx.beginPath()
-        for (let i = 0; i < 6; i++) {
-          const angle = (Math.PI / 3) * i - Math.PI / 6
-          const px = x + HEX_SIZE * Math.cos(angle)
-          const py = y + HEX_SIZE * Math.sin(angle)
-          if (i === 0) ctx.moveTo(px, py)
-          else ctx.lineTo(px, py)
-        }
-        ctx.closePath()
-        ctx.fill()
-      })
-    },
-    [reachableHexes, hexToPixel]
-  )
-
-  // Draw attack target indicator
-  const drawAttackTarget = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
-      if (!attackTarget) return
-
-      const { x, y } = hexToPixel(attackTarget.q, attackTarget.r)
-      
-      // Red circle around target
-      ctx.strokeStyle = '#f44336'
-      ctx.lineWidth = 3
-      ctx.beginPath()
-      ctx.arc(x, y, 15, 0, Math.PI * 2)
-      ctx.stroke()
-
-      // Crosshair
-      ctx.strokeStyle = '#f44336'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.moveTo(x - 20, y)
-      ctx.lineTo(x + 20, y)
-      ctx.moveTo(x, y - 20)
-      ctx.lineTo(x, y + 20)
-      ctx.stroke()
-    },
-    [attackTarget, hexToPixel]
-  )
-
-  // Main render loop
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    
-    // Set canvas size
-    const mapWidth = width * HEX_WIDTH + HEX_WIDTH
-    const mapHeight = (height - 1) * ROW_STEP + HEX_HEIGHT
-    canvas.width = mapWidth
-    canvas.height = mapHeight
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    
-    // Draw layers in order
-    drawTerrain(ctx)
-    drawFeatures(ctx)
-    drawReachable(ctx)
-    drawPath(ctx)
-    drawUnits(ctx)
-    drawAttackTarget(ctx)
-    drawHover(ctx)
-  }, [width, height, cells, units, selectedUnit, hoveredHex, pathPoints, attackTarget, reachableHexes, drawTerrain, drawFeatures, drawReachable, drawPath, drawUnits, drawAttackTarget, drawHover])
-
-  // Handle click events
-  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const rect = canvas.getBoundingClientRect()
-    // CSS 把画布拉伸到容器尺寸，点击坐标需换算回画布像素
-    const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width)
-    const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height)
-
-    const { q, r } = pixelToHex(mouseX, mouseY)
-    if (q < 0 || q >= width || r < 0 || r >= height) return
-    if (!cells.some((c) => c.q === q && c.r === r)) return
-
-    // If drawing path, add point
-    if (onPathPointAdd && pathPoints.length > 0) {
-      onPathPointAdd(q, r)
-      return
+    const map = new MapView(canvas)
+    mapRef.current = map
+    map.onPick((p) => pickRef.current?.(p))
+    // 后台标签页里 RAF 不触发，E2E 验证需要能直接叫一次 draw()；只在 dev 构建暴露
+    const w = globalThis as typeof globalThis & { __hexMap?: MapView }
+    if (import.meta.env.DEV) w.__hexMap = map
+    // 观察容器而非 canvas：canvas 尺寸由 CSS 撑开，自身不会触发 ResizeObserver
+    const wrap = canvas.parentElement
+    const ro = new ResizeObserver(() => map.resize())
+    if (wrap) ro.observe(wrap)
+    map.resize()
+    return () => {
+      ro.disconnect()
+      map.dispose()
+      mapRef.current = null
+      if (w.__hexMap === map) delete w.__hexMap
     }
+  }, [])
 
-    const unit = units.find((u) => u.q === q && u.r === r)
-    if (unit && onUnitClick) onUnitClick(unit)
-    else if (onHexClick) onHexClick(q, r)
+  useEffect(() => { mapRef.current?.setView(view) }, [view])
+
+  // 底图密钥经 /api/scenarios 下发（服务端读 data/tianditu.json），前端不硬编码
+  const tk = (meta?.tiles as { tk?: string } | undefined)?.tk ?? null
+  useEffect(() => { mapRef.current?.setTk(tk) }, [tk])
+
+  const [basemap, setBasemap] = useState('vec')
+  useEffect(() => { mapRef.current?.setBasemap(basemap) }, [basemap])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    map.selection = selection
+    map.draftPath = draftPath
+    map.rangeCenter = rangeCenter
+    map.rangeRadius = rangeRadius
+    map.requestDraw()
+  }, [selection, draftPath, rangeCenter, rangeRadius])
+
+  const act = (fn: (m: MapView) => void) => () => {
+    const map = mapRef.current
+    if (map) fn(map)
   }
 
   return (
-    <canvas
-      ref={canvasRef}
-      onClick={handleClick}
-      style={{
-        border: '1px solid #33404a',
-        borderRadius: '8px',
-        cursor: 'pointer',
-        display: 'block',
-        margin: '0 auto',
-      }}
-    />
+    <>
+      <canvas ref={canvasRef} />
+      <div className="mapzoom">
+        <button onClick={act(m => m.zoomBy(1.3))} title="放大">+</button>
+        <button onClick={act(m => m.zoomBy(1 / 1.3))} title="缩小">−</button>
+        <button onClick={act(m => { m.fit(); m.requestDraw() })} title="复位">⤢</button>
+        <select
+          className="basemap-sel"
+          value={basemap}
+          disabled={!tk}
+          title={tk ? '在线底图（天地图）' : '未配置天地图密钥'}
+          onChange={(e) => setBasemap(e.target.value)}
+        >
+          {Object.entries(BASEMAPS).map(([k, v]) => (
+            <option key={k} value={k}>{v.label}</option>
+          ))}
+        </select>
+      </div>
+    </>
   )
-}
-
-// Helper: Get unit icon based on type
-function getUnitIcon(type: string): string {
-  const icons: Record<string, string> = {
-    rifle: 'I',
-    light_inf: 'I',
-    rifle_auto: 'I',
-    engineer: 'E',
-    mec_inf: 'M',
-    armor: 'A',
-    tank: 'T',
-    gun: 'G',
-    arty: '⌖',
-    signals: 'S',
-    aa: '∥',
-    recy: '箱',
-    hq: '★',
-    radar: 'R',
-    airbase: '✈',
-    fighter: 'F',
-    strike_air: 'SA',
-    recon_air: 'SR',
-  }
-  return icons[type] || '?'
 }

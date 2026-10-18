@@ -4,17 +4,15 @@
  */
 
 import { useState } from 'react'
-import HexMap, { type MapUnit } from '../components/HexMap'
+import HexMap from '../components/HexMap'
 import { useRoom } from '../room/RoomSocket'
-import { useUnitTypes } from '../room/useUnitFull'
-import type { AnyView, Frame, WireDirectorView, WireSpectatorView } from '../room/protocol'
+import type { AnyView, Frame } from '../room/protocol'
 import { sideLabel } from '../room/protocol'
 
 const hhmm = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:00`
 
 export default function SpectatorView() {
   const room = useRoom()
-  const typeMap = useUnitTypes()
   const live = room.view
 
   const [replayIdx, setReplayIdx] = useState(-1) // -1 = 实时
@@ -34,12 +32,7 @@ export default function SpectatorView() {
     <div className="terminal" style={{ gridTemplateColumns: '1fr minmax(280px,340px)' }}>
       <div className="col">
         <div className="mapwrap">
-          <HexMap
-            width={view?.width ?? 10}
-            height={view?.height ?? 10}
-            cells={view?.cells ?? []}
-            units={toMapUnits(view, typeMap)}
-          />
+          <HexMap view={view} />
           <div className="maphud">
             {view ? (
               <>
@@ -166,24 +159,4 @@ function kindLabel(v: AnyView, replaying: boolean) {
 
 function Kv({ k, v }: { k: string; v: unknown }) {
   return <div className="budget"><span className="muted">{k}</span><b>{String(v ?? 0)}</b></div>
-}
-
-function toMapUnits(view: AnyView | null, typeMap: Record<string, { personnel?: number }>): MapUnit[] {
-  if (!view) return []
-  const full = (id: string) => typeMap[id]?.personnel ?? 0
-  const hpOf = (typeId: string, personnel: number) => {
-    const f = full(typeId)
-    return f > 0 ? Math.max(1, Math.min(100, Math.round(personnel / f * 100))) : 50
-  }
-  if (view.kind === 'director') {
-    return (view as WireDirectorView).units.map(u => ({
-      id: u.id, side: u.side, type: u.type, q: u.q, r: u.r,
-      hp: hpOf(u.type, u.personnel), morale: u.morale, fatigue: u.fatigue,
-    }))
-  }
-  const contacts = (view as WireSpectatorView).contacts ?? []
-  return contacts.map(c => ({
-    id: c.id, side: c.side || 'neutral', type: c.type ?? 'unknown', q: c.q, r: c.r,
-    hp: Math.max(15, c.level * 33), morale: 0, fatigue: 0,
-  }))
 }

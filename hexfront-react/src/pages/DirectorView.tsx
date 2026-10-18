@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import HexMap, { type MapUnit } from '../components/HexMap'
+import HexMap from '../components/HexMap'
 import { useRoom } from '../room/RoomSocket'
 import { useUnitTypes, useWeatherList } from '../room/useUnitFull'
 import type { Frame, WireCommand, WireDirectorView, WireFactors, WireUnit } from '../room/protocol'
@@ -49,12 +49,6 @@ export default function DirectorView() {
     askedTurn.current = turn
     room.requestFrames()
   }, [turn, room])
-
-  const mapUnits: MapUnit[] = units.map(u => {
-    const full = typeMap[u.type]?.personnel ?? 0
-    const hp = full > 0 ? Math.max(1, Math.min(100, Math.round(u.personnel / full * 100))) : 50
-    return { id: u.id, side: u.side, type: u.type, q: u.q, r: u.r, hp, morale: u.morale, fatigue: u.fatigue }
-  })
 
   const send = (o: Record<string, unknown>) => {
     play('tap')
@@ -104,15 +98,11 @@ export default function DirectorView() {
       <div className="col">
         <div className="mapwrap">
           <HexMap
-            width={view?.width ?? 10}
-            height={view?.height ?? 10}
-            cells={view?.cells ?? []}
-            units={mapUnits}
-            onHexClick={(q, r) => {
+            view={view}
+            onPick={({ q, r }) => {
               const u = units.find(x => x.q === q && x.r === r)
               if (u) setInject(prev => ({ ...prev, unit: u.id }))
             }}
-            onUnitClick={(u) => setInject(prev => ({ ...prev, unit: u.id }))}
           />
           <div className="maphud" id="hud">
             {view ? (

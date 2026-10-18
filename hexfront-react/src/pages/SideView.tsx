@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react'
-import HexMap, { type MapUnit } from '../components/HexMap'
+import HexMap from '../components/HexMap'
 import { useRoom } from '../room/RoomSocket'
 import type { WireCommand, WireSideView } from '../room/protocol'
 import { useUnitFull } from '../room/useUnitFull'
@@ -43,17 +43,6 @@ export default function SideView() {
     return full > 0 ? Math.max(1, Math.min(100, Math.round(personnel / full * 100))) : 50
   }
 
-  const mapUnits: MapUnit[] = [
-    ...own.map(u => ({
-      id: u.id, side: u.side, type: u.type, q: u.q, r: u.r,
-      hp: hpPct(u.type, u.personnel), morale: u.morale, fatigue: u.fatigue,
-    })),
-    ...contacts.filter(c => !c.stale || c.level > 0).map(c => ({
-      id: c.id, side: c.side || (side === 'red' ? 'blue' : 'red'), type: c.type ?? 'unknown',
-      q: c.q, r: c.r, hp: Math.max(15, c.level * 33), morale: 0, fatigue: 0,
-    })),
-  ]
-
   // 草案改动统一走服务端（replace 全量覆盖），面板回显 view.draft
   const pushDraft = (next: WireCommand[]) => {
     play('tap')
@@ -90,9 +79,9 @@ export default function SideView() {
     }
   }
 
-  // 地图上有单位的格子只会回调 onUnitClick，所以这里按坐标判定敌我：
-  // 点自己单位也要走这条路，否则构筑工事/休整/停止这三种就地指令永远下不出去。
-  const handleMapPick = (q: number, r: number) => {
+  // 地图只回格坐标，敌我由坐标判定：点自己单位也要走这条路，
+  // 否则构筑工事/休整/停止这三种就地指令永远下不出去。
+  const handleMapPick = ({ q, r }: { q: number; r: number }) => {
     if (!view) return
     const clickedOwn = own.find(u => u.q === q && u.r === r)
     if (clickedOwn) {
@@ -127,10 +116,6 @@ export default function SideView() {
   }
 
   const heldNodes = Object.values(view?.node_holders ?? {}).filter(s => s === side).length
-  const selectedMapUnit: MapUnit | null = selected
-    ? { id: selected.id, side: selected.side, type: selected.type, q: selected.q, r: selected.r,
-        hp: hpPct(selected.type, selected.personnel), morale: selected.morale, fatigue: selected.fatigue }
-    : null
 
   return (
     <div className="terminal">
@@ -157,13 +142,9 @@ export default function SideView() {
       <div className="col">
         <div className="mapwrap">
           <HexMap
-            width={view?.width ?? 10}
-            height={view?.height ?? 10}
-            cells={view?.cells ?? []}
-            units={mapUnits}
-            selectedUnit={selectedMapUnit}
-            onHexClick={handleMapPick}
-            onUnitClick={(u) => handleMapPick(u.q, u.r)}
+            view={view}
+            selection={selected ? { q: selected.q, r: selected.r } : null}
+            onPick={handleMapPick}
           />
           <div className="maphud" id="hud">
             <b>{view?.name ?? room.code}</b> · {side === 'red' ? '红方' : '蓝方'} 终端 ·
