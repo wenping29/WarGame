@@ -104,6 +104,38 @@ public class HexTests
         center.Range(0).Should().Equal(center);
     }
 
+    /// <summary>
+    /// 半径遍历的序就是引擎的"取用序"：侦察建档、电网聚合、剧本落位兜底都直接 Take 第一个可用格，
+    /// 所以必须按 (距离, Q, R) 定序 —— 分层不连续就等于"就近取格"变成"按循环序撞格"。
+    /// </summary>
+    [Fact]
+    public void Range_Visits_Distance_Bands_In_Stable_Order()
+    {
+        var center = new Hex(3, 2);
+        var list = center.Range(3);
+        var distances = list.Select(h => h.DistanceTo(center)).ToArray();
+
+        distances.Should().BeInAscendingOrder("半径遍历要按距离分层，取首个可用格才等于取最近格");
+        for (var d = 1; d <= 3; d++)
+        {
+            var band = list.Where((_, i) => distances[i] == d).ToArray();
+            band.Should().HaveCount(6 * d, $"距离 {d} 的那一环恰好 6·{d} 格");
+            band.Should().Equal(band.OrderBy(h => h.Q).ThenBy(h => h.R),
+                "同一环内按 (Q,R) 定序，不随中心落在奇偶哪一行而漂移");
+        }
+
+        center.Range(3).Should().Equal(center.Range(3), "同一中心两次遍历要逐格相同");
+    }
+
+    /// <summary>第一环就是邻格表本身（只是换了定序口径），否则邻接与半径两套算法会各说各话。</summary>
+    [Fact]
+    public void Range_First_Band_Is_The_Neighbor_Table_Sorted()
+    {
+        foreach (var center in new[] { new Hex(4, 0), new Hex(4, 1), new Hex(0, 5), new Hex(7, 8) })
+            center.Range(1).Skip(1).Should().Equal(
+                center.Neighbors().OrderBy(h => h.Q).ThenBy(h => h.R), $"{center} 的第一环");
+    }
+
     [Fact]
     public void Lerp_Produces_Contiguous_Path()
     {

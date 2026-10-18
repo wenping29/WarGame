@@ -20,7 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 协议回归要在测试进程里起真 Kestrel + 真 /ws，所以直接引 Api，不额外拉测试宿主包 -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\HexFront.Core\HexFront.Core.csproj" />
+    <ProjectReference Include="..\..\src\HexFront.Api\HexFront.Api.csproj" />
   </ItemGroup>
 
 </Project>

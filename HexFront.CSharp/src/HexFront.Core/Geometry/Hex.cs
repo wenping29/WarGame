@@ -86,13 +86,29 @@ public readonly record struct Hex(int Q, int R) : IComparable<Hex>, IEquatable<H
         return Math.Max(dq, Math.Max(dr, ds));
     }
 
-    /// <summary>All hexes within radius n (inclusive).</summary>
-    public IEnumerable<Hex> Range(int n)
+    /// <summary>
+    /// All hexes within radius n (inclusive), in the engine's stable visit order
+    /// (distance, Q, R) on the odd-r offset keys. Distance bands are contiguous, so a caller
+    /// that takes the first acceptable hex always takes the closest one; the fixed tie-break
+    /// is what makes recon grids, power accumulation and OOB fallback placement replayable.
+    /// </summary>
+    public IReadOnlyList<Hex> Range(int n)
     {
         var aq = AxialQ; var ar = AxialR;
+        var list = new List<Hex>((2 * n + 1) * (2 * n + 1));
         for (var dq = -n; dq <= n; dq++)
         for (var dr = Math.Max(-n, -dq - n); dr <= Math.Min(n, -dq + n); dr++)
-            yield return FromAxial(aq + dq, ar + dr);
+            list.Add(FromAxial(aq + dq, ar + dr));
+
+        var origin = this;
+        list.Sort((a, b) =>
+        {
+            var byDistance = a.DistanceTo(origin).CompareTo(b.DistanceTo(origin));
+            if (byDistance != 0) return byDistance;
+            var byColumn = a.Q.CompareTo(b.Q);
+            return byColumn != 0 ? byColumn : a.R.CompareTo(b.R);
+        });
+        return list;
     }
 
     /// <summary>Hex line between two hexes (for line rasterization).</summary>

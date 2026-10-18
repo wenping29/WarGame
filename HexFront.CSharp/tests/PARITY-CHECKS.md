@@ -1,10 +1,11 @@
-# 引擎侧等价测试对照表（verify.dart 61 项 → xUnit）
+# 等价测试对照表（verify.dart 61 项 + smoke_ws 32 项 → xUnit）
 
-基准是 `hexfront/bin/verify.dart`：Dart 时代那条脚本一次跑 61 项断言，是"引擎还活着"的唯一凭证。
+基准是两条 Dart 脚本：`hexfront/bin/verify.dart` 一次跑 61 项引擎断言，`hexfront/bin/smoke_ws.dart` 一次跑 32 项多人链路断言，
+两条合起来是 Dart 时代"引擎还活着、链路还没漏"的唯一凭证。
 迁移到 C# 之后不复刻脚本本身（按设计文档重写，不是按 Dart 重写），但**每一项断言保护的是什么玩法**必须逐条落地成 xUnit，
 否则"全绿"只是我们自己写的测试全绿。
 
-- 本文覆盖 **#88 P7-a**：引擎侧 61 项。协议侧 `smoke_ws` 32 项归 **#89 P7-b**，见文末。
+- §1–§9 是引擎侧（#88 P7-a），§10 是协议侧（#89 P7-b）。
 - 状态取值：`等价`（同一事实，同一断言）/ `等价+`（断得比 Dart 更严）/ `拆分`（一项拆成多处）/ `红灯`（用例已存在但当前不通过）/ `无等价`（写明理由）。
 
 ## 怎么跑
@@ -13,9 +14,11 @@
 cd HexFront.CSharp
 dotnet test tests/HexFront.Tests                                  # 全量
 dotnet test tests/HexFront.Tests --filter "FullyQualifiedName~P7Tests"   # 只看 P7-a 新增
+dotnet test tests/HexFront.Tests --filter "FullyQualifiedName~Protocol"  # 只看 P7-b 协议侧
 ```
 
-当前实测：**总计 199 / 通过 198 / 失败 1**（唯一红灯是 `AiOfficerP3Tests.Auto_Battle_Fights_And_Keeps_The_Front_Moving`，挂账 #94）。
+当前实测：**总计 239 / 通过 238 / 失败 1**（引擎侧 199 + 协议侧 40；唯一红灯是 `AiOfficerP3Tests.Auto_Battle_Fights_And_Keeps_The_Front_Moving`，挂账 #94）。
+协议侧 40 项连跑三次全绿（同一 Kestrel 子进程、同一临时存档目录）。
 
 建局一律走 `tests/HexFront.Tests/Engine/RealScenario.cs`：读随仓剧本 `data/scenarios/rhine_corridor.json`，
 overrides 走线上同一份 `ScenarioService.MergeOverrides`，所以测出来的语义就是 `POST /api/instances` 的语义。
@@ -147,6 +150,90 @@ overrides 走线上同一份 `ScenarioService.MergeOverrides`，所以测出来�
 
 ---
 
+## §10 协议对照（smoke_ws.dart 32 项 → dotnet test，#89 P7-b）
+
+基准是 `hexfront/bin/smoke_ws.dart`（32 项 `check()`）+ `HexFront.CSharp/scripts/ws-smoke.mjs`（51 处 `fail()` 闸门，
+它是 Dart 冒烟的 C# 侧改写，另带了 1a/3/5/7/7b/7c/8a/8b/9/10/10b/10c/11/12 这些 Dart 没覆盖的线上契约）。
+两边合起来的每一项都搬进了 `tests/HexFront.Tests/Protocol/`，共 **40 个用例**：
+
+| # | smoke_ws.dart 断言 | C# 用例 | 状态 |
+|---|---|---|---|
+| 1 | 红方收到己方视图（kind=side、own 非空） | `RoleViewProtocolTests.Both_Sides_Get_Their_Own_View` | 等价+（另断本方视图里不许出现全量 `units`） |
+| 2 | 蓝方收到己方视图 | 同上 | 等价+ |
+| 3 | 导演部为全知视图 | `RoleViewProtocolTests.Director_View_Is_Omniscient` | 等价 |
+| 4 | 观战非全知：无未暴露敌方明细 | `RoleViewProtocolTests.Spectator_Is_Not_Omniscient_By_Default` | 等价+（同时断 `state` 包里的 kind） |
+| 5 | 红蓝单位集合不交叉 | `RoleViewProtocolTests.Side_Rosters_Do_Not_Overlap` | 等价 |
+| 6 | 红位已被占用时第二次加入被拒 | `RoleViewProtocolTests.Occupied_Side_Slot_Is_Refused` | 等价+（Dart 只看到"连接失败"；C# 断 error 文案含「角色位」+「force」，且拒完必须关连接、mjs 10c） |
+| 7 | 指令草案回传本方 | `OrderProtocolTests.Draft_Reaches_Owner_And_Director_But_Not_The_Opponent` | 等价 |
+| 8 | 蓝方看不到红方指令草案 | 同上 | 等价 |
+| 9 | 导演部可见双方已受领指令 | 同上（`view.orders.red` 非空） | 等价+（另断没下令的蓝方那侧必须是空） |
+| 10 | 非法指令被服务端拒绝并回传原因 | `OrderProtocolTests.Illegal_Order_Blocks_Ready_Until_It_Is_Fixed` | 等价+（钉住「存在 N 条非法指令」这条 error 恰好一回，且提交阶段只回 `view.errors` 不发 error） |
+| 11 | 非法指令下 ready 不生效（不污染对局） | 同上（`ready` 后 `view.ready != true`） | 等价 |
+| 12 | 合法指令后就绪成功 | 同上（改成邻格后就绪） | 等价 |
+| 13 | 导演部触发结算，回合推进 | `OrderProtocolTests.Resolve_Advances_One_Turn_And_Filters_Events_By_Side` | 等价+（先等草案落地再结算，避免红方 orders 与导演部 resolve 两条连接抢跑） |
+| 14 | 红方收到本方事件 | 同上（事件 `code` 里必须有 `move`） | 等价+（Dart 只断"非空"，一条 `turn_end` 也算过） |
+| 15 | 蓝方看不到红方私有机动事件 | 同上 | 等价 |
+| 16 | 导演部改天气生效 | `DirectorCmdProtocolTests.Weather_Override_Reaches_Every_Terminal` | 等价+（四个终端都断，改出来的天气 id 要进每一端视图） |
+| 17 | AI 代管可切换 | `DirectorCmdProtocolTests.Ai_Management_Toggles_Appear_On_The_Director_View` | 等价+（开→关来回切，`view.ai.blue` 跟着变） |
+| 18 | 导演部可关闭迷雾（教学模式） | `DirectorCmdProtocolTests.Fog_Can_Be_Turned_Off_For_Teaching` | 等价+（`view.fog` 与 `flags.fog` 两处一起断） |
+| 19 | 观战全知档可切换 | `DirectorCmdProtocolTests.Spectator_Omniscient_Flag_Switches_The_Spectator_View` | 等价（新开的观战终端 kind 翻成 director） |
+| 20 | 存档列表可见本局 | `SaveLoadProtocolTests.Save_Is_Listed_And_Reloads_At_The_Same_Turn` | 等价+（`saved.instance` 必须等于建局返回的副本 id，手动存档不许另开副本） |
+| 21 | 存档可载入为新房间 | 同上（`POST /api/saves/load` 回 code） | 等价 |
+| 22 | 载入后回合数一致 | 同上（`resumed_turn` + 新房间首包 `turn`） | 等价+（另断 `saved.turn = meta.last_turn` 是已结算回合） |
+| 23 | 对抗方断开后阵营位立刻释放 | `SessionProtocolTests.Disconnect_Frees_The_Slot_And_Token_Reconnect_Takes_It_Back` | 等价（轮询 `side_taken.blue == false`） |
+| 24 | 同 token 重连可接管本方视图 | 同上 | 等价 |
+| 25 | 重连终端持续收到服务端推送（会话未成为孤儿） | 同上（重连后结算，`turn` 继续推进） | 等价 |
+| 26 | 同角色双开：旧终端收到 kicked（不会静默失联） | `SessionProtocolTests.Same_Token_Takeover_Kicks_The_Old_Terminal` | 等价+（另断 `kicked.reason`） |
+| 27 | 对面 AI 代管时，人类就绪即自动结算（不再空等） | `SessionProtocolTests.Human_Ready_Against_An_Ai_Side_Auto_Resolves` | 等价 |
+| 28 | 覆盖后点数由服务端自动计价 | `OverrideRestProtocolTests.Overridden_Types_Are_Priced_By_The_Server` | 等价+（加强后红方 OOB 破预算，`errors` 要照样报「超出预算」而不是悄悄放行） |
+| 29 | 规则语义字段（cls）不允许覆盖 | `OverrideRestProtocolTests.Rule_Semantic_Fields_Cannot_Be_Overridden` | 等价 |
+| 30 | 越界属性被拒 | `OverrideRestProtocolTests.Out_Of_Range_Attributes_Are_Rejected` | 等价 |
+| 31 | 未知兵种覆盖被拒 | `OverrideRestProtocolTests.Unknown_Unit_Type_Override_Is_Rejected` | 等价 |
+| 32 | 非法覆盖建不出副本 | `OverrideRestProtocolTests.Illegal_Override_Cannot_Create_An_Instance` | 等价+（`/api/validate` 与 `POST /api/instances` 走同一套检查，绕过向导直接建也不行） |
+
+### mjs 独有闸门（Dart 没有、React 前端依赖的线上契约）
+
+| mjs 项 | 事实 | C# 用例 |
+|---|---|---|
+| 0 | 未知房间码在握手就被拒，不再静默建局 | `RoleViewProtocolTests.Unknown_Room_Code_Is_Rejected_At_Handshake` |
+| 1a | `welcome` 首包自带 `view` 与 `room`，前端靠它落第一帧 | `RoleViewProtocolTests.Welcome_Carries_View_And_Room_Info` |
+| 3 | `pending{red,blue}` 按草案条数计数，前端用它显示"对方是否已下令" | `OrderProtocolTests.Pending_Counts_Land_On_The_Director_Packet` |
+| 4/9 | 结算权只在导演部；非导演部 `resolve` 被拒且不推进回合 | `OrderProtocolTests.Only_The_Director_Can_Resolve` |
+| — | 观战/导演部不许下指令 | `OrderProtocolTests.Non_Combatants_Cannot_Submit_Orders` |
+| 5/6 | 回放帧含导演部全知视图，对抗方取用必须被拒 | `SessionProtocolTests.Replay_Frames_Are_Reserved_For_Director_And_Spectator` |
+| 10 | 每帧都带 `battles`（无交战也是空数组），帧表裁剪在 200 内 | `SessionProtocolTests.Frame_Rest_Carries_Battles_Array_And_Stays_Capped` |
+| 7 | 阵营位被他人占用时，带 `force=1` 才能接管，旧终端收 kicked | `SessionProtocolTests.Foreign_Token_Needs_Force_To_Take_Over_A_Side_Slot` |
+| 10b | 观战同角色顶号**不需要** force | `SessionProtocolTests.Spectator_Takeover_Needs_No_Force` |
+| 11 | 全部终端下线后 `roles` 归零、`side_taken` 翻回 false | `SessionProtocolTests.All_Terminals_Offline_Releases_Every_Slot` |
+| 7/7b | 存档落盘（meta/init/turns.jsonl/snapshot_t1）与 `rng_at_resolve` 起点 | `SaveLoadProtocolTests.Archive_Lands_On_Disk_With_The_Rng_Start_Point` |
+| 8/8a | 载入房间的指纹 = 房间指纹；续跑房间补一帧带 `battles` 的 seed 帧 | `SaveLoadProtocolTests.Resumed_Room_Keeps_The_Fingerprint_And_Seeds_A_Replay_Frame` |
+| 7c | 快照每 3 回合滚一份，载入只重放尾部那一回合 | `SaveLoadProtocolTests.Snapshots_Roll_Every_Three_Turns_And_The_Tail_Replays` |
+| 8/8b | 明牌（fog off）不留档案：开雾时看得见全部敌人，重开雾后 contacts 必须缩回去 | `DirectorCmdProtocolTests.Fog_Off_Illuminates_But_Leaves_No_Archive` |
+| — | 未知天气被拒；`ping` 有 `pong`；未知消息类型回错误但不关连接 | `DirectorCmdProtocolTests.Unknown_Weather_Is_Rejected`、`SessionProtocolTests.Ping_Keeps_The_Session_Alive_And_Unknown_Type_Reports_Back` |
+
+### mjs 8c / 8d 没有整条搬过来，理由
+
+`8c. 战报因子链`要的是"红方人工机动 + 突击连推 10 回合，期间真打出交战，每场 `battles` 带满 12 个系数 + `cf` 乘积"。
+它的前半段（贪心路线一路推进去打野）依赖对方持续让出通路，正是 **#94 战线震荡**当前过不去的那条；
+后半段（因子链齐备）保护的其实是"系数逐项随战报下发"这条文档契约，引擎侧已有
+`CombatChainP2Tests.Factor_Map_Exposes_The_Whole_Chain` 直接对着 `TurnResolver` 的战报断，不必再起一个房间等交战发生。
+所以协议侧只保留 `battles` 数组恒在（mjs 10 那一行），把"12 个系数齐备 + 真打出来"合到 #94 交付时一起验。
+`8d. 全 AI 自动对抗`同理：终局判定与 ≤5s 由引擎侧 `TurnResolverP3Tests.Ai_Auto_Battle_Terminates_And_Stays_Interactive` 承担。
+
+### 地基：为什么协议测试必须起一个真进程
+
+第一版把 `Program` 直接在测试进程里 `WebApplication.CreateBuilder` 起来，Kestrel 起来了、端口也通了，
+但**每个控制器路由都 404**：MVC 的控制器发现默认扫 `Assembly.GetEntryAssembly()`，在 `dotnet test` 下那是测试宿主，
+不是 `HexFront.Api.dll`。顶号、释放、存档往返这些语义只有"第二条连接真站在另一端"才验得到，
+所以 `ApiFixture` 改成把 `HexFront.Api.dll` 当**子进程**用 `dotnet` 拉起来：
+
+- 端口用 `FreeTcpPort()` 现挑的环回口，`--urls` 传进去；`HF_SAVE_DIR` 指到本次运行的临时目录，测试存档不落进 `data/saves`。
+- 就绪判定是轮询 `GET /api/rooms`（40s 超时），超时把子进程 stdout/stderr 尾部一起抛出来，避免"起不来但看不见日志"。
+- `DisposeAsync` 用 `Kill(entireProcessTree: true)` 收尾并删临时目录；`HexFront.Tests.csproj` 保留对 `HexFront.Api` 的项目引用，只为保证它先被编译。
+- 生产代码零改动（`Program.cs` 里为了进程内宿主加过的 `public partial class Program {}` 已回滚）。
+
+---
+
 ## verify.dart 没有、C# 侧补上的用例
 
 不复刻 Dart 意味着按设计文档补齐文档写过但 Dart 没测的分支，主要包括：
@@ -156,11 +243,32 @@ overrides 走线上同一份 `ScenarioService.MergeOverrides`，所以测出来�
 - **AI 只用看得见的信息**：`AiOfficerP3Tests` 9 项（不打看不见的目标、未知格是靠过去而不是猜着打、只有防空兵打飞机、炮兵在射程边缘射击不硬冲、固定设施不下令、渡河不拜河、同一局势同一指令、每存活单位恰好一令）。
 - **结算分支**：`TurnResolverP3Tests` 32 项（七阶段顺序、五种战斗类型、空中交战走同一条 CF 链、遭遇战取稳定序的一个防守方、伏击、溃退往自己纵深、同回合不开火回血、集结阈值、断供回落宽松默认、四种胜利 + 回合耗尽人员判定、终局幂等）。
 - **存档边界**：`DeterminismP1Tests` 的 jsonl 回退重开（rebranch 截断日志）、存档目录清单、实例 id 不许越出 saves 根目录。
+- **坐标基线与取用序**（#90 P7-c，doc §6.5）：`HexTests.Range_Visits_Distance_Bands_In_Stable_Order` 与
+  `Range_First_Band_Is_The_Neighbor_Table_Sorted` 把"半径遍历按 (距离, q, r) 定序、同环按列再按行"钉成用例——
+  剧本落位兜底 `SpawnAt` 这类"取第一个可用格"的调用只有在这个序下才等于"取最近格"，Dart 侧靠 `hexRange` 内部 sort 实现，
+  verify.dart 没有对应断言（Dart 的 `hexRing` 零调用，按不复刻死代码的基准不移植，环这一档由 `Range` 的距离分层 6·d 格代证）。
 
-## P7-b 待补：smoke_ws 32 项
+## 协议侧没有 Dart 对应、按设计文档补上的用例
 
-协议基准是 `hexfront/bin/smoke_ws.dart`（32 项 check，覆盖三角色视图裁剪、pending 屏障、回合推进、手动存档落在同一副本、
-`turns.jsonl` 记随机源、载入续跑指纹一致、seed 帧带 battles 等）。
-C# 侧目前对应的是 **`HexFront.CSharp/scripts/ws-smoke.mjs`**（Node 手工跑，51 处 `fail()` 闸门），还没进 `dotnet test`。
-#89 的计划是把这 32 项逐条搬成 xUnit（对真实 Kestrel 起 `/ws`），并在此文档追加"§10 协议对照"表。
-在 #89 交付前，这张表只覆盖引擎侧，不代表协议侧有等价保护。
+`smoke_ws.dart` 只验"跑通了"，下面这些是文档写过、Dart 没断的分支，全部按线上契约补进 §10：
+
+- **权限矩阵**：结算权只在导演部（`Only_The_Director_Can_Resolve`，被拒后还要断回合没被偷偷推进）、
+  指令权只在阵营方（`Non_Combatants_Cannot_Submit_Orders`）、导调权只在导演部（`Only_The_Director_Can_Issue_Cmd`）、
+  回放帧只给导演部与观战（`Replay_Frames_Are_Reserved_For_Director_And_Spectator`）。
+- **顶号三档**（doc §12.1）：同 token 接管→旧终端收 `kicked`；他人占阵营位→不带 `force` 直接被拒且给出原因；
+  观战/导调位免 `force` 直接顶（`Spectator_Takeover_Needs_No_Force`）。
+- **断开即释放**（doc §12.1 实测点）：全部终端下线后 `roles` 每个计数归零、`side_taken` 翻回 false，
+  不留半开会话（`All_Terminals_Offline_Releases_Every_Slot`）。
+- **明牌不留档案**（doc §11.9）：导演部关迷雾做教学演示之后重新开雾，红方 contacts 必须缩回正常水平
+  （`Fog_Off_Illuminates_But_Leaves_No_Archive`）——这条同时是协议断言和引擎侧 `FogAndAiP0Tests` 的线上镜像。
+- **welcome 首包形状**（P6-a）：`token` / `room` / `view` 三项齐备，前端靠它落第一帧，不用等 `state`。
+- **回放帧契约**（P6-b）：每帧带 `battles`（无交战也是空数组）、帧表裁剪在 200 帧内、
+  REST `GET /api/frames/{code}` 与 WS `frames` 两条路同形。
+- **存档一致性**：`saved.instance` 等于建局的副本 id（手动存档不许悄悄开新副本）、`snapshot_t*.json` 每 3 回合滚一份、
+  载入只重放快照之后的尾部回合且 `replay_warnings` 为空。
+- **非法覆盖建不出副本**：`/api/validate` 与 `POST /api/instances` 用同一把尺子，向导被绕过也一样拦。
+
+`scripts/ws-smoke.mjs` 继续保留：它的 8c/8d 需要前线真的开火（挂 #94），加上要跑 10 回合贪心推进，
+不适合放进 `dotnet test` 的秒级路径，留作手工长测；上面这 40 项已经把同样的闸门搬进可重复执行的入口，
+交付验收以 `dotnet test --filter "FullyQualifiedName~Protocol"` 为准。
+
