@@ -523,8 +523,9 @@ public class GameController : ControllerBase
         if (!string.IsNullOrEmpty(env)) return env;
         try
         {
-            var dataDir = Path.GetDirectoryName(RoomServiceStaticPaths.DataDir);
-            var file = Path.Combine(dataDir!, "tianditu.json");
+            // DataDir 已经是仓库的 data/，再取一次 dirname 会退到仓库根，
+            // 于是永远去找 <root>/tianditu.json（不存在），密钥静默失效。
+            var file = Path.Combine(RoomServiceStaticPaths.DataDir, "tianditu.json");
             if (System.IO.File.Exists(file))
             {
                 using var doc = JsonDocument.Parse(System.IO.File.ReadAllText(file));

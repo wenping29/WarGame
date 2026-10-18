@@ -55,6 +55,8 @@ webapi/dist/
 webapi/appsettings.Development.json
 webapi/appsettings.Local.json
 webapi/*.pfx
+# 天地图 tk 属于访问凭证，只在本地存在；模板见 data/tianditu.example.json
+data/tianditu.json
 data/dem/tiles_z7/
 data/dem/*.tif
 data/dem/*.tif.ovr
