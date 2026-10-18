@@ -608,7 +608,7 @@ function GeneratePanel({ state, updateState, gen, onStart }: {
         </button>
       </div>
 
-      <PlanCard gen={gen} activeKm={activeKm} customKm={customKm} onPick={km => setGis({ cell_km: String(km) })} />
+      <PlanCard gen={gen} activeKm={activeKm ?? null} customKm={customKm} onPick={km => setGis({ cell_km: String(km) })} />
 
       <h3 style={{ marginTop: '12px' }}>数据层</h3>
       <div className="row">

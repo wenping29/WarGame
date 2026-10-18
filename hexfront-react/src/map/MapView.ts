@@ -408,7 +408,7 @@ export class MapView {
           const key = layer + '/' + zi + '/' + tx + '/' + ty
           let t = this.tiles.get(key)
           if (!t) t = this._loadTile(key, layer, zi, tx, ty)
-          if (t.status !== 'ok') continue
+          if (t.status !== 'ok' || !t.img) continue
           const m0x = -E + tx * (2 * E / n)
           const m0y = E - ty * (2 * E / n)
           const [sx, sy] = this.toScreen(m0x, m0y)

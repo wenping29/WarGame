@@ -18,6 +18,9 @@ export interface UnitTypeDef {
   recon?: number
   load?: number
   consumption?: number
+  range?: number
+  air_range?: number
+  is_air?: boolean
 }
 
 let cache: Promise<ScenariosMeta> | null = null

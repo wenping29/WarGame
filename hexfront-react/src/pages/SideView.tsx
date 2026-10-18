@@ -5,9 +5,11 @@
 
 import { useState } from 'react'
 import HexMap from '../components/HexMap'
+import { toast } from '../components/Toast'
+import { hexLine } from '../map/hex'
 import { useRoom } from '../room/RoomSocket'
 import type { WireCommand, WireSideView } from '../room/protocol'
-import { useUnitFull } from '../room/useUnitFull'
+import { useUnitFull, useUnitTypes } from '../room/useUnitFull'
 import { play } from '../services/sound'
 
 const MODES = [
@@ -37,6 +39,29 @@ export default function SideView() {
   const errors = view?.errors ?? []
   const side = view?.side ?? room.role
   const selected = own.find(u => u.id === selectedId) ?? null
+
+  // 预览半径取服务端同一条规则（CommandValidator：炮击 dist≤range+1、空任务 dist≤air_range、
+  // 突击 航空兵用 air_range / 地面用 range 或近距 1），画大了会让玩家点出必然被拒的指令
+  const typeMap = useUnitTypes()
+  const preview = (() => {
+    if (!selected) return { center: null as [number, number] | null, radius: 0 }
+    const center: [number, number] = [selected.q, selected.r]
+    const t = typeMap[selected.type] || {}
+    const range = t.range || 0
+    if (mode === 'fire') return { center, radius: range > 0 ? range + 1 : 0 }
+    if (mode === 'air') return { center, radius: t.air_range || 0 }
+    if (mode === 'attack') {
+      const air = t.is_air === true || selected.cls === 'air'
+      return { center, radius: air ? (t.air_range || 0) : (range > 0 ? range : 1) }
+    }
+    return { center: null as [number, number] | null, radius: 0 }
+  })()
+
+  const draftPath = (() => {
+    if (!selected) return null
+    const mv = draft.find(d => d.unit === selected.id && d.op === 'move')
+    return mv?.path ?? null
+  })()
 
   const hpPct = (id: string, personnel: number) => {
     const full = fullOf(id)
@@ -93,16 +118,17 @@ export default function SideView() {
     }
     if (!selected) {
       room.clearError()
-      play('warn')
-      alert('先选中一个己方单位')
+      toast('先选中一个己方单位', 'warn')
       return
     }
     if (mode === 'move') {
-      // 服务端校验要求路径含起点（当前格）
-      addDraft({ op: 'move', unit: selected.id, path: [[selected.q, selected.r], [q, r]] })
+      // 路径按六角直线逐格给出：服务端按相邻格校验机动，跳格直连会被判非法
+      const path = hexLine(selected.q, selected.r, q, r)
+      if (path.length < 2) { toast('目标即当前格', 'warn'); return }
+      addDraft({ op: 'move', unit: selected.id, path })
     } else if (mode === 'attack') {
       const c = contacts.find(x => x.q === q && x.r === r && x.level >= 1)
-      if (!c) { play('warn'); alert('该格无可攻击的已暴露敌情'); return }
+      if (!c) { toast('该格无可攻击的已暴露敌情', 'warn'); return }
       addDraft({ op: 'attack', unit: selected.id, target: c.id })
     } else if (mode === 'fire') {
       addDraft({ op: 'fire', unit: selected.id, zone: [q, r] })
@@ -110,8 +136,7 @@ export default function SideView() {
       if (mission === 'none') addDraft({ op: 'air_mission', unit: selected.id, mission: 'none' })
       else addDraft({ op: 'air_mission', unit: selected.id, mission, zone: [q, r] })
     } else {
-      play('warn')
-      alert('该模式请点击己方单位就地执行')
+      toast('该模式请点击己方单位就地执行', 'warn')
     }
   }
 
@@ -144,6 +169,9 @@ export default function SideView() {
           <HexMap
             view={view}
             selection={selected ? { q: selected.q, r: selected.r } : null}
+            draftPath={draftPath}
+            rangeCenter={preview.center}
+            rangeRadius={preview.radius}
             onPick={handleMapPick}
           />
           <div className="maphud" id="hud">
