@@ -100,9 +100,9 @@ public static class HexGenService
     /// <summary>Build hex grid geometry.</summary>
     private static HexGridGeometry BuildGrid(GenSpec spec)
     {
-        var (w, s, e, n) = (spec.Bbox[0], spec.Bbox[1], spec.Bbox[2], spec.Bbox[3]);
-        var centerLat = (s + n) / 2.0;
-        var scale = MercatorScale(centerLat);
+        // 格心中心 = bbox 的墨卡托中点（与 hexgen.grid_from_bbox 一致），不是纬度算术中点
+        var (centerLon, centerLat) = GisPlanService.GridCenter(spec.Bbox.ToArray());
+        var scale = GisPlanService.MercatorScale(centerLat);
         
         var cellGroundM = spec.CellKm * 1000.0;
         var cellM = cellGroundM * scale;
@@ -110,14 +110,11 @@ public static class HexGenService
         var hexWidthM = Math.Sqrt(3.0) * radiusM;
         var rowStepM = 1.5 * radiusM;
         
-        var cx0 = LonToX((w + e) / 2.0);
-        var cy0 = LatToY((s + n) / 2.0);
+        var cx0 = LonToX(centerLon);
+        var cy0 = LatToY(centerLat);
         
-        var lonSpan = e - w;
-        var latSpan = n - s;
-        var kmPerDegLon = 111.32 * Math.Cos(centerLat * Math.PI / 180.0);
-        var width = (int)Math.Ceiling(lonSpan * kmPerDegLon / spec.CellKm);
-        var height = (int)Math.Ceiling(latSpan * 111.32 / spec.CellKm);
+        // 行列数只有一份算法：与向导方案（GisPlanService）同源，否则「预览格数」≠「实际生成格数」
+        var (width, height) = GisPlanService.GridSize(spec.Bbox.ToArray(), spec.CellKm);
         
         var mercatorOx = cx0 - hexWidthM * ((width - 1) / 2.0 + (height - 1) / 4.0);
         var mercatorOy = cy0 + rowStepM * ((height - 1) / 2.0);
@@ -135,7 +132,7 @@ public static class HexGenService
             RowStepM = rowStepM,
             MercatorOx = mercatorOx,
             MercatorOy = mercatorOy,
-            CenterLon = (w + e) / 2.0,
+            CenterLon = centerLon,
             CenterLat = centerLat,
             Bbox = spec.Bbox,
         };
@@ -797,11 +794,6 @@ public static class HexGenService
     }
     
     // ==================== Helper Methods ====================
-    
-    private static double MercatorScale(double latDeg)
-    {
-        return 1.0 / Math.Max(0.05, Math.Cos(latDeg * Math.PI / 180.0));
-    }
     
     private static double LonToX(double lonDeg)
     {

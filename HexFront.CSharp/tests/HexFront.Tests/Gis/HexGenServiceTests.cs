@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using FluentAssertions;
 using HexFront.Core.Models;
 using HexFront.Core.Services;
@@ -92,8 +93,11 @@ public class HexGenServiceTests
         pkg.Meta.Bbox.Should().Equal(spec.Bbox);
         pkg.Meta.CellGroundM.Should().Be(spec.CellKm * 1000.0);
         pkg.Meta.CenterLonLat.Should().HaveCount(2);
-        pkg.Meta.CenterLonLat[0].Should().Be((spec.Bbox[0] + spec.Bbox[2]) / 2.0);
-        pkg.Meta.CenterLonLat[1].Should().Be((spec.Bbox[1] + spec.Bbox[3]) / 2.0);
+        // 经度线性 ⇒ 仍是算术中点；纬度走墨卡托中点（与生成侧同一份算法）
+        pkg.Meta.CenterLonLat[0].Should().BeApproximately((spec.Bbox[0] + spec.Bbox[2]) / 2.0, 1e-12);
+        var (_, centerLat) = GisPlanService.GridCenter(spec.Bbox);
+        pkg.Meta.CenterLonLat[1].Should().Be(centerLat);
+        pkg.Meta.CenterLonLat[1].Should().BeGreaterThan((spec.Bbox[1] + spec.Bbox[3]) / 2.0);
     }
 
     [Fact]
@@ -189,6 +193,28 @@ public class HexGenServiceTests
         var report = HexPackageValidator.Validate(pkg);
         report.Fails.Should().Be(0,
             string.Join("; ", report.Results.Where(r => r.Level == "FAIL").Select(r => r.Check + ":" + r.Detail)));
+    }
+
+    [Fact]
+    public void Package_Roundtrips_Through_The_Snake_Case_Wire_Contract()
+    {
+        // 落盘/读取都走 SnakeCaseLower：键名对不上时属性会静默留空，校验也就跟着失明
+        var pkg = HexGenService.Generate(SmallSpec());
+        var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+        var json = JsonSerializer.Serialize(pkg, options);
+        json.Should().Contain("\"center_lonlat\":[");
+
+        var back = JsonSerializer.Deserialize<HexPackage>(json,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+                PropertyNameCaseInsensitive = true,
+            })!;
+        back.Meta.CenterLonLat.Should().HaveCount(2);
+        back.Meta.CenterLonLat.Should().Equal(pkg.Meta.CenterLonLat);
+        back.Meta.RadiusM.Should().Be(pkg.Meta.RadiusM);
+        back.Meta.MercatorScale.Should().Be(pkg.Meta.MercatorScale);
+        HexPackageValidator.Validate(back).Fails.Should().Be(0);
     }
 
     [Fact]

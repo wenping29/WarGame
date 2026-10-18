@@ -8,6 +8,7 @@ builder.Services.AddControllers();
 builder.Services.AddSignalR();
 builder.Services.AddOpenApi();
 builder.Services.AddSingleton<RoomService>();
+builder.Services.AddSingleton<GisService>();
 
 var app = builder.Build();
 

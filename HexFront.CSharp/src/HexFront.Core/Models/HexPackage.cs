@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using HexFront.Core.Geometry;
 
 namespace HexFront.Core.Models;
@@ -48,6 +49,8 @@ public sealed class PackageMeta
     public double MercatorScale { get; init; }
     public double MercatorOx { get; init; }
     public double MercatorOy { get; init; }
+    /// <summary>线上键名是 center_lonlat（一个词），SnakeCaseLower 会拆成 center_lon_lat，故显式标注。</summary>
+    [JsonPropertyName("center_lonlat")]
     public List<double> CenterLonLat { get; init; } = new();
     public List<double> Bbox { get; init; } = new(); // [west, south, east, north] in WGS84
     public string GeneratedAt { get; init; } = "";
@@ -86,6 +89,10 @@ public sealed class GisJob
     public List<string> Log { get; init; } = new();
     public string? Error { get; set; }
     public HexPackage? Package { get; set; }
+
+    /// <summary>生成器回传的作业元信息（ok/fails/warns/layers/terrain_counts…），线上字段名保持 snake_case。</summary>
+    public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
+
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
     public DateTime? StartedAt { get; set; }
     public DateTime? FinishedAt { get; set; }

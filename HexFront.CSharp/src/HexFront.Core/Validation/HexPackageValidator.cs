@@ -509,18 +509,19 @@ public static class HexPackageValidator
             });
         }
 
-        // [37] Cell ground distance matches cell_km × 1000
-        var expectedCellM = pkg.Meta.CellGroundM;
+        // [37] 半径与对边距自洽：尖顶格 √3·radius = 墨卡托口径的格宽 = cell_ground_m × 放大系数
+        var groundCellM = pkg.Meta.CellGroundM;
+        var mercCellM = groundCellM * (pkg.Meta.MercatorScale > 0 ? pkg.Meta.MercatorScale : 1.0);
         var radiusBasedCellM = pkg.Meta.RadiusM * Math.Sqrt(3);
         
-        if (expectedCellM > 0 && radiusBasedCellM > 0)
+        if (mercCellM > 0 && radiusBasedCellM > 0)
         {
-            var cellDiff = Math.Abs(expectedCellM - radiusBasedCellM);
+            var cellDiff = Math.Abs(mercCellM - radiusBasedCellM);
             results.Add(new ValidationResult
             {
-                Level = cellDiff < 1.0 ? "OK" : "WARN",
+                Level = cellDiff / mercCellM < 1e-6 ? "OK" : "WARN",
                 Check = "对边距与半径一致",
-                Detail = $"cell_ground_m={expectedCellM:F1}, radius×√3={radiusBasedCellM:F1}, 差 {cellDiff:F1}m"
+                Detail = $"cell_ground_m×scale={mercCellM:F1}, radius×√3={radiusBasedCellM:F1}, 差 {cellDiff:F1}m"
             });
         }
         else
