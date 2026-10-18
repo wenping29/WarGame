@@ -116,7 +116,9 @@ public static class HexGenService
         // 行列数只有一份算法：与向导方案（GisPlanService）同源，否则「预览格数」≠「实际生成格数」
         var (width, height) = GisPlanService.GridSize(spec.Bbox.ToArray(), spec.CellKm);
         
-        var mercatorOx = cx0 - hexWidthM * ((width - 1) / 2.0 + (height - 1) / 4.0);
+        // 「格网几何中心」= bbox 中心：odd-r 棋盘横向跨度是 (width + 0.5) 格（奇数行右移半格），
+        // 所以中心分数索引是 ((width-1)/2 + 0.25, (height-1)/2)——横向那 0.25 与行数无关。
+        var mercatorOx = cx0 - hexWidthM * ((width - 1) / 2.0 + 0.25);
         var mercatorOy = cy0 + rowStepM * ((height - 1) / 2.0);
         
         return new HexGridGeometry

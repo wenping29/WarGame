@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using FluentAssertions;
+using HexFront.Core.Geometry;
 using HexFront.Core.Models;
 using HexFront.Core.Services;
 using HexFront.Core.Validation;
@@ -118,6 +120,27 @@ public class HexGenServiceTests
     }
 
     [Fact]
+    public void Generate_Board_Center_Coincides_With_Bbox_Midpoint()
+    {
+        var spec = SmallSpec();
+        var pkg = HexGenService.Generate(spec);
+        var m = pkg.Meta;
+
+        // odd-r 矩形棋盘横向跨度是 (width + 0.5)·格宽（奇数行右移半格），
+        // 所以棋盘中心的分数列索引是 (width-1)/2 + 0.25，与行数无关（设计文档 §6.2 零漂移对齐）。
+        var hexWidthM = Math.Sqrt(3.0) * m.RadiusM;
+        var rowStepM = 1.5 * m.RadiusM;
+        var cx = m.MercatorOx + hexWidthM * ((pkg.Width - 1) / 2.0 + 0.25);
+        var cy = m.MercatorOy - rowStepM * ((pkg.Height - 1) / 2.0);
+
+        var (wantLon, wantLat) = GisPlanService.GridCenter(spec.Bbox);
+        var (gotLon, gotLat) = Mercator.MercatorToLonLat(cx, cy);
+
+        gotLon.Should().BeApproximately(wantLon, 1e-9, "board must not drift west/east of the requested box");
+        gotLat.Should().BeApproximately(wantLat, 1e-9, "board must not drift north/south of the requested box");
+    }
+
+    [Fact]
     public void Generate_Is_Deterministic_For_Same_Seed()
     {
         var a = HexGenService.Generate(SmallSpec(seed: 42));
@@ -218,13 +241,34 @@ public class HexGenServiceTests
     }
 
     [Fact]
-    public void Generate_Validator_Reports_All_37_Checks()
+    public void Generate_Validator_Reports_All_38_Checks()
     {
         var pkg = HexGenService.Generate(SmallSpec());
 
         var report = HexPackageValidator.Validate(pkg);
-        report.Total.Should().Be(37);
+        report.Total.Should().Be(38);
         report.Passes.Should().Be(report.Total - report.Fails - report.Warns);
+    }
+
+    [Fact]
+    public void Validator_Fails_When_Board_Is_Off_Center()
+    {
+        // 中心对齐这条检查不能「有就算过」：把 ox 按 axial 期公式西移，必须报 FAIL
+        var pkg = HexGenService.Generate(SmallSpec());
+        var hexWidthM = Math.Sqrt(3.0) * pkg.Meta.RadiusM;
+        var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+        var node = JsonSerializer.SerializeToNode(pkg, options)!.AsObject();
+        node["meta"]!.AsObject()["mercator_ox"] =
+            JsonValue.Create(pkg.Meta.MercatorOx - hexWidthM * ((pkg.Height - 2) / 4.0 - 0.25));
+
+        var shifted = node.Deserialize<HexPackage>(new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            PropertyNameCaseInsensitive = true,
+        })!;
+
+        var check = HexPackageValidator.Validate(shifted).Results.Single(r => r.Check == "ox/oy 中心对齐");
+        check.Level.Should().Be("FAIL", check.Detail);
     }
 
     [Fact]

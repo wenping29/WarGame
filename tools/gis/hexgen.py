@@ -23,7 +23,8 @@ hexgen.py —— 兵棋引擎「GIS 六角格地形数据包」生成器（零�
   格心：cx = ox + W*(q + (r&1)/2)   cy = oy - 1.5*radius*r      W = sqrt(3)*radius = cell_km*1000
   邻居：按行奇偶取偏移表（偶数行 NE=(q,r-1)，奇数行 NE=(q+1,r-1)）  行距（南北）= 1.5*radius
   距离/直线等立方体运算先转 axial：aq = q - (r - (r&1))/2, ar = r
-  ox/oy 反推自「格网几何中心 == bbox 中心 == center_lonlat」。
+  ox/oy 反推自「格网几何中心 == bbox 中心 == center_lonlat」；
+  棋盘中心索引 = ((width-1)/2 + 0.25, (height-1)/2)，横向 0.25 来自奇数行右移半格。
 
 墨卡托换算（EPSG:3857 ↔ WGS84，严格互逆）：
   HALF_CIRC = 20037508.342789244（赤道半周长，米）, R = HALF_CIRC/pi = 6378137.0
@@ -297,10 +298,24 @@ class HexGrid:
         self.row_step_m = 1.5 * self.radius_m                # 南北行距（墨卡托米）
         cx0 = lon_to_x(center_lon)
         cy0 = lat_to_y(center_lat)
-        # 令「格网几何中心」= bbox 中心 = center_lonlat：按格心公式反推 ox/oy
-        # 几何中心的分数索引 = ((width-1)/2, (height-1)/2)
-        self.mercator_ox = cx0 - self.hex_width_m * ((width - 1) / 2.0 + (height - 1) / 4.0)
+        # 令「格网几何中心」= bbox 中心 = center_lonlat：按格心公式反推 ox/oy。
+        # odd-r 矩形棋盘的横向跨度是 (width + 0.5) 格（奇数行右移半格），
+        # 故中心落在分数索引 ((width-1)/2 + 0.25, (height-1)/2)——与行数无关。
+        self.mercator_ox = cx0 - self.hex_width_m * self.center_index_x
         self.mercator_oy = cy0 + self.row_step_m * ((height - 1) / 2.0)
+
+    # ---- 几何中心：ox/oy 反推与自校验共用同一份公式，避免各 site 漂移 ----
+    @property
+    def center_index_x(self) -> float:
+        return (self.width - 1) / 2.0 + 0.25
+
+    @property
+    def center_x_m(self) -> float:
+        return self.mercator_ox + self.hex_width_m * self.center_index_x
+
+    @property
+    def center_y_m(self) -> float:
+        return self.mercator_oy - self.row_step_m * ((self.height - 1) / 2.0)
 
     # ---- 索引：index = r*width + q（r 外层、q 内层） ----
     def index(self, q: int, r: int) -> int:
@@ -620,8 +635,8 @@ def synthetic_dem(grid: HexGrid, seed: int):
     """
     cell = grid.cell_m
     # 格网几何中心的墨卡托坐标（与 HexGrid 的 ox/oy 定义一致）
-    cx0 = grid.mercator_ox + grid.hex_width_m * ((grid.width - 1) / 2.0 + (grid.height - 1) / 4.0)
-    cy0 = grid.mercator_oy - grid.row_step_m * (grid.height - 1) / 2.0
+    cx0 = grid.center_x_m
+    cy0 = grid.center_y_m
     valley_half_width = 0.62 * cell       # 河谷半宽（米）
     depth = 42.0                          # 谷底相对台地下切（米）
     span_y = max(1.0, grid.height * grid.row_step_m)
@@ -1488,7 +1503,7 @@ def validate(data: dict, grid: HexGrid, cell_km: float, strict: bool = True):
                  and isinstance(hx["bridge"], bool) for hx in hexes)
     res.append((("OK" if num_ok else "FAIL"), "字段类型/数值有效", "elev·slope·bool·city"))
 
-    cx = meta["mercator_ox"] + grid.hex_width_m * ((w - 1) / 2.0 + (h - 1) / 4.0)
+    cx = meta["mercator_ox"] + grid.hex_width_m * grid.center_index_x
     cy = meta["mercator_oy"] - grid.row_step_m * ((h - 1) / 2.0)
     dlon = abs(x_to_lon(cx) - meta["center_lonlat"][0])
     dlat = abs(y_to_lat(cy) - meta["center_lonlat"][1])

@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HexFront.Core.Geometry;
 using HexFront.Core.Models;
 
 namespace HexFront.Core.Validation;
 
 /// <summary>
-/// 37-check validation suite matching Python hexgen.py's self-validation.
+/// 38-check validation suite matching Python hexgen.py's self-validation.
 /// Ensures grid integrity, terrain consistency, feature invariants, and gameplay balance.
 /// </summary>
 public static class HexPackageValidator
@@ -531,6 +532,34 @@ public static class HexPackageValidator
                 Level = "WARN",
                 Check = "对边距与半径一致",
                 Detail = "数值为 0，无法验证"
+            });
+        }
+
+        // [38] ox/oy 中心对齐：格网几何中心 == bbox 中心 == center_lonlat（设计文档 §6.2 零漂移）
+        if (pkg.Meta.CenterLonLat is { Count: >= 2 } && pkg.Meta.RadiusM > 0)
+        {
+            // odd-r 矩形棋盘横向跨度是 (width+0.5)·格宽（奇数行右移半格）⇒ 中心列索引 (width-1)/2 + 0.25
+            var hexWidthM = Math.Sqrt(3.0) * pkg.Meta.RadiusM;
+            var rowStepM = 1.5 * pkg.Meta.RadiusM;
+            var cx = pkg.Meta.MercatorOx + hexWidthM * ((pkg.Meta.Width - 1) / 2.0 + 0.25);
+            var cy = pkg.Meta.MercatorOy - rowStepM * ((pkg.Meta.Height - 1) / 2.0);
+            var (lon, lat) = Mercator.MercatorToLonLat(cx, cy);
+            var dlon = Math.Abs(lon - pkg.Meta.CenterLonLat[0]);
+            var dlat = Math.Abs(lat - pkg.Meta.CenterLonLat[1]);
+            results.Add(new ValidationResult
+            {
+                Level = dlon < 1e-6 && dlat < 1e-6 ? "OK" : "FAIL",
+                Check = "ox/oy 中心对齐",
+                Detail = $"Δlon={dlon:F6}° Δlat={dlat:F6}°（axial 期的 ox 公式会在这里露出来）"
+            });
+        }
+        else
+        {
+            results.Add(new ValidationResult
+            {
+                Level = "WARN",
+                Check = "ox/oy 中心对齐",
+                Detail = "缺 center_lonlat 或 radius_m，无法验证"
             });
         }
     }
