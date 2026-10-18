@@ -190,49 +190,112 @@ const hexDist = (a, b) => {
   return Math.max(Math.abs(x1 - x2), Math.abs(a[1] - b[1]), Math.abs(x1 + a[1] - x2 - b[1]));
 };
 
+// 机动预算裁剪与服务端同源：LibraryService.STANDARD_TERRAIN 的 Cost + TurnResolver.StepCost 修正。
+// 未知兵种落 2.0（对应引擎 GetValueOrDefault）；剧本若覆盖地形定义，这里只会保守地少走几步，不会误判成可走。
+const TERRAIN_COST = {
+  clear: { foot: 1.0, horse: 0.8, motor: 1.4, mech: 1.2 },
+  rough: { foot: 1.3, horse: 1.6, motor: 2.4, mech: 1.8 },
+  woods: { foot: 1.5, horse: 2.0, motor: 2.6, mech: 2.2 },
+  hills: { foot: 1.6, horse: 1.8, motor: 2.8, mech: 2.2 },
+  mountain: { foot: 2.2, horse: 2.6, motor: 4.0, mech: 3.2 },
+  city: { foot: 1.4, horse: 1.8, motor: 2.0, mech: 1.9 },
+  swamp: { foot: 2.0, horse: 2.6, motor: 3.6, mech: 3.0 },
+  river: { foot: 2.6, horse: 3.0, motor: 5.0, mech: 4.2 },
+  water: { foot: 9.0, horse: 9.0, motor: 9.0, mech: 9.0 },
+  void: { foot: 1.0, horse: 1.0, motor: 1.0, mech: 1.0 },
+};
+const stepCost = (cell, cls) => {
+  const heavy = cls === 'motor' || cls === 'mech';
+  let step = (TERRAIN_COST[cell.terrain] ?? {})[cls] ?? 2.0;
+  if (cell.road) step *= 0.65;
+  if (cell.railway && heavy) step *= 0.8;
+  if (cell.tunnel) step *= heavy ? 1.5 : 1.2;
+  if (cell.river && !cell.bridge) step += 2.0;
+  return step;
+};
+// 指挥系数×载重系数的下限是 0.6×0.6；按 0.6 折估算是「保底能走完」的规划预算
+const PLAN_FACTOR = 0.6;
+
 // 明牌：红方终端拿得到蓝方坐标才谈得上定向机动；关掉 AI 代管，改由人（脚本）下令
 dir.send({ type: 'director_cmd', action: 'fog', on: false });
 for (const s of ['red', 'blue']) dir.send({ type: 'director_cmd', action: 'ai', side: s, on: false });
 await sleep(400);
 
+const nearestBlue = (a, blues) => blues
+  .map(b => ({ b, d: hexDist([a.q, a.r], [b.q, b.r]) }))
+  .sort((x, y) => x.d - y.d || x.b.id.localeCompare(y.b.id))[0];
+
+// 贪心步步逼近：每步取一个能缩短格距、可通行、付得起的邻居；终点格留给目标敌人本身
+const planPath = (a, tgt, cellOf, us, budget, board) => {
+  const cls = a.cls === 'air' ? 'mech' : a.cls;
+  const path = [[a.q, a.r]];
+  let spent = 0;
+  for (;;) {
+    const cur = path[path.length - 1];
+    const nxt = neighborsOf(cur)
+      .filter(h => h[0] >= 0 && h[1] >= 0 && h[0] < board.w && h[1] < board.h)
+      .map(h => ({ h, cell: cellOf.get(`${h[0]},${h[1]}`) }))
+      .filter(x => x.cell && !IMPASSABLE.has(x.cell.terrain))
+      // 敌方地面格不进路径：校验按「下令方看得见谁」判非法，接触交给 d≤2 的突击指令
+      .filter(x => !us.some(o => o.status !== 'destroyed' && o.side !== 'red'
+        && o.q === x.h[0] && o.r === x.h[1]))
+      .map(x => ({ ...x, cost: stepCost(x.cell, cls) }))
+      .filter(x => spent + x.cost <= budget)
+      .sort((x, y) => hexDist(x.h, tgt) - hexDist(y.h, tgt)
+        || x.cost - y.cost || `${x.h}`.localeCompare(`${y.h}`))[0];
+    if (!nxt || hexDist(nxt.h, tgt) >= hexDist(cur, tgt)) break;
+    spent += nxt.cost;
+    path.push(nxt.h);
+  }
+  return path;
+};
+
 let battles = [];
 let rejected = [];
+const stalled = new Set(); // 上一回合零位移的单位换掉：同一格没桥的河连续撞 10 次只会耗尽 max_turns
 for (let i = 0; i < 10 && !battles.length; i++) {
   const st = dir.msgs.filter(m => m.type === 'state').pop();
   const us = st.view.units || [];
   const alive = (u) => u.status !== 'destroyed';
   const cellOf = new Map((st.view.cells || []).map(c => [`${c.q},${c.r}`, c]));
-  const reds = us.filter(u => u.side === 'red' && alive(u) && u.mobility > 0 && u.firepower > 0);
   const blues = us.filter(u => u.side === 'blue' && alive(u));
+  const budgetOf = (u) => Math.round(u.mobility * PLAN_FACTOR
+    * (st.view.weather?.mobility ?? 1) * (st.view.day?.recon ?? 1));
+  const reds = us.filter(u => u.side === 'red' && alive(u) && u.mobility > 0 && u.firepower > 0);
   if (!reds.length || !blues.length) fail('没有可机动的红方单位或蓝方目标，无法制造交战');
 
-  let pair = null;
-  for (const a of reds) for (const b of blues) {
-    const d = hexDist([a.q, a.r], [b.q, b.r]);
-    if (!pair || d < pair.d) pair = { a, b, d };
-  }
+  // 卡过一轮的单位换掉：同一格没桥的河连续撞 10 次只会耗尽 max_turns。全卡住时再给一次机会
+  const fresh = reds.filter(u => !stalled.has(u.id));
+  const cands = (fresh.length ? fresh : reds)
+    .map(a => ({ a, ...nearestBlue(a, blues) }))
+    .sort((x, y) => x.d - y.d || x.a.id.localeCompare(y.a.id))
+    .slice(0, 6);
+  if (!cands.length) fail('红方没有可机动的单位，无法制造交战');
 
-  const tgt = [pair.b.q, pair.b.r];
+  const planned = new Map();
+  const gambles = [];
   const cmds = [];
-  if (pair.d <= 2) {
-    cmds.push({ op: 'attack', unit: pair.a.id, target: pair.b.id });
-  } else {
-    // 贪心步步逼近：每步取一个能缩短格距、可通行、且不被敌军占据的邻居
-    const path = [[pair.a.q, pair.a.r]];
-    for (let s = 0; s < 6; s++) {
-      const cur = path[path.length - 1];
-      const nxt = neighborsOf(cur)
-        .filter(h => h[0] >= 0 && h[1] >= 0 && h[0] < st.view.width && h[1] < st.view.height)
-        .filter(h => { const c = cellOf.get(`${h[0]},${h[1]}`); return c && !IMPASSABLE.has(c.terrain); })
-        .filter(h => !us.some(o => alive(o) && o.side !== 'red' && o.q === h[0] && o.r === h[1]))
-        .sort((x, y) => hexDist(x, tgt) - hexDist(y, tgt))[0];
-      if (!nxt || hexDist(nxt, tgt) >= hexDist(cur, tgt)) break;
-      path.push(nxt);
+  for (const { a, b, d } of cands) {
+    if (d <= 2) { cmds.push({ op: 'attack', unit: a.id, target: b.id }); continue; }
+    const path = planPath(a, [b.q, b.r], cellOf, us, budgetOf(a),
+      { w: st.view.width, h: st.view.height });
+    if (path.length >= 2) {
+      planned.set(a.id, path);
+      cmds.push({ op: 'move', unit: a.id, path });
+      continue;
     }
-    if (path.length < 2) fail(`${pair.a.id} 朝 ${pair.b.id} 找不到合法移动方向`);
-    cmds.push({ op: 'move', unit: pair.a.id, path });
+    // 保底预算一步都付不起（多半是没桥的河）：改按服务端真实预算赌一次，走不动下回合换单位
+    const lazy = planPath(a, [b.q, b.r], cellOf, us, Infinity,
+      { w: st.view.width, h: st.view.height });
+    if (lazy.length >= 2) {
+      planned.set(a.id, lazy);
+      gambles.push(a.id);
+      cmds.push({ op: 'move', unit: a.id, path: lazy });
+    }
   }
+  if (!cmds.length) fail(`${cands.map(x => x.a.id).join('/')} 一步都规划不出来，无法制造交战`);
 
+  const posBefore = new Map(us.map(u => [u.id, `${u.q},${u.r}`]));
   red.send({ type: 'orders', replace: true, commands: cmds });
   await sleep(250);
   const eventsBefore = dir.msgs.filter(m => m.type === 'events').length;
@@ -245,8 +308,18 @@ for (let i = 0; i < 10 && !battles.length; i++) {
   dir.send({ type: 'frames' });
   const fArr = await dir.waitFor('frames', framesBefore + 1, 8000);
   battles = (fArr[fArr.length - 1].frames || []).flatMap(f => f.battles || []);
-  log(`   交战尝试 ${i + 1}：${cmds[0].op} ${pair.a.id}(${pair.d}格) → ${pair.b.id}，` +
-    `被拒 ${rejected.length}，累计战报 ${battles.length}`);
+
+  const now = arr[arr.length - 1].view.units;
+  const at = (list, id) => { const u = list.find(x => x.id === id); return u && `${u.q},${u.r}`; };
+  const moved = [...planned.keys()].filter(id => at(now, id) && at(now, id) !== posBefore.get(id));
+  for (const id of planned.keys()) if (!moved.includes(id)) stalled.add(id);
+  const nowBlues = now.filter(x => x.side === 'blue' && alive(x));
+  const gap = Math.min(...now.filter(x => x.side === 'red' && alive(x))
+    .map(x => nearestBlue(x, nowBlues)?.d ?? 99));
+  log(`   交战尝试 ${i + 1}：${cmds.length} 令（含赌注 ${gambles.length}，位移 ${moved.length}：${moved.join('/') || '无'}），` +
+    `最近格距 ${gap}，被拒 ${rejected.length}，累计战报 ${battles.length}`);
+  if (!battles.length && stalled.size)
+    log(`     原地未动：${[...stalled].join('/')} —— 首格算不进机动预算（多为无桥河）`);
   if (!battles.length && arr[arr.length - 1].over) fail('对局提前结束仍无交战');
 }
 if (!battles.length)
