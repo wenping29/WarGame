@@ -214,6 +214,9 @@ AIRPORT_DERIVED_SLOPE_MAX_DEG = 1.5
 AIRPORT_CITY_MIN_DIST = 2
 AIRPORT_CITY_MAX_DIST = 6
 AIRPORT_MAX = 3
+# 真实机场点按格心吸附后可能压在水面/城镇格上（契约禁止），向外找最近合法格
+AIRPORT_RELOCATE_HOPS = 3
+AIRPORT_FORBIDDEN_TERRAIN = ("water", "river", "city")
 
 # =====================================================================================
 # 3) 投影 / 格网几何
@@ -1264,6 +1267,29 @@ def build_power(grid, elev, terr, slopes, city_marks, river_dist):
     return plants, substations, lines
 
 
+def _airport_cell(grid, terr, cell):
+    """机场落脚格：本格合法则原样用；压在水面/城镇上则 BFS 取最近的合法格；跳完仍无解返回 None。"""
+    if not grid.in_bounds(*cell):
+        return None
+    if terr[grid.index(*cell)] not in AIRPORT_FORBIDDEN_TERRAIN:
+        return cell
+    frontier, seen = [cell], {cell}
+    for _ in range(AIRPORT_RELOCATE_HOPS):
+        nxt = []
+        for cur in frontier:
+            for nb in grid.neighbors(*cur):
+                if nb in seen or not grid.in_bounds(*nb):
+                    continue
+                seen.add(nb)
+                if terr[grid.index(*nb)] not in AIRPORT_FORBIDDEN_TERRAIN:
+                    return nb
+                nxt.append(nb)
+        frontier = nxt
+        if not frontier:
+            return None
+    return None
+
+
 def place_airports(grid, terr, slopes, road, rail, city_marks, real_airports):
     """
     机场：真实机场点（Natural Earth 10m）优先；战区里没有真实机场要素时，
@@ -1272,7 +1298,20 @@ def place_airports(grid, terr, slopes, road, rail, city_marks, real_airports):
     """
     marks = dict(real_airports or {})
     if marks:
-        ranked = sorted(marks.items(),
+        placed, moved, dropped = {}, 0, 0
+        for cell, grade in marks.items():
+            target = _airport_cell(grid, terr, cell)
+            if target is None:
+                dropped += 1
+                continue
+            if target != cell:
+                moved += 1
+            if target not in placed or grade > placed[target]:
+                placed[target] = grade
+        if moved or dropped:
+            print("[airport] 真实机场点吸附：%d 处移到邻近合法格，%d 处 3 跳内无落脚点而丢弃"
+                  % (moved, dropped), file=sys.stderr)
+        ranked = sorted(placed.items(),
                         key=lambda kv: (-kv[1], grid.index(*kv[0])))
         return dict(ranked[:AIRPORT_MAX]), "real"
     if not city_marks:
