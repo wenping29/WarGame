@@ -108,8 +108,8 @@ export interface CreateInstanceBody {
   seed?: number
   ai_red?: boolean
   ai_blue?: boolean
+  /** 数据包选择走 overrides.gis_package，与其他覆盖同一入口 */
   overrides?: Record<string, unknown>
-  gis?: string
   force?: boolean
 }
 
@@ -122,6 +122,99 @@ export interface ScenariosMeta {
   terrains: Record<string, Record<string, unknown>>
   rules_default: Record<string, unknown>
   tiles: Record<string, unknown>
+}
+
+// ==================== GIS 现场生成契约（GET plan / jobs，字段一律 snake_case） ====================
+
+export interface GisCapabilities {
+  available: boolean
+  engine: 'python-hexgen' | 'synthetic' | string
+  python?: string | null
+  python_version?: string | null
+  rasterio?: boolean
+  dem_present?: boolean
+  dem_tif?: string | null
+  water_vector_ok?: boolean
+  water_reason?: string | null
+  vector_ok?: boolean
+  vector_reason?: string | null
+  roads_gdb_present?: boolean
+  roads_gdb?: string | null
+  airports_present?: boolean
+  airports_shp?: string | null
+  reason?: string | null
+}
+
+export type PlanRungLabel = 'recommended' | 'heavy' | 'coarse' | 'ok' | string
+
+export interface GisPlanRung {
+  cell_km: number
+  width: number
+  height: number
+  cells: number
+  label: PlanRungLabel
+}
+
+export interface GisPlan {
+  ok?: boolean
+  error?: string
+  bbox: [number, number, number, number]
+  center_lonlat: [number, number]
+  ground_km: [number, number]
+  mercator_scale: number
+  target_cells: number
+  min_side: number
+  dem_floor_km: number
+  max_cells: number
+  recommended: { cell_km: number; reasons: string[] }
+  /** 只在请求带了 cell_km 时出现 */
+  current?: GisPlanRung & { mercator_scale?: number }
+  ladder: GisPlanRung[]
+}
+
+export type GisJobStatus = 'queued' | 'running' | 'done' | 'failed' | string
+
+export interface GisJob {
+  id: string
+  status: GisJobStatus
+  name: string
+  spec?: Record<string, unknown>
+  log: string[]
+  error?: string | null
+  meta?: {
+    ok?: boolean
+    name?: string
+    source?: string
+    cell_km?: number
+    width?: number
+    height?: number
+    fails?: number
+    warns?: number
+    layers?: Record<string, string>
+    terrain_counts?: Record<string, number>
+    errors?: string[]
+  }
+  created_at?: string
+}
+
+export interface GisJobSpec {
+  bbox: [number, number, number, number]
+  cell_km: number
+  name: string
+  dem: 'auto' | 'local' | 'synthetic'
+  landuse: 'auto' | 'proxy' | 'off'
+  roads: boolean
+  water: boolean
+  network: boolean
+  features: boolean
+  seed?: number
+  offline?: boolean
+}
+
+/** GIS 端点的失败一律 400/404 + {"error":"…"}；axios 会 throw，这里把服务端原文捞回来展示。 */
+export const netError = (e: unknown): string => {
+  const data = (e as { response?: { data?: { error?: string } } })?.response?.data
+  return data?.error || String(e)
 }
 
 // ==================== API（对齐 web/js/api.js） ====================
@@ -145,14 +238,15 @@ export const api = {
       room?: RoomInfo
       error?: string
     }>('/saves/load', { instance }),
-  gisCapabilities: (refresh?: boolean) =>
-    get<Record<string, unknown>>('/gis/capabilities' + (refresh ? '?refresh=1' : '')),
+  gisCapabilities: () => get<GisCapabilities>('/gis/capabilities'),
   gisPlan: (bbox: [number, number, number, number], cellKm?: number) =>
-    get<Record<string, unknown>>('/gis/plan?w=' + bbox[0] + '&s=' + bbox[1] + '&e=' + bbox[2] + '&n=' + bbox[3] +
+    get<GisPlan>('/gis/plan?w=' + bbox[0] + '&s=' + bbox[1] + '&e=' + bbox[2] + '&n=' + bbox[3] +
       (cellKm ? '&cell_km=' + cellKm : '')),
-  gisJobs: () => get<Array<Record<string, unknown>>>('/gis/jobs'),
-  gisJob: (id: string) => get<Record<string, unknown>>('/gis/jobs/' + id),
-  gisStartJob: (spec: Record<string, unknown>) => post<Record<string, unknown>>('/gis/jobs', spec),
+  gisJobs: () => get<{ jobs: GisJob[] }>('/gis/jobs'),
+  gisJob: (id: string) => get<GisJob>('/gis/jobs/' + id),
+  gisStartJob: (spec: GisJobSpec) => post<GisJob>('/gis/jobs', spec),
+  gisValidate: (packageName: string) =>
+    post<{ file: string; total: number; fails: number; warns: number; passes: number; results: Array<{ level: string; check: string; detail: string }> }>('/gis/validate', { package_name: packageName }),
 }
 
 export default apiClient

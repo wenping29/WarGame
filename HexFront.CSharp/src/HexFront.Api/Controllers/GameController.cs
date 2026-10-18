@@ -101,12 +101,14 @@ public class GameController : ControllerBase
             });
         }
 
-        var errs = ValidateScenario(cfg);
+        var eff = UnitTypeDefService.EffectiveLibrary(cfg.UnitTypeDefs);
+        var errs = ValidateScenario(cfg, eff);
+        errs.AddRange(UnitTypeDefService.Validate(cfg.UnitTypeDefs));
         return Ok(new Dictionary<string, object?>
         {
             ["errors"] = errs,
-            ["preview"] = OobPreview(cfg),
-            ["type_points"] = new Dictionary<string, object?>(), // unit_type_defs overrides not yet supported
+            ["preview"] = OobPreview(cfg, eff),
+            ["type_points"] = UnitTypeDefService.TypePoints(cfg.UnitTypeDefs, eff),
         });
     }
 
@@ -134,7 +136,8 @@ public class GameController : ControllerBase
         }
         if (cfg == null) return BadRequestDict($"剧本不存在: {scenarioId}", null);
 
-        var errs = ValidateScenario(cfg);
+        var errs = ValidateScenario(cfg, UnitTypeDefService.EffectiveLibrary(cfg.UnitTypeDefs));
+        errs.AddRange(UnitTypeDefService.Validate(cfg.UnitTypeDefs));
         if (errs.Count > 0 && !Bool(body, "force", false))
             return BadRequestDict("剧本/覆盖校验未通过", errs);
 
@@ -342,7 +345,8 @@ public class GameController : ControllerBase
     }
 
     /// <summary>Scenario validity checks ported from Dart Scenario.validate (sides/oob/types/coords/budget/weather).</summary>
-    private static List<string> ValidateScenario(ScenarioConfig cfg)
+    /// <param name="eff">覆盖后的有效定义库：预算与点数都必须用它，否则改过属性的兵种按出厂价算。</param>
+    private static List<string> ValidateScenario(ScenarioConfig cfg, Dictionary<string, UnitTypeDef> eff)
     {
         var errs = new List<string>();
         if (cfg.Sides == null || cfg.Sides.Count == 0)
@@ -361,7 +365,7 @@ public class GameController : ControllerBase
                 double used = 0;
                 foreach (var e in sc.Oob)
                 {
-                    if (LibraryService.UNIT_TYPES.TryGetValue(e.Type, out var t))
+                    if (eff.TryGetValue(e.Type, out var t))
                         used += t.Points * e.Qty;
                     else
                         errs.Add($"阵营 {side} 引用未知兵种 {e.Type}");
@@ -388,7 +392,7 @@ public class GameController : ControllerBase
         return errs;
     }
 
-    private static Dictionary<string, object?> OobPreview(ScenarioConfig cfg)
+    private static Dictionary<string, object?> OobPreview(ScenarioConfig cfg, Dictionary<string, UnitTypeDef> eff)
     {
         var sides = new Dictionary<string, object?>();
         if (cfg.Sides != null)
@@ -400,7 +404,7 @@ public class GameController : ControllerBase
                 foreach (var e in sc.Oob)
                 {
                     units += e.Qty;
-                    if (LibraryService.UNIT_TYPES.TryGetValue(e.Type, out var t))
+                    if (eff.TryGetValue(e.Type, out var t))
                         pts += t.Points * e.Qty;
                 }
                 sides[side] = new Dictionary<string, object?>

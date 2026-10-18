@@ -1,14 +1,14 @@
 /**
  * 创建副本向导：5步流程。核心原则——未编辑字段绝不进入 overrides，
  * 服务端把 overrides deepMerge 到剧本默认；未出现的键即"用默认"。
- * 现场生成数据包（GIS 作业）尚未接入 React 端：generate 模式下需先在大厅/旧前端生成，
- * 或改用已有数据包。
+ * 第 2 步支持现场生成六角格：GET /api/gis/plan 出档位阶梯与服务端推荐，
+ * POST /api/gis/jobs 起后台作业并 1.5s 轮询日志，产物按 overrides.gis_package 进入本局。
  */
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, type CreateInstanceBody, type ValidateResult } from '../services/api'
-import { useMeta, type UnitTypeDef } from '../room/useUnitFull'
+import { api, netError, type CreateInstanceBody, type GisCapabilities, type GisJob, type GisPlan, type ValidateResult } from '../services/api'
+import { loadMeta, useMeta, type UnitTypeDef } from '../room/useUnitFull'
 import { toast } from '../components/Toast'
 
 const STEP_TITLES = ['剧本与名称', '战场环境', '天气', '部队编成', '审阅并创建']
@@ -50,6 +50,32 @@ interface OOBRow {
   cquality: string
 }
 
+/** 现场生成会话：与表单状态分开存，切步骤/轮询都不丢日志。 */
+interface GenSession {
+  caps: GisCapabilities | null
+  plan: GisPlan | null
+  planErr: string
+  planBusy: boolean
+  job: GisJob | null
+  jobErr: string
+}
+
+const LAYER_LABEL_CN: Record<string, string> = {
+  recommended: '推荐档位', heavy: '格数偏多', coarse: '格数偏少',
+}
+
+const JOB_STATUS_CN: Record<string, string> = {
+  queued: '排队中', running: '生成中', done: '已完成', failed: '失败',
+}
+
+/** 范围框 → [西,南,东,北]；不合法返回 null（服务端同样拒，前置判断只为给中文提示） */
+function bboxOf(b: { w: string; s: string; e: string; n: string }): [number, number, number, number] | null {
+  const w = num(b.w), s = num(b.s), e = num(b.e), n = num(b.n)
+  if (w === null || s === null || e === null || n === null) return null
+  if (!(w < e && s < n)) return null
+  return [w, s, e, n]
+}
+
 interface WizardState {
   scenarioId: string
   name: string
@@ -58,6 +84,8 @@ interface WizardState {
   gis: {
     mode: 'existing' | 'generate'
     pkg: string
+    /** generate 模式作业完成后的产物包名：进入 overrides.gis_package */
+    genPkg: string
     bbox: { w: string; s: string; e: string; n: string }
     cell_km: string
     dem: string
@@ -128,7 +156,7 @@ export default function Wizard() {
     seed: '',
     env: { width: '', height: '', cell_km: '', lon: '', lat: '' },
     gis: {
-      mode: 'existing', pkg: '',
+      mode: 'existing', pkg: '', genPkg: '',
       bbox: { w: '', s: '', e: '', n: '' },
       cell_km: '', dem: 'auto', landuse: 'auto',
       roads: true, water: true, network: true, features: true, name: '',
@@ -152,11 +180,86 @@ export default function Wizard() {
       scenarioId: s.id || s.file,
       name: s.name || '',
       env: { ...prev.env, cell_km: prev.env.cell_km || ed.cell_km, lon: ed.lon, lat: ed.lat },
-      gis: { ...prev.gis, bbox: { w: ed.w, s: ed.s, e: ed.n, n: ed.n } },
+      gis: { ...prev.gis, bbox: { w: ed.w, s: ed.s, e: ed.e, n: ed.n } },
     }))
   }, [meta, state.scenarioId])
 
   const u = (updates: Partial<WizardState>) => setState(prev => ({ ...prev, ...updates }))
+
+  // ── 现场生成六角格：能力探测 / 格网方案 / 作业轮询 ──
+  const [gen, setGen] = useState<GenSession>({ caps: null, plan: null, planErr: '', planBusy: false, job: null, jobErr: '' })
+  const patchGen = (p: Partial<GenSession>) => setGen(prev => ({ ...prev, ...p }))
+
+  useEffect(() => {
+    if (state.gis.mode !== 'generate' || gen.caps) return
+    api.gisCapabilities().then(c => patchGen({ caps: c })).catch(() => {})
+  }, [state.gis.mode, gen.caps])
+
+  // 范围框/对边距变化后 420ms 去抖算方案：几何一律由服务端 plan 给，前端不自算
+  useEffect(() => {
+    if (state.gis.mode !== 'generate') return
+    const bb = bboxOf(state.gis.bbox)
+    if (!bb) {
+      setGen(prev => ({ ...prev, plan: null, planErr: '范围框需满足 西<东、南<北' }))
+      return
+    }
+    const cell = num(state.gis.cell_km) || undefined
+    setGen(prev => ({ ...prev, planBusy: true }))
+    const t = setTimeout(() => {
+      api.gisPlan(bb, cell)
+        .then(res => setGen(prev => ({ ...prev, planBusy: false, plan: res, planErr: res.error || '' })))
+        .catch(e => setGen(prev => ({ ...prev, planBusy: false, plan: null, planErr: netError(e) })))
+    }, 420)
+    return () => clearTimeout(t)
+  }, [state.gis.mode, state.gis.bbox, state.gis.cell_km])
+
+  const jobLive = gen.job != null && (gen.job.status === 'queued' || gen.job.status === 'running')
+  useEffect(() => {
+    const id = gen.job?.id
+    if (!id || !jobLive) return
+    const timer = setInterval(async () => {
+      let j: GisJob
+      try {
+        j = await api.gisJob(id)
+      } catch (e) {
+        setGen(prev => ({ ...prev, job: null, jobErr: netError(e) }))
+        toast(netError(e), 'err')
+        return
+      }
+      setGen(prev => ({ ...prev, job: j, jobErr: '' }))
+      if (j.status === 'done') {
+        // 新包要进 /api/scenarios 的 gis 列表，也要成为本局的 gis_package
+        await loadMeta(true).catch(() => {})
+        setState(prev => ({ ...prev, gis: { ...prev.gis, pkg: j.name, genPkg: j.name } }))
+        toast(`六角格数据包已生成：${j.name}（${j.meta?.width ?? '?'}×${j.meta?.height ?? '?'} 格）`)
+      } else if (j.status === 'failed') {
+        toast('生成失败：' + (j.error || '见日志'), 'err')
+      }
+    }, 1500)
+    return () => clearInterval(timer)
+  }, [gen.job?.id, jobLive])
+
+  const startGen = async () => {
+    const g = state.gis
+    if (gen.job && (gen.job.status === 'queued' || gen.job.status === 'running')) return
+    const bb = bboxOf(g.bbox)
+    if (!bb) return toast('范围框需满足 西<东、南<北', 'err')
+    const cell = num(g.cell_km) || gen.plan?.recommended.cell_km
+    if (!cell) return toast(gen.planErr || '正在计算格网方案，稍候', 'warn')
+    try {
+      const job = await api.gisStartJob({
+        bbox: bb, cell_km: cell, name: g.name.trim(),
+        dem: g.dem as 'auto' | 'local' | 'synthetic',
+        landuse: g.landuse as 'auto' | 'proxy' | 'off',
+        roads: g.roads, water: g.water, network: g.network, features: g.features,
+      })
+      setGen(prev => ({ ...prev, job, jobErr: '' }))
+    } catch (e) {
+      const msg = netError(e)
+      setGen(prev => ({ ...prev, jobErr: msg }))
+      toast(msg, 'err')
+    }
+  }
 
   const types: UnitTypeDef[] = useMemo(
     () => {
@@ -189,9 +292,9 @@ export default function Wizard() {
   // 与 web wizard 的 buildOverrides 同语义，但接受显式 state（避免 setState 异步下读到旧值）
   function buildOverridesFor(st: WizardState): Record<string, unknown> & { __invalid?: string } {
     const ov: Record<string, unknown> = {}
-    const pkg = st.gis.mode === 'existing' ? st.gis.pkg : ''
-    if (st.gis.mode === 'generate') {
-      return { __invalid: '战场数据尚未生成：React 端现场生成未接入，请改用已有数据包或旧版向导' }
+    const pkg = st.gis.mode === 'existing' ? st.gis.pkg : st.gis.genPkg
+    if (st.gis.mode === 'generate' && !pkg) {
+      return { __invalid: '战场数据尚未生成：请先在「战场环境」里点「生成六角格网格」并等待完成' }
     }
     if (pkg) ov.gis_package = pkg
     const env: Record<string, unknown> = {}
@@ -267,7 +370,7 @@ export default function Wizard() {
   useEffect(() => {
     if (step >= 1 && state.scenarioId) doValidate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.weather.initial, state.weather.mode, state.gis.pkg, state.flags,
+  }, [state.weather.initial, state.weather.mode, state.gis.pkg, state.gis.genPkg, state.flags,
       state.sides, state.typeRows, state.typeAttrs, state.scenarioId, oobDirty])
 
   return (
@@ -297,7 +400,7 @@ export default function Wizard() {
                         scenarioId: e.target.value,
                         name: s?.name || state.name,
                         env: { ...state.env, lon: ed.lon, lat: ed.lat, cell_km: ed.cell_km },
-                        gis: { ...state.gis, bbox: { w: ed.w, s: ed.s, e: ed.n, n: ed.n } },
+                        gis: { ...state.gis, genPkg: '', bbox: { w: ed.w, s: ed.s, e: ed.e, n: ed.n } },
                       })
                     }}
                   >
@@ -319,7 +422,7 @@ export default function Wizard() {
             </div>
           )}
 
-          {step === 1 && <Step2Environment state={state} updateState={u} />}
+          {step === 1 && <Step2Environment state={state} updateState={u} gen={gen} onStart={startGen} />}
           {step === 2 && <Step3Weather state={state} updateState={u} weatherList={weatherList} />}
           {step === 3 && (
             <Step4OOB
@@ -351,8 +454,9 @@ export default function Wizard() {
 }
 
 // Step 2: Environment
-function Step2Environment({ state, updateState }: {
+function Step2Environment({ state, updateState, gen, onStart }: {
   state: WizardState; updateState: (u: Partial<WizardState>) => void
+  gen: GenSession; onStart: () => void
 }) {
   const meta = useMeta()
   const packages = (meta?.gis || []) as Array<{ name: string; cell_km?: number; width?: number; height?: number; cells?: number }>
@@ -413,20 +517,7 @@ function Step2Environment({ state, updateState }: {
             })()}
           </div>
         ) : (
-          <div style={{ marginTop: '10px' }}>
-            <div className="row">
-              {(['w', 's', 'e', 'n'] as const).map((k, i) => (
-                <label key={k}>
-                  <span>{['西经', '南纬', '东经', '北纬'][i]}</span>
-                  <input type="number" step="0.01" value={g.bbox[k]}
-                    onChange={e => updateState({ gis: { ...g, bbox: { ...g.bbox, [k]: e.target.value } } })} />
-                </label>
-              ))}
-            </div>
-            <p className="muted small">
-              现场生成六角格尚未接入 React 端（后续步骤补齐），请切回「使用已有数据包」。
-            </p>
-          </div>
+          <GeneratePanel state={state} updateState={updateState} gen={gen} onStart={onStart} />
         )}
       </div>
 
@@ -471,6 +562,186 @@ function Step2Environment({ state, updateState }: {
       <p className="muted small">
         六角格几何（原点、半径、行列数）始终取自所选数据包，与在线天地图瓦片同一墨卡托框架；对边距按实地公里计。
       </p>
+    </div>
+  )
+}
+
+/** 现场生成面板：范围框 → 服务端方案（档位阶梯 + 推荐）→ 数据层 → 作业日志轮询 */
+function GeneratePanel({ state, updateState, gen, onStart }: {
+  state: WizardState; updateState: (u: Partial<WizardState>) => void
+  gen: GenSession; onStart: () => void
+}) {
+  const g = state.gis
+  const setGis = (p: Partial<WizardState['gis']>) => updateState({ gis: { ...g, ...p } })
+  const rec = gen.plan?.recommended.cell_km
+  const customKm = num(g.cell_km)
+  const activeKm = customKm ?? rec
+  const running = gen.job != null && (gen.job.status === 'queued' || gen.job.status === 'running')
+  const caps = gen.caps
+  const notes = capsNotes(caps, g)
+
+  return (
+    <div style={{ marginTop: '10px' }}>
+      <div className="row">
+        {(['w', 's', 'e', 'n'] as const).map((k, i) => (
+          <label key={k}>
+            <span>{['西经', '南纬', '东经', '北纬'][i]}</span>
+            <input type="number" step="0.01" value={g.bbox[k]}
+              onChange={e => setGis({ bbox: { ...g.bbox, [k]: e.target.value } })} />
+          </label>
+        ))}
+      </div>
+      <p className="muted small">四至指六角格「格心」范围（WGS84）。单边不超过 8°，超过 3 万格会被拒绝。</p>
+
+      <div className="row">
+        <label>
+          <span>六角格对边距（实地 km）</span>
+          <input type="number" step="0.1" value={g.cell_km} placeholder={rec ? `推荐 ${rec}` : '正在计算…'}
+            onChange={e => setGis({ cell_km: e.target.value })} />
+        </label>
+        <button className="btn btn-sm"
+          onClick={() => {
+            if (!gen.plan) return toast(gen.planErr || '正在计算格网方案，稍候', 'warn')
+            setGis({ cell_km: String(gen.plan.recommended.cell_km) })
+          }}>
+          用推荐对边距
+        </button>
+      </div>
+
+      <PlanCard gen={gen} activeKm={activeKm} customKm={customKm} onPick={km => setGis({ cell_km: String(km) })} />
+
+      <h3 style={{ marginTop: '12px' }}>数据层</h3>
+      <div className="row">
+        <label>
+          <span>高程</span>
+          <select value={g.dem} onChange={e => setGis({ dem: e.target.value })}>
+            <option value="auto">自动（本地真实 DEM 优先）</option>
+            <option value="local">仅本地 DEM 栅格</option>
+            <option value="synthetic">合成（离线演示）</option>
+          </select>
+        </label>
+        <label>
+          <span>土地利用/覆盖</span>
+          <select value={g.landuse} onChange={e => setGis({ landuse: e.target.value })}>
+            <option value="auto">真实 WorldCover 10 m</option>
+            <option value="proxy">噪声代理（无网络）</option>
+            <option value="off">不参与判类</option>
+          </select>
+        </label>
+      </div>
+      <div className="row">
+        {([
+          ['roads', '道路走廊（地形派生：补齐真实路网卡住的渡河点）'],
+          ['water', '水系（真实矢量：Natural Earth 10m 河流/湖泊，叠加于 DEM 派生河带之上）'],
+          ['network', '真实矢量地物（World_Roads 干道 + Natural Earth 机场/桥隧标注）'],
+          ['features', '地物玩法层（铁路/火车站/公路桥/隧道/电网/电厂/变电站/机场）'],
+        ] as const).map(([key, label]) => (
+          <label key={key} className="sw">
+            <input type="checkbox" checked={g[key]}
+              onChange={e => setGis({ [key]: e.target.checked } as Partial<WizardState['gis']>)} />
+            <span>{label}</span>
+          </label>
+        ))}
+      </div>
+
+      {caps && (
+        <p className="muted small">
+          生成引擎：<b>{caps.engine}</b>
+          {caps.python_version ? ` · Python ${caps.python_version}` : ''}
+          {caps.rasterio ? ' · rasterio 就绪' : ' · 缺 rasterio'}
+        </p>
+      )}
+      {notes.map(t => <p key={t} className="warn small">{t}</p>)}
+
+      <div className="row" style={{ marginTop: '12px', alignItems: 'flex-end' }}>
+        <label>
+          <span>数据包名</span>
+          <input value={g.name} placeholder="留空 = 按范围自动命名" onChange={e => setGis({ name: e.target.value })} />
+        </label>
+        <button className="btn btn-primary" disabled={!!running || caps?.available === false} onClick={onStart}>
+          {running ? '生成中…' : '生成六角格网格'}
+        </button>
+        {gen.job?.status === 'done' && (
+          <button className="btn" onClick={() => updateState({ gis: { ...g, mode: 'existing', pkg: gen.job!.name } })}>
+            改用已有数据包列表
+          </button>
+        )}
+      </div>
+
+      <JobCard job={gen.job} err={gen.jobErr} />
+    </div>
+  )
+}
+
+/// 能力降级提示：缺什么就说什么，不冒充实数据
+function capsNotes(caps: GisCapabilities | null, g: WizardState['gis']): string[] {
+  if (!caps) return []
+  if (!caps.available) return ['本机没有可用的 Python，无法现场生成：' + (caps.reason || '未知原因')]
+  const out: string[] = []
+  if (!caps.rasterio) out.push('Python 缺 rasterio/numpy ⇒ 只能生成合成地形；真实栅格请 pip 安装后重试。')
+  if (caps.rasterio && !caps.dem_present) out.push(`未发现本地 DEM（${caps.dem_tif || '?'}）⇒ 高程将退回合成。`)
+  if (g.water && caps.water_vector_ok === false) out.push('真实水系不可用（' + (caps.water_reason || '缺 GeoPackage 或缺 geopandas') + '）⇒ 水文退回 DEM 派生河带。')
+  if (g.network && caps.vector_ok === false) out.push('矢量地物读取不可用（' + (caps.vector_reason || '缺 pyogrio') + '）⇒ 真实路网卡关闭，地物只按地形派生。')
+  if (g.network && caps.roads_gdb_present === false) out.push('未发现本地道路库（' + (caps.roads_gdb || '?') + '）⇒ 请先解压：7zr x data/gis/World_Roads.lpk "v10/roads.gdb/*" -odata/gis/roads_pkg -y')
+  if (g.network && caps.airports_present === false) out.push('未发现机场库（' + (caps.airports_shp || '?') + '）⇒ 机场改为按地形派生一处野战场站。')
+  return out
+}
+
+function PlanCard({ gen, activeKm, customKm, onPick }: {
+  gen: GenSession; activeKm: number | null; customKm: number | null; onPick: (km: number) => void
+}) {
+  if (gen.planErr && !gen.plan) return <p className="warn small">{gen.planErr}</p>
+  const p = gen.plan
+  if (!p) return <p className="muted small">{gen.planBusy ? '正在计算格网方案…' : '填好范围框后自动给出推荐对边距与行列数。'}</p>
+  const rec = p.recommended.cell_km
+  const cur = p.ladder.find(c => c.cell_km === activeKm) || (customKm != null ? p.current : null)
+  return (
+    <div className="card plan-card">
+      <div className="row">
+        <div className="kv"><span>实地范围</span><b>{Math.round(p.ground_km[0])}×{Math.round(p.ground_km[1])} km</b></div>
+        <div className="kv"><span>墨卡托放大</span><b>×{Math.round(p.mercator_scale * 1000) / 1000}</b></div>
+        <div className="kv"><span>推荐对边距</span><b>{rec} km</b></div>
+        <div className="kv">
+          <span>当前格网</span>
+          <b>{cur ? `${cur.cell_km} km · ${cur.width}×${cur.height} = ${cur.cells} 格${customKm == null ? '（用推荐）' : ''}` : '未定'}</b>
+        </div>
+      </div>
+      <div className="chips">
+        {p.ladder.map(c => (
+          <button key={c.cell_km}
+            className={`btn btn-sm chip${c.cell_km === customKm ? ' btn-1' : ''}${c.cell_km === rec ? ' rec' : ''}`}
+            title={LAYER_LABEL_CN[c.label] || ''}
+            onClick={() => onPick(c.cell_km)}>
+            {c.cell_km} km · {c.width}×{c.height} · {c.cells} 格
+          </button>
+        ))}
+      </div>
+      <ul className="muted small why">{p.recommended.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+    </div>
+  )
+}
+
+function JobCard({ job, err }: { job: GisJob | null; err: string }) {
+  if (!job) return <p className="muted small">尚未生成。真实栅格生成约需十几秒到几分钟。</p>
+  const tail = (job.log || []).slice(-9)
+  const m = job.meta
+  const counts = m?.terrain_counts
+  return (
+    <div className="card job-card">
+      <div className="row">
+        <div className="kv"><span>作业</span><b>{job.id}</b></div>
+        <div className="kv"><span>状态</span><b>{JOB_STATUS_CN[job.status] || job.status}</b></div>
+        <div className="kv"><span>产物</span><b>data/gis/{job.name}</b></div>
+      </div>
+      <pre className="mono job-log">{tail.join('\n') || '…'}</pre>
+      {(job.error || err) && <p className="warn small">{job.error || err}</p>}
+      {job.status === 'done' && m && (
+        <p className="small">
+          自校验 {(m.fails || 0) === 0 ? `全部通过（${m.warns || 0} 项 WARN）` : `${m.fails} 项未通过`}
+          {' · '}{m.source || '?'} · {m.width}×{m.height} 格
+          {counts ? ' · 地形构成 ' + JSON.stringify(counts) : ''}
+        </p>
+      )}
     </div>
   )
 }

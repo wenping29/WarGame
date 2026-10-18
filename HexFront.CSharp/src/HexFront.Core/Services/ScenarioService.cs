@@ -25,6 +25,8 @@ public static class ScenarioService
         public bool StrictSupply { get; init; } = false;
         
         public List<UnitDeployment> Units { get; init; } = new();
+        /// <summary>向导第 4 步的兵种属性覆盖：原样保留补丁键，交给 <see cref="UnitTypeDefService"/> 校验与计价。</summary>
+        public List<Dictionary<string, JsonElement>>? UnitTypeDefs { get; init; }
         /// <summary>剧本里的键名是 <c>victory</c>（doc §6.4），不是属性名推导出来的 victory_conds。</summary>
         [System.Text.Json.Serialization.JsonPropertyName("victory")]
         public List<VictoryCondition> VictoryConds { get; init; } = new();
@@ -205,7 +207,7 @@ public static class ScenarioService
             Grid = grid,
             Cells = cells,
             Terrains = new Dictionary<string, TerrainDef>(LibraryService.STANDARD_TERRAIN),
-            UnitTypes = new Dictionary<string, UnitTypeDef>(LibraryService.UNIT_TYPES),
+            UnitTypes = UnitTypeDefService.EffectiveLibrary(config.UnitTypeDefs),
             Weathers = new Dictionary<string, WeatherDef>(LibraryService.WEATHER_JSON),
             ScenarioId = config.Id,
             ScenarioName = config.Name,
@@ -251,7 +253,7 @@ public static class ScenarioService
         // Deploy units from inline unit list (simple scenario format)
         foreach (var dep in config.Units)
         {
-            var unitType = LibraryService.GetUnitType(dep.Type);
+            var unitType = g.UnitTypes.GetValueOrDefault(dep.Type) ?? LibraryService.GetUnitType(dep.Type);
             var personnel = dep.Personnel > 0 ? dep.Personnel : unitType.Personnel;
 
             var u = new Unit
