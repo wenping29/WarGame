@@ -22,11 +22,11 @@
 | 子任务 | 内容 | 状态 |
 |---|---|---|
 | #88 P7-a | `verify.dart` 61 项 → xUnit 等价实现，映射表 `HexFront.CSharp/tests/PARITY-CHECKS.md` | ✅ |
-| #89 P7-b | `smoke_ws.dart` 32 项 → 协议侧 xUnit 40 项 + `scripts/ws-smoke.mjs` 增补 | ✅ |
+| #89 P7-b | `smoke_ws.dart` 32 项 → 协议侧 xUnit 40 项 + `HexFront.CSharp/scripts/ws-smoke.mjs` 增补 | ✅ |
 | #90 P7-c | odd-r 坐标基线文档化 + `hexRing`/`Range` 排序确定性（顺带结掉 AI 战线震荡红灯 #94） | ✅ |
 | #91 P7-d | 交付文档一致性 + 本文件处置 + 浏览器取证（`gone` 情报卡、三视图面板滚动） | ✅ |
 | #92 P7-e | `web/` 处置：**拍板保留为只读参考（不删）**，冻结声明落 `web/README.md`；正反双向 CSS 差分收口"移植遗漏对照清单"（补回 `.steps/.st`、`.wiz/.body/.side`、`.oob-table`、`.nav a.on` 四组）+ 登记已知残留 | 🟡 本轮交付待确认 |
-| #93 P7-f | 性能基线：14 回合全 AI < 5s + 地图 60fps | ⬜ |
+| #93 P7-f | 性能基线：14 回合全 AI **实测 202ms**（预算 5s，用掉 4%，指纹与 `ws-smoke` 8d 同为 `5d4bd5b8`）+ GIS 1728 格 94ms + 地图满载 **235.8–239.3fps**（瓦片开/关两路，`scripts/map-perf.mjs` 取证，口径八条见 §13.6）。翻出 1 条待拍板缺陷：首次交互 277–295ms 长帧，归属 `sound.ts` 的 `primeAudio`（`new AudioContext()` 建在第一个 `pointerdown` 里） | 🟡 本轮交付待确认 |
 
 ## C# 后端
 

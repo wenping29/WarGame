@@ -265,7 +265,7 @@ OOB 自定义的两条约束（否则内容立刻崩）：
 ✓ 带地物地图可连续推演（14 回合）且无异常
 ```
 
-**当前回归基线**（2026-10-18 实测）：`dotnet test HexFront.CSharp/tests/HexFront.Tests` **241/241 通过**（引擎侧 201 + 协议侧 40），
+**当前回归基线**（2026-10-18 实测）：`dotnet test HexFront.CSharp/tests/HexFront.Tests` **244/244 通过**（引擎侧 201 + 协议侧 40 + 性能基准 3），
 `node HexFront.CSharp/scripts/ws-smoke.mjs` 0–15 共 **16 组全 PASS**。原 Dart 侧的 61 项与 32 项是同一批断言的上游口径，映射表在
 `HexFront.CSharp/tests/PARITY-CHECKS.md`；Dart 原型（`hexfront/`）自 P7 起只作对照参考，不再是验收入口。
 
@@ -439,7 +439,7 @@ CF = BasePower(装备·兵种)
 | --- | --- | --- | --- |
 | **M1 引擎地基** | 序列化 + 数据驱动兵种/地形 + 指令校验 + 缺陷修复 + CLI 双跑对拍 | 当年用 `dart run bin/verify.dart` 全绿验收；**现在的门槛是 `dotnet test`（引擎 201 项）**，存档→载入→续跑与原局指纹一致 | ✅ 全绿（含"单位出生在可通行陆地"） |
 | **M2 迷雾与观测** | 观测累计、LOS、暴露 E0–E3、`side_view` 裁剪 | 单测断言红方视图不含蓝方未暴露单位任何字段 | ✅ 含"未暴露不可开火"断言；档位颗粒与"要点地理公开/归属私有"由 `FogViewP7Tests` 锁住（§6.4） |
-| **M3 多人房间** | 四角色接入、双盲屏障、导演部控局、重连 | 三浏览器真实对局可跑通 | ✅ 协议侧回归：xUnit 40 项 + `scripts/ws-smoke.mjs` 0–15 共 16 组全 PASS + 四终端浏览器实时对局通过 |
+| **M3 多人房间** | 四角色接入、双盲屏障、导演部控局、重连 | 三浏览器真实对局可跑通 | ✅ 协议侧回归：xUnit 40 项 + `HexFront.CSharp/scripts/ws-smoke.mjs` 0–15 共 16 组全 PASS + 四终端浏览器实时对局通过 |
 | **M4 剧本→副本→存档** | 剧本库、创建向导（OOB/兵种属性/天气/环境覆盖）、存档列表与载入 | 从剧本造副本、改 OOB、改兵种性能、开局、存档、再载入 | ✅ 五步向导浏览器内跑通（3 辆坦克覆盖 OOB、降雨、后勤关；兵种属性覆盖坦克 26→45.9 点并触发预算报红）|
 | **M5 GIS 与在线底图** | `tools/gis` 生成器 + 真实底图叠加 + 零漂移对齐 + 向导内按需生成 | 真实栅格生成六角格，瓦图上目视对齐；范围/数据层/对边距（含推荐值）在浏览器里可选可跑 | ✅ 本地 GeoTIFF DEM + ESA WorldCover 按面积聚合；`--plan` 推荐对边距；服务端作业 API（`/api/gis/capabilities·plan·jobs`）；向导第 2 步现场生成 36×52 格包并建成副本（房间 L52TYZ，格数与包一致）；天地图真实瓦片像素级已验收（z9–z11，格网西缘贴合真实莱茵河） |
 | **M6 战力耦合** | 天气/人员/指挥官/制空权/后勤三资源入 CF，系数外置 | 参数可调、战报可解释各系数贡献 | ✅ 系数逐项随战报下发 |
@@ -457,7 +457,7 @@ CF = BasePower(装备·兵种)
 6. **前端是否引入构建**：**已定并落地**——上构建工具。React + Vite（`hexfront-react/`）成为唯一主前端，"双击直开"的无构建纯静态模式随 `web/` 一起冻结（#92 拍板：`web/` 保留为只读参考，不删除，理由与成本见 §13.6）。代价是审计要认构建产物、部署需要静态托管或把 `dist/` 挂到 Api 上；换来的是类型检查（`tsc -b` 成了门槛）与组件化。§11 早期"保持无构建"的倾向不再有效。
 7. **同角色顶号策略**：**已定并落地**（C# `RoomService.JoinLocked`，与 Dart `room.dart:399-406` 一致）——阵营位（红/蓝）只允许"同 token 重连"或显式 `force=1` 接管，否则回 `type:error`"该角色位已被占用（加 force=1 可接管）"并关闭连接；导演部/观战不是对抗信息位，后来者直接接管、原终端收 `kicked`。教学与误操作场景是否要进一步改成"禁止顶号 + 导演部授权转让"仍待拍板。
 8. **AI 代管与就绪屏障**：现实现为"代管方视为已就绪，人类就绪即自动结算"。是否要保留导演部逐回合确认（防止 AI 在人类未看战报时抢跑）？
-   **实测口径（2026-10-18，房间 A9S3M3/LLMWE8，双 AI 代管 + 红方人类终端）**：屏障是**事件驱动**的——只有 `ready`、`director_cmd{action:ai}` 与 `resolve` 会触发一次自动结算，`AutoResolvePending` 互斥位在结算前就清零，结算完成后没有任何东西再排程。所以"双 AI 代管"不会自己连续推演：房间推进一回合后停在原地，等下一次人类 `ready` 或导演部强制结算。这既是"防止 AI 抢跑"的天然实现，也意味着**全自动跑局必须由导演部逐回合 `resolve`**（`scripts/ws-smoke.mjs` 的第 8d 项正是这么打的：15 回合、不到 0.3 秒（2026-10-18 两次跑分别 237ms / 177ms）、两局终局指纹一致）。
+   **实测口径（2026-10-18，房间 A9S3M3/LLMWE8，双 AI 代管 + 红方人类终端）**：屏障是**事件驱动**的——只有 `ready`、`director_cmd{action:ai}` 与 `resolve` 会触发一次自动结算，`AutoResolvePending` 互斥位在结算前就清零，结算完成后没有任何东西再排程。所以"双 AI 代管"不会自己连续推演：房间推进一回合后停在原地，等下一次人类 `ready` 或导演部强制结算。这既是"防止 AI 抢跑"的天然实现，也意味着**全自动跑局必须由导演部逐回合 `resolve`**（`HexFront.CSharp/scripts/ws-smoke.mjs` 的第 8d 项正是这么打的：15 回合、不到 0.3 秒（2026-10-18 两次跑分别 237ms / 177ms）、两局终局指纹一致）。
    同一批取证还量到一个平衡事实：**14 回合双 AI 对抗的歼灭数为 0**（3 个种子：红 7597→6615、蓝 4054→3450 人，约 13% 减员，`destroyed` 事件 0 条；交战回合数逐轮增加但单位人员从不清零）。终局靠的是要点/控制判定而不是歼灭，所以"歼灭"标签在纯 AI 局里几乎不出现——见 §11.12。
 9. **重新开雾是否回收情报**：**已定并落地**。Dart 版原行为已在浏览器实测确认（2026-10-16，房间 YZEPCV）：关雾→再开雾后红方仍保留 11 项 E3 精确档案，而 HUD 显示"迷雾 开"——界面自相矛盾；根因是 `hexfront/lib/engine/fog.dart:121` 在全知时把档位写死为 3。C# 版按建议实现：`FogService.UpdateObservation` 的 `!fogOn` 分支**只放开观测场、不写 `tracks`**（明牌展示由 `SideView` 按 E3 实时合成），因此重新开雾不留永久记忆。该行为由 `ws-smoke.mjs` 第 10 组锁住（明牌 15/15 接触 → 开雾后回落到 1 条真实档案）。
 10. **进程重启与房间**：**已定——房间保持内存态，不做落盘**（实时对抗语义下，"重启后回到半个回合"比"房间没了、用存档重开"更危险）。重启后用存档重建：`POST /api/saves/load` 走"快照 + 尾部重放"回到原指纹，剧本/覆盖/OOB 都从存档里来，不需要重新配一遍；`GET /api/frames` 在房间不存在时直接提示"重启后请用存档回放"。真要做热恢复得先定义"回合中掉线多久算弃局"，属于对外服务阶段的事，见 §13.5-3。
@@ -504,16 +504,18 @@ npm run dev        # http://localhost:5173（5173 被占则顺延到 5174）
 
 顶部导航只留「首页 / 大厅」两项。**注意一条实收偏差**：`quickStart()` 在 React 版是**两份实现**（`pages/Home.tsx:16` 与 `pages/Lobby.tsx:61`）——行为一致（取 `scenarios[0]` 零覆盖建副本 → 跳导演部 → toast 反馈），差别只在 Home 现取 `loadMeta(true)`、Lobby 用列表里已有的 `scenarios`，以及 async/await 与 `.then` 两种写法。web 版当年是"大厅导出、首页复用"的一份，搬迁时没保住。这属于可合并的重复，不影响功能，建议随 #92 一并整理——同一个形状的问题在 `loadSave()` 上也有两份（`Home.tsx:47` 与 `Lobby.tsx:92`，都是 `api.loadSave(s.instance)` 后跳导演部），存档表也各自渲染了一份。
 
-自检与回归（这三条就是交付基线，取证口径见 §13.6）：
+自检与回归（这几条就是交付基线，取证口径见 §13.6）：
 
 ```bash
 cd D:/Project/wargame/HexFront.CSharp
-dotnet test tests/HexFront.Tests           # 241 项全绿（引擎 201 + 协议 40）
-node scripts/ws-smoke.mjs                  # 多人 0–15 共 16 组全 PASS（需 5018 在跑）
-cd D:/Project/wargame/tools/gis
-python hexgen.py --only-validate           # 只校验现有 GIS 数据包（37 项自校验，含地物层不变式）
+dotnet test tests/HexFront.Tests           # 244 项全绿（引擎 201 + 协议 40 + 性能基准 3）；跑前先停 5018
+node scripts/ws-smoke.mjs                  # 多人 0–15 共 16 组全 PASS（需 5018 在跑；脚本在这个工程下，不在根 scripts/）
 cd D:/Project/wargame/hexfront-react
 npx tsc -b                                 # 前端类型门槛（build 脚本就是 tsc -b && vite build）
+cd D:/Project/wargame
+node scripts/map-perf.mjs --role red       # 地图帧率取证（需 5018 + 5175 在跑），口径八条见 §13.6
+cd D:/Project/wargame/tools/gis
+python hexgen.py --only-validate           # 只校验现有 GIS 数据包（37 项自校验，含地物层不变式）
 ```
 
 Dart 原型 `hexfront/bin/verify.dart`（61 项）与 `bin/smoke_ws.dart`（32 项）自 P7 起**只作对照参考，不再是验收入口**；C# 等价实现的逐项映射表在 `HexFront.CSharp/tests/PARITY-CHECKS.md`。
@@ -527,7 +529,7 @@ Dart 原型 `hexfront/bin/verify.dart`（61 项）与 `bin/smoke_ws.dart`（32 �
 - **房间码必须是已存在的副本**：`/ws?room=` 的码查不到或该副本没有 `GameState` 时直接 HTTP 404 拒绝握手——未知码静默建局会让打错码的人开出一局没人知道的仗，也和 `GET /api/room/{码}` 的 404 自相矛盾。
 - **AI 代管即视为就绪**：对面托管时人类点就绪就自动结算，不再空等。屏障是事件驱动的，详见 §11.8。
 
-浏览器实测（2026-10-16 于 Dart 版同页隐藏 iframe 双终端；2026-10-18 在 C# + React 上复验）：红方"R1 构筑工事"草案在整页刷新后仍带回（同 token 复用会话）；两个终端关闭后 `/api/rooms` 的 `roles` 全归零、`side_taken.red` 立即变 `false`，无会话泄漏；导演部关雾/开雾时红方 HUD"迷雾 开/关"字样跟随翻转。阵营位顶号 / 观战顶号 / 阵营位占用被拒 / 断开即释放这四条由 `scripts/ws-smoke.mjs` 的第 9、13、14、15 项锁住，未知房间码 404 是第 0 项。
+浏览器实测（2026-10-16 于 Dart 版同页隐藏 iframe 双终端；2026-10-18 在 C# + React 上复验）：红方"R1 构筑工事"草案在整页刷新后仍带回（同 token 复用会话）；两个终端关闭后 `/api/rooms` 的 `roles` 全归零、`side_taken.red` 立即变 `false`，无会话泄漏；导演部关雾/开雾时红方 HUD"迷雾 开/关"字样跟随翻转。阵营位顶号 / 观战顶号 / 阵营位占用被拒 / 断开即释放这四条由 `HexFront.CSharp/scripts/ws-smoke.mjs` 的第 9、13、14、15 项锁住，未知房间码 404 是第 0 项。
 
 数据落盘位置：`data/scenarios/`（剧本）、`data/gis/`（六角地形数据包）、`data/saves/<实例>/`（`meta.json` + `init.json` + `turns.jsonl` + `snapshot_t<N>.json`）。删目录即清空全部副本。
 
@@ -551,9 +553,9 @@ Dart 原型 `hexfront/bin/verify.dart`（61 项）与 `bin/smoke_ws.dart`（32 �
 
 ## 13. C# Core WebAPI 重构（2026-10-17 起 · 规划与实收）
 
-**本节状态（2026-10-18 更新）**：三个阶段（13.1 生成 / 13.2 后端 / 13.3 React）都已交付并确认，P0–P6 逐阶段验收完，P7 收尾进行中（#91 文档一致性已交、#92 `web/` 处置已定为"保留只读参考 + 移植遗漏对照清单收口"、#93 性能基线待做）。规划期的表述保留原文，**每处与实收不同都就地标注了"实收/偏离"**——照这份文档重建 C# 侧时会踩到规划与实现不一致的地方，那些标注就是补丁。
+**本节状态（2026-10-18 更新）**：三个阶段（13.1 生成 / 13.2 后端 / 13.3 React）都已交付并确认，P0–P6 逐阶段验收完，P7 收尾进行中（#91 文档一致性已交、#92 `web/` 处置已定为"保留只读参考 + 移植遗漏对照清单收口"、#93 性能基线三条数字已交，见 §13.1/13.2/13.3 与 §13.6）。规划期的表述保留原文，**每处与实收不同都就地标注了"实收/偏离"**——照这份文档重建 C# 侧时会踩到规划与实现不一致的地方，那些标注就是补丁。
 
-规划时的起点：Dart 原型（`hexfront/`）已端到端跑通 GIS 六角格生成 → 引擎推演 → WebSocket 多人房间 → Canvas 渲染，共 61 项引擎自检 + 32 项多人冒烟全部通过。这 93 项断言现已由 C# 侧等价实现接手（`dotnet test` 241 项 + `ws-smoke.mjs` 16 项，映射表 `HexFront.CSharp/tests/PARITY-CHECKS.md`），Dart 原型退为对照参考。
+规划时的起点：Dart 原型（`hexfront/`）已端到端跑通 GIS 六角格生成 → 引擎推演 → WebSocket 多人房间 → Canvas 渲染，共 61 项引擎自检 + 32 项多人冒烟全部通过。这 93 项断言现已由 C# 侧等价实现接手（`dotnet test` 244 项 + `ws-smoke.mjs` 16 项，映射表 `HexFront.CSharp/tests/PARITY-CHECKS.md`），Dart 原型退为对照参考。
 
 ### 13.1 阶段一：六角格生成 C# Core WebAPI
 
@@ -596,7 +598,7 @@ POST     /api/gis/validate            → 指定已有包名，返回 37 项校�
 - [x] Swagger UI 可交互测试所有端点（`Swashbuckle.AspNetCore.SwaggerUI`，开发环境挂 `/swagger`）
 - [x] 向导第 2 步在浏览器里现场生成 36×52 格包并建成副本（房间 L52TYZ，格数与包一致，M5 取证）
 - [ ] `rhine_ruhr_2p5km.json` 重新生成后与原版 diff 为零——**这条按原写法不成立**：C# 没有复刻 Python 的栅格取样，重生成必然来自同一个 Python 脚本；真正锁住的是"同种子同参数 ⇒ 同包"，由 37 项自校验 + odd-r 重生成实测覆盖
-- [ ] 性能：2.5km 格距 1645 格生成 < 30s（本机 i7 + SSD）——未在本轮重测，归 #93 性能基线
+- [x] 性能：2.5km 格距 1645 格生成 < 30s（本机 i7 + SSD）——**#93 实测：`HexGenService.Generate` 生成 36×48 = 1728 格用时 94ms（0.0544 ms/格），是 30s 门槛的 0.3%**；回归项 `tests/HexFront.Tests/Gis/HexGenBenchmarkTests.Generate_Doc_1645_Cell_Board_Under_30_Seconds`（`Trait=Benchmark`）。**格数为什么是 1728 而不是 1645**：这条基准把出厂包自己的 `meta.bbox` 回喂给生成器，而 `meta.bbox` 记的是"结果格心范围"（比请求范围宽半行半列），`GisPlanService.GridSize` 与 `hexgen.py grid_from_bbox` 用的是同一个 `round(跨度/格距)+1` 公式，两端都必然多出一行一列——**C#/Python 一致，不是对等回归**；断言因此锁成 `BeInRange(1645, 1800)`，口径同时写进测试注释，防止下一个人以为格数漂了
 
 ### 13.2 阶段二：推演后端 C# Core WebAPI
 
@@ -631,7 +633,7 @@ POST     /api/gis/validate            → 指定已有包名，返回 37 项校�
 - [x] 现有 `bin/smoke_ws.dart` 32 项多人冒烟全部通过（会话传输实装为原生 `/ws`，见上方偏离说明）——协议侧 xUnit 40 项 + `ws-smoke.mjs` 16 组全 PASS
 - [x] 同种子同指令 → 同指纹（确定性对拍）：`dotnet test` 的 P1 用例 + `ws-smoke` 第 8 项（存档往返指纹一致）
 - [x] 存档往返指纹一致（JSON 序列化兼容）：`ws-smoke` 第 7/7b/8/8b 项覆盖"快照 + 尾部重放"两条路径
-- [ ] 性能：14 回合全 AI 对抗 < 5s（与 Dart 版持平）——目前只有 `ws-smoke` 第 8d 项顺带量到的"15 回合不到 0.3 秒"，正式基线另立任务 #93
+- [x] 性能：14 回合全 AI 对抗 < 5s（与 Dart 版持平）——**#93 实测：建局 55ms（36 单位 / 520 格），14 回合补令 74ms + 结算 115ms、整段循环 202ms（均 14.4ms/回合，余量是 GC 与计时本身），5s 预算用掉 4%**；回归项 `tests/HexFront.Tests/Performance/EnginePerfBaselineTests.cs` 两条（`Trait=Benchmark`）。断言不止耗时：还要求"14 回合真跑完（`perTurn.Count==14`）+ 有交战（71 场）+ 零被拒令 + 两遍同指纹"，否则空转的 14 回合也能"很快"。种子 731001 与 `ws-smoke` 第 8d 项同一个剧本同一个种子，两侧终局指纹都是 `5d4bd5b8`（胜方 blue），所以进程内基准与整链路冒烟量的是同一局，两条数字可以对着看
 
 ### 13.3 阶段三：React 前端
 
@@ -688,7 +690,7 @@ services/
 - [x] 红/蓝视图：己方单位 + 接触目标（E1 只给兵力档、E2 给兵种、E3 才给精确兵员；阵亡单位保留 `gone`"已消失"卡片并按 `staleTurns`=3 衰减）+ 指令草案 + 迷雾隔离
 - [x] 观战视图：公开情报层 + 无归属披露（`node_holders` 不下发）+ 导演部可切全知
 - [x] 地图渲染：天地图瓦片 + 六角格 + 道路/河流/铁路/电网/机场/电厂/变电站/车站/隧道 + 悬停格信息 + 图例（像素级已验收 z9–z11，格网西缘贴合真实莱茵河）
-- [ ] 缩放/拖拽/双击放大流畅（60fps）——手感已验，帧率数字未测，归 #93 性能基线
+- [x] 缩放/拖拽/双击放大流畅（60fps）——**#93 实测（`scripts/map-perf.mjs`，无头 Chrome + CDP 派发真受信任事件，红方 + 导演部两条路径各 9 个场景）：满载可持续帧率 235.8–239.3fps，瓦片关 239.33 / 瓦片开 239.17（红方）、235.84 / 239.33（导演部）；单帧 `MapView.draw` p50 0.6–2.2ms、所有交互行 p95 ≤7.8ms、max ≤10.1ms，最差也只吃掉 16.7ms 预算的 47%**。测量口径的五个坑（无头不做 vsync、伪瓦片、浮层吃事件等）见 §13.6「地图帧率取证口径」。**同一次取证翻出 1 条真实缺陷**：全场第一次交互的那一帧 277–295ms、阻塞 227–243ms，LoAF 归属 [hexfront-react/src/services/sound.ts:26](file:///D:/Project/wargame/hexfront-react/src/services/sound.ts#L26) 的 `primeAudio`——`new AudioContext()` 同步建在第一个 `pointerdown` 监听里。这是**一次性**开销（同页第二次交互起 0 长帧，瓦片那条 pass 也 0 长帧），不影响 60fps 结论，但确实是玩家进图后第一次点击的卡顿，**处置待拍板，未随本任务改代码**。
 - [x] 断线重连恢复会话 + 顶号提示（token 存 localStorage 按房间码分键；`kicked` 停在提示态不再重连；阵营位占用收 `type:error` 立即停连，其他断线退避重连超 8 次放弃）
 - [x] 响应式布局（最小 1024×768 可用）；面板滚动条回归已修（见 §13.6 的 P6-d 遗留缺陷一条）
 
@@ -713,7 +715,7 @@ Week 13:   集成测试 + 性能对比 + 文档更新
 | GDAL C# 绑定安装复杂 | 高 | 中 | 备选 RasterSharp 纯 C# 栅格读取；或保留 Python subprocess 调用 hexgen.py（**实收：保留 Python 子进程**，无 Python 时降级为 `HexGenService` 原生合成地形并在 capabilities/作业日志里明说） |
 | 确定性浮点差异导致指纹不一致 | 中 | 高 | 使用 decimal 代替 double；或允许 ±1e-9 容差比对（**实收：都不必**——`SeededRng` 固定运算顺序，同种子同指令存档往返指纹逐字相等，由 `ws-smoke` 第 7b/8/8b 项锁住） |
 | 双传输并存导致两套房间真相（SignalR Hub 与 /ws） | 已发生 | 中 | 只保留 `/ws`；`RoomHub` 已删除，会话真相收敛到 `RoomService`（§13.2） |
-| React Canvas 性能不如原生 | 中 | 中 | 优先用原生 canvas ref + requestAnimationFrame；Konva 仅用于 UI 覆盖层（**实收：全原生 canvas，Konva 零引用**；60fps 数字待 #93 测） |
+| React Canvas 性能不如原生 | 中 | 中 | 优先用原生 canvas ref + requestAnimationFrame；Konva 仅用于 UI 覆盖层（**实收：全原生 canvas，Konva 零引用**；#93 满载实测 235.8–239.3fps、`draw` p95 1.2ms，见 §13.3 与 §13.6 的取证口径） |
 | 迁移期间需求变更 | 高 | 高 | Dart 原型作为"活文档"持续维护；C# 每完成一个模块即同步验证（**实收：P7 起 Dart 版只做对照参考，验收入口换成 xUnit + ws-smoke + 浏览器 E2E**） |
 
 **过渡期运行模式（实收端口）**：
@@ -750,18 +752,30 @@ Dart 原型（hexfront/）在迁移期间保持可运行状态，作为参考实
 
 这一节回答两个问题：**"验收看哪几条命令的什么数字"**，以及**"截图证据怎么复现"**。前面 §12/§13.1/§13.2/§13.3 的验收项全部指向这里，不再各写一份。
 
-**四条门槛命令（本机 i7 + SSD，.NET SDK 10.0.113 / Node 24）**：
+**五条门槛命令（本机 i7 + SSD，.NET SDK 10.0.113 / Node 24）**：
 
 | 命令 | 当前基线 | 锁的是什么 |
 |---|---|---|
 | `dotnet build HexFront.slnx` | 0 warning / 0 error | 后端可编译；注意 5018 上的进程会占用输出，重编前先停 API |
-| `dotnet test tests/HexFront.Tests` | **241 通过 / 0 失败**（引擎 201 + 协议 40） | 引擎语义 + 会话协议；`tests/PARITY-CHECKS.md` 是 Dart `verify.dart` 61 项到 xUnit 的逐项映射表 |
-| `node scripts/ws-smoke.mjs` | **编号 0–15 共 16 组 ALL PASS**（需 5018 在跑） | 真实 WS 往返：接入/占用/顶号/双盲/拒令/导调/存档往返与尾部重放/回放帧 200 上限/迷雾回收/AI 就绪屏障/全 AI 终局指纹 |
-| `npx tsc -b`（`hexfront-react/`） | exit 0 | 前端类型门槛。**`--noEmit` 不算**：项目用 project references，只有 `-b` 会全量检查 |
+| `dotnet test tests/HexFront.Tests` | **244 通过 / 0 失败**（引擎 201 + 协议 40 + 性能基准 3；`--filter Category=Benchmark` 单跑 6 条） | 引擎语义 + 会话协议 + 两条性能线；`tests/PARITY-CHECKS.md` 是 Dart `verify.dart` 61 项到 xUnit 的逐项映射表。**跑之前必须先停 5018 上的 API**（测试工程引用 Api，Windows 文件锁会让 `dotnet build` 失败） |
+| `node HexFront.CSharp/scripts/ws-smoke.mjs` | **编号 0–15 共 16 组 ALL PASS**（需 5018 在跑） | 真实 WS 往返：接入/占用/顶号/双盲/拒令/导调/存档往返与尾部重放/回放帧 200 上限/迷雾回收/AI 就绪屏障/全 AI 终局指纹（8d：15 回合 159ms、指纹 `5d4bd5b8`）。**注意路径在 `HexFront.CSharp/scripts/` 下，不在根 `scripts/`** |
+| `npx tsc -b`（`hexfront-react/`） | exit 0 | 前端类型门槛。**`--noEmit` 不算**：项目用 project references，只有 `-b` 会全量检查。配套 `npx oxlint src` 基线 7 warning / 0 error |
+| `node scripts/map-perf.mjs --role red`（`--role director` 同跑） | **满载 235.8–239.3fps，瓦片开/关两路都过**；交互行 `draw` p95 ≤7.8ms；长帧 1 条（`sound.ts` 首点一次性开销，见 §13.3） | 地图 60fps（doc §13.3 那条验收线）。需要 5018 + 5175 在跑；不给 `--room` 时自己 `POST /api/instances` 建副本 |
 
 另有 `python tools/gis/hexgen.py --only-validate`（37 项数据包自校验，含地物层不变式）——只在动 GIS 生成链路时要求。
 
-**尚未取证、显式挂着两项**（都在 #93）：14 回合全 AI < 5s（目前只有 `ws-smoke` 第 8d 项顺带量到的"15 回合不到 0.3 秒"，2026-10-18 两次跑 237ms / 177ms）、地图缩放拖拽 60fps。文档里所有 `[ ]` 的验收项都归这两条，不许口头声称通过。
+**#93 已把原先显式挂着两项补齐**（2026-10-18）：14 回合全 AI 对抗 202ms（§13.2）、地图满载 235.8–239.3fps（§13.3），两条都进了 `dotnet test` / 门槛命令，不再靠口头声称。文档里剩下的 `[ ]` 只有 §13.1 那条"重生成 diff 为零"——它在 #93 之前就被判定"按原写法不成立"，理由就地写着。
+
+**地图帧率取证口径（`scripts/map-perf.mjs`，重跑就是这一节那行命令，产物落 `.tmp/map-perf-<role>.json` + 同名 PNG）**：
+
+1. **无头 Chrome 不做 vsync 定帧**：空载 1.2s 能数到 319–322 帧、间隔 p50 4.2ms，交互期同样 4.2ms。所以"rAF 间隔"只用来识别测量环境，**不能当帧率读**——这是本机第一轮取证最大的一个坑。
+2. **单帧重绘耗时**：页内包住 `MapView.draw` 记每帧实际毫秒，门槛 p95 ≤16.7ms、max ≤50ms。这条与是否锁帧无关，是"60fps 有没有预算"的直接证据。实测所有交互行 p95 ≤7.8ms、max ≤10.1ms。
+3. **长帧**：`PerformanceObserver(long-animation-frame)`（Chrome 123+）记 ≥50ms 的帧并带脚本归属（源文件:行:函数:invoke 类型）。启动期（vite 转译 + 首包 state）的长帧会**迟到落进缓冲**，所以正式测量前先静置 2s 并清一次缓冲，否则首行场景替整个页面加载背锅。
+4. **满载可持续帧率**：`saturate` 场景每帧叫一次 `requestDraw()`，页内自己数"循环内画出的帧数 ÷ 循环真实时长（1.5s）"→ 239fps。**分母必须是循环自身时长**：用 rAF 总跨度折算会把循环前那 300ms 静置摊进去，把数字读低约 20%（本机就是这么从 239 读成 185 的）。
+5. **事件落点自检**：每个场景派发前 `elementFromPoint` 探测画布中心，把压在上面的浮层（`.toast-item`/`.toast`）临时设 `pointer-events:none`，并统计真正落到 `CANVAS` 的输入数。**「画布事件 0 且 draws 0」的行一律 FAIL**——不加这条闸门，toast 盖住画布时 `pan-fit` 两行会带着"0 帧重绘"被当成 PASS 读。
+6. **瓦片两条路径**：关 = `setTk(null)` 只画六角叠加层（纯矢量最坏情况）；开 = CDP `Fetch.enable` + `fulfillRequest` 把天地图瓦片请求 fulfill 成本机生成的 256px PNG。用伪瓦片不是偷懒：本机直连天地图会被中间层吞掉请求（既不 `onload` 也不 `onerror`，正是 `MapView._reapStalled` 存在的原因），真网络拿不到"瓦片已就绪"的稳态，可复现优先。
+7. **已知局限**：无头走软件光栅（SwiftShader），比有头 GPU 合成保守；达标即可，不达标要在有头浏览器复测。
+8. **改这个脚本时先看 JSON 明细**：汇总对象里曾把 `fpsUpper` 键写了两遍，后一个静默覆盖前一个，于是三轮"换口径"打出来的数字一模一样、还都被我解释成了"环境差异"。新加字段要确认它真的出现在 `.tmp/map-perf-<role>.json` 里。
 
 **浏览器 E2E 取证口径**：验收必须在真实浏览器里跑通，不接受"逻辑层单测过了"替代。做法是起 5018 + `npm run dev`，用无头 Chrome（`--headless=new --remote-debugging-port` + 每次新建 `--user-data-dir`）经 CDP 同时驱动 4 个标签页，按角色路径打开 `/room/{码}/{red|blue|director|spectator}`，读 DOM 断言 + 截图存 `<tmp>/hf-e2e/<用例>-<随机>/`。脚本要点（都是踩过的坑）：`/json/new` 必须用 `PUT`；每个 target 一条独立 WS；己方卡与接触卡选择器要分开（`.unit:not(.contact)` 与 `.unit.contact`）；回合数读 `.maphud` 的 innerText；重开 Qoder 内置浏览器标签会永久卡死，不要用。**取完证要目视截图**——本轮的 `.scroll{overflow:auto}` 缺陷就是只有截图能看出来，DOM 矩形探针反而会误报。
 

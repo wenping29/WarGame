@@ -7,6 +7,18 @@ HEXFRONT-WEB 从 Dart `hexfront/` + 原生 JS `web/` 迁移到 C# `HexFront.CSha
 - 进度全景（哪些搬完、哪些没搬）看 [MIGRATION-STATUS.md](MIGRATION-STATUS.md)。
 - 括号里是 git 提交短码，只对能从提交信息确认的条目标注。
 
+## 2026-10-18 · P7-f 性能基线（#93）
+
+两条一直显式挂着的验收线补齐：**14 回合全 AI < 5s**、**地图缩放/拖拽/双击 60fps**。数字与口径的唯一出处仍是 §13.6，这里只记当时是什么数。
+
+- **新增**：`HexFront.CSharp/tests/HexFront.Tests/Performance/EnginePerfBaselineTests.cs`（2 条，`Trait=Benchmark`）——14 回合全 AI 对抗 + 稳态复跑同指纹；断言不只看耗时，还要求"14 回合真跑完、有交战、零被拒令、两遍同指纹"，防止空转局蒙过 5s 线。`Gis/HexGenBenchmarkTests.cs` 补第 3 条：按 doc §13.1 那块 2.5km 棋盘重测生成耗时。
+- **新增**：`scripts/map-perf.mjs`——无头 Chrome + CDP 派发**真受信任事件**的地图帧率取证脚本，红方/导演部各跑 瓦片开 + 瓦片关 × 9 个场景（idle/pan/pan2/wheel-in/wheel-out/dblclick/buttons/pan-fit/saturate），产出 `.tmp/map-perf-<role>.json` + 截图。伪瓦片用 CDP `Fetch.fulfillRequest` 喂本机现造的 256px PNG（直连天地图会被中间层吞请求，拿不到"瓦片就绪"稳态）。
+- **实测**：引擎建局 55ms、14 回合整段循环 202ms（补令 74 + 结算 115，均 14.4ms/回合），5s 预算用掉 4%，终局指纹 `5d4bd5b8` 与 `ws-smoke` 8d 逐字相同；GIS 1728 格 94ms（0.0544 ms/格），30s 门槛的 0.3%；地图满载可持续 **235.8–239.3fps**（瓦片开/关几乎无差），所有交互行 `MapView.draw` p95 ≤7.8ms、max ≤10.1ms。
+- **翻出 1 条待拍板缺陷**：全场第一次交互那一帧 277–295ms、阻塞 227–243ms，LoAF 归属 `services/sound.ts` 的 `primeAudio`——`new AudioContext()` 同步建在第一个 `pointerdown` 监听里。一次性开销（第二次交互起 0 长帧），不影响 60fps 结论，但是玩家进图后第一次点击的卡顿。**本任务没动代码**，处置等拍板。
+- **取证过程本身翻出两个测量陷阱**（都写进 §13.6 的口径八条）：① 无头不做 vsync，rAF 间隔 4.2ms 不能当帧率读，必须用"单帧 draw 预算 + 满载循环帧数"两条替代；② `pan-fit` 两行 0 帧重绘的真因是 toast 浮层吃掉了画布中心的指针事件——脚本因此加了 `elementFromPoint` 自检 + 「画布事件 0 且 draws 0 一律 FAIL」闸门。
+- **文档**：§13.1/§13.2/§13.3 三条 `[ ]` 改 `[x]` 并就地写清口径（含 1728 vs 1645 的 bbox 回喂解释）；§13.4 风险表"60fps 数字待测"换成实测；§13.6 门槛命令从四条扩到五条（新增 `map-perf.mjs`）、`dotnet test` 基线 241→244、**`ws-smoke` 路径订正为 `HexFront.CSharp/scripts/`（原先文档写的根 `scripts/` 路径跑不起来）**。
+- **验证**：`dotnet test` **244/244**（`--filter Category=Benchmark` 单跑 6/6）；`node HexFront.CSharp/scripts/ws-smoke.mjs` 16 组 ALL PASS（8d 15 回合 159ms）；`npx tsc -b` exit 0；`npx oxlint src` 7 warning / 0 error（基线不变）；红方 + 导演部两次完整取证，截图目视复核（地图、图例、悬停格信息、署名齐全）。
+
 ## 2026-10-18 · P7-e `web/` 处置与移植遗漏收口（#92）
 
 拍板结果：**`web/` 保留为只读参考，不删除**；零引用依赖与死样式一律"只标注不删"。

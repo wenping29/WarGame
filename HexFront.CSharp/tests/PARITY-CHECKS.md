@@ -17,10 +17,10 @@ dotnet test tests/HexFront.Tests --filter "FullyQualifiedName~P7Tests"   # 只�
 dotnet test tests/HexFront.Tests --filter "FullyQualifiedName~Protocol"  # 只看 P7-b 协议侧
 ```
 
-当前实测：**总计 241 / 通过 241 / 失败 0**（引擎侧 201 + 协议侧 40）。P7-a 遗留的那盏红灯
+当前实测：**总计 244 / 通过 244 / 失败 0**（引擎侧 201 + 协议侧 40 + 性能基准 3）。P7-a 遗留的那盏红灯
 `AiOfficerP3Tests.Auto_Battle_Fights_And_Keeps_The_Front_Moving` 已在 P7-c 随 `Hex.Range` 遍历序修正一并转绿，
 #94 已按此结案（2026-10-18 拍板），不再单独排期改 `AiService`。
-协议侧 40 项连跑三次全绿（同一 Kestrel 子进程、同一临时存档目录），全量 241 同样连跑三次全绿。
+协议侧 40 项连跑三次全绿（同一 Kestrel 子进程、同一临时存档目录），全量 244 同样连跑三次全绿。
 
 建局一律走 `tests/HexFront.Tests/Engine/RealScenario.cs`：读随仓剧本 `data/scenarios/rhine_corridor.json`，
 overrides 走线上同一份 `ScenarioService.MergeOverrides`，所以测出来的语义就是 `POST /api/instances` 的语义。
@@ -281,7 +281,7 @@ overrides 走线上同一份 `ScenarioService.MergeOverrides`，所以测出来�
   载入只重放快照之后的尾部回合且 `replay_warnings` 为空。
 - **非法覆盖建不出副本**：`/api/validate` 与 `POST /api/instances` 用同一把尺子，向导被绕过也一样拦。
 
-`scripts/ws-smoke.mjs` 继续保留：它的 8c/8d 需要前线真的开火（挂 #94），加上要跑 10 回合贪心推进，
+`HexFront.CSharp/scripts/ws-smoke.mjs` 继续保留：它的 8c/8d 需要前线真的开火（挂 #94），加上要跑 10 回合贪心推进，
 不适合放进 `dotnet test` 的秒级路径，留作手工长测；上面这 40 项已经把同样的闸门搬进可重复执行的入口，
 交付验收以 `dotnet test --filter "FullyQualifiedName~Protocol"` 为准。
 

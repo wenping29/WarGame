@@ -49,7 +49,7 @@ npm run lint       # oxlint
 npx tsc -b         # 类型门槛。--noEmit 不算：项目用 project references，只有 -b 会全量检查
 ```
 
-后端侧的 `dotnet test`（241 项）与 `node scripts/ws-smoke.mjs`（16 组）在 `../HexFront.CSharp`，数字含义见设计文档 §13.6。UI 改动必须在真实浏览器里跑通并截图复核，不接受只看单测绿。
+后端侧的 `dotnet test`（244 项）与 `node HexFront.CSharp/scripts/ws-smoke.mjs`（16 组）在 `../HexFront.CSharp`，数字含义见设计文档 §13.6。UI 改动必须在真实浏览器里跑通并截图复核，不接受只看单测绿。
 
 ## 已知未测
 
