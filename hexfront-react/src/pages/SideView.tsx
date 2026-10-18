@@ -90,6 +90,8 @@ export default function SideView() {
     }
   }
 
+  // 地图上有单位的格子只会回调 onUnitClick，所以这里按坐标判定敌我：
+  // 点自己单位也要走这条路，否则构筑工事/休整/停止这三种就地指令永远下不出去。
   const handleMapPick = (q: number, r: number) => {
     if (!view) return
     const clickedOwn = own.find(u => u.q === q && u.r === r)
@@ -161,7 +163,7 @@ export default function SideView() {
             units={mapUnits}
             selectedUnit={selectedMapUnit}
             onHexClick={handleMapPick}
-            onUnitClick={(u) => setSelectedId(u.id)}
+            onUnitClick={(u) => handleMapPick(u.q, u.r)}
           />
           <div className="maphud" id="hud">
             <b>{view?.name ?? room.code}</b> · {side === 'red' ? '红方' : '蓝方'} 终端 ·

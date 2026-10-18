@@ -226,3 +226,11 @@ export interface SavedMsg {
   turn: number
   meta: Record<string, unknown>
 }
+
+/** 线上阵营 id 是英文（与 view.own/contacts 的 side 同源），展示层统一转中文。 */
+export function sideLabel(side?: string | null): string {
+  if (side === 'red') return '红方'
+  if (side === 'blue') return '蓝方'
+  if (!side) return '平局'
+  return side
+}

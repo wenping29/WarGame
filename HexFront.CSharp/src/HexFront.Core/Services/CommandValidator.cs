@@ -103,7 +103,7 @@ public static class CommandValidator
             switch (c.Op)
             {
                 case CommandOp.Move:
-                    ValidateMove(g, side, u, c, errs);
+                    ValidateMove(g, side, u, c, observed, errs);
                     break;
                 case CommandOp.Attack:
                     ValidateAttack(g, side, u, c, observed, errs);
@@ -128,7 +128,8 @@ public static class CommandValidator
         return errs;
     }
 
-    private static void ValidateMove(GameState g, string side, Unit u, Command c, List<CommandError> errs)
+    private static void ValidateMove(GameState g, string side, Unit u, Command c,
+        HashSet<string> observed, List<CommandError> errs)
     {
         var t = g.TypeOf(u);
         
@@ -182,8 +183,10 @@ public static class CommandValidator
 
             // Enemy-occupied hex (must fight first). 只有地面占领才拦路 ——
             // 敌方航空兵过境既不构成物理阻挡，也在迷雾里看不见，拿来拒玩家的移动令不公平。
+            // 阻挡还只看"下令方看得见谁"：doc §2「移动路径只校验己方可通行性；进入未知格可能遭遇」，
+            // 拿服务端真值一律拒，遭遇战这条结算分支就永远跑不到。
             var enemies = g.Units
-                .Where(o => o.Alive && o.Side != side && o.Pos == h && !g.TypeOf(o).IsAir)
+                .Where(o => o.Alive && o.Side != side && o.Pos == h && !g.TypeOf(o).IsAir && observed.Contains(o.Id))
                 .ToList();
             if (enemies.Any())
             {
@@ -217,6 +220,15 @@ public static class CommandValidator
         if (!observed.Contains(target.Id))
         {
             errs.Add(new CommandError(c.UnitId, "not_observed", "目标未被侦察到，不可下令攻击"));
+            return;
+        }
+
+        // 打不到空中的飞机：doc 只在兵种表里给了 AntiAir（防空火力强度）这一项地面反机能力，
+        // 没有它就是步枪对喷气 —— 放行等于让步兵班能徒手删掉敌方航空兵，空战与制空权全部作废。
+        // 文档未细化这一条，此处按「兵种表 AntiAir > 0 才可接战空中目标」定死，AI 与玩家同一口径。
+        if (g.TypeOf(target).IsAir && t.AntiAir <= 0)
+        {
+            errs.Add(new CommandError(c.UnitId, "cannot_hit_air", "该单位无防空火力，不可攻击空中目标"));
             return;
         }
 

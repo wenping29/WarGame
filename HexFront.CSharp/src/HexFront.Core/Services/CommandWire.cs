@@ -122,7 +122,13 @@ public static class CommandWire
                 writer.WriteEndArray();
             }
             if (value.Target != null) writer.WriteString("target", value.Target);
-            if (value.Zone is Hex zone) WriteHex(writer, zone);
+            // zone 必须显式写属性名：WriteStartArray() 不带名字会直接吐出裸 [q,r]，
+            // 整行 turns.jsonl 变成非法 JSON，被 AppendTurn 当坏行丢掉 —— 一条空袭令就能让整回合静默消失。
+            if (value.Zone is Hex zone)
+            {
+                writer.WritePropertyName("zone");
+                WriteHex(writer, zone);
+            }
             writer.WriteString("mission", value.Mission);
             writer.WriteEndObject();
         }

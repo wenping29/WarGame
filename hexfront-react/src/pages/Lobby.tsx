@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, type RoomInfo, type ScenarioInfo, type SaveInfo } from '../services/api'
 import { loadMeta } from '../room/useUnitFull'
+import { sideLabel } from '../room/protocol'
 import { toast } from '../components/Toast'
 import { play } from '../services/sound'
 
@@ -167,7 +168,7 @@ export default function Lobby() {
                     <b className="code">{room.code}</b>
                     <span className={'tag' + (room.fog ? '' : ' blue')}>{room.fog ? '迷雾' : '明牌'}</span>
                     {room.over && (
-                      <span className="tag red">终局{room.winner ? ' · ' + room.winner : ''}</span>
+                      <span className="tag red">终局 · {sideLabel(room.winner)}</span>
                     )}
                     <span className="spacer" />
                     <span className="mono muted small">{room.turn ?? '?'}/{room.max_turns ?? '?'}</span>

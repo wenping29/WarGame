@@ -8,6 +8,7 @@ import HexMap, { type MapUnit } from '../components/HexMap'
 import { useRoom } from '../room/RoomSocket'
 import { useUnitTypes } from '../room/useUnitFull'
 import type { AnyView, Frame, WireDirectorView, WireSpectatorView } from '../room/protocol'
+import { sideLabel } from '../room/protocol'
 
 const hhmm = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:00`
 
@@ -103,7 +104,7 @@ export default function SpectatorView() {
                 <Kv k="蓝方单位" v={(view.units || []).filter(u => u.side === 'blue' && u.status !== 'gone').length} />
                 <Kv k="红方兵力" v={(view.units || []).filter(u => u.side === 'red').reduce((a, u) => a + (u.personnel || 0), 0)} />
                 <Kv k="蓝方兵力" v={(view.units || []).filter(u => u.side === 'blue').reduce((a, u) => a + (u.personnel || 0), 0)} />
-                <Kv k="胜负" v={view.over ? (view.winner || '结束') : '进行中'} />
+                <Kv k="胜负" v={view.over ? sideLabel(view.winner) : '进行中'} />
               </div>
             ) : (
               <div className="muted small">（该视图无汇总）</div>

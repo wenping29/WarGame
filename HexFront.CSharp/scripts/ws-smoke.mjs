@@ -139,7 +139,7 @@ if (loaded.resumed_turn !== turnNow) fail(`resumed_turn 期望 ${turnNow} got ${
 if (loaded.fingerprint !== liveFp) fail(`载入指纹 ${loaded.fingerprint} ≠ 房间指纹 ${liveFp}`);
 log('8. 存档往返指纹一致', loaded.fingerprint, '重放回合', JSON.stringify(loaded.replayed_turns));
 
-// 7c. 尾部重放：AI 代管方在结算时也要抽随机数，重放必须把随机源拨回 rng_at_resolve 才能对上指纹
+// 7c. 尾部重放：补令不抽随机数，但结算要落随机源起点 —— 重放只跑指令，rng_at_resolve 拨不回原位就会从第一次抖动开始分叉
 let liveTurn = turnNow;
 dir.send({ type: 'director_cmd', action: 'ai', side: 'blue', on: true });
 await sleep(300);
@@ -172,8 +172,8 @@ if (loaded2.fingerprint !== liveFp2) fail(`尾部重放指纹 ${loaded2.fingerpr
 log('8b. 尾部重放 ok：快照 t' + loaded2.snapshot_turn + ' 重放', JSON.stringify(loaded2.replayed_turns), '指纹', loaded2.fingerprint);
 
 // 8c. 战报因子链（doc M6「系数逐项随战报下发」）：每场交战要带满 12 个系数 + cf 乘积
-// 剧本两军初始相隔 7+ 格，而 AI 一断供就全员休整（补给曲线是 P3 #64 的活），
-// 等 AI 自己走进射程不可靠 —— 这里由红方终端下合法指令把格距压到 ≤2 再突击。
+// 剧本两军初始相距 7+ 格，等 AI 自己走进射程要占掉好几个回合、哪一回合开打也不固定 ——
+// 这里改由红方终端下合法指令把格距压到 ≤2 再突击，顺带把人工指令链路也覆盖上。
 const FACTOR_KEYS = ['base', 'terrain', 'fort', 'strength', 'supply', 'morale',
   'personnel', 'commander', 'weather', 'air', 'counter', 'ammo'];
 const IMPASSABLE = new Set(['water', 'void']);
@@ -267,6 +267,45 @@ for (const b of battles) {
 log('8c. 战报因子链 ok：', battles.length, '场交战，种类',
   [...new Set(battles.map(b => b.kind))].join('/'), '示例 CF',
   battles[0].atk_cf.toFixed(1), ':', battles[0].def_cf.toFixed(1));
+
+// 8d. 全 AI 自动对抗（doc「AI 副官…可代管缺席阵营或全 AI 自动对抗」）：
+//     两边都托管后必须由服务端自己打完，且同种子两局要落到同一个终局指纹 ——
+//     这一条同时锁 P1 确定性、P3 七阶段结算与 P3-d 副官（任何一侧偷偷读敌方真值都会让两局分叉）。
+async function autoBattle(tag) {
+  const created = await (await fetch(API + '/api/instances', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario: 'rhine_corridor', name: 'ws-smoke-ai-' + tag, seed: 731001 }),
+  })).json();
+  if (!created.code) fail('自动对抗副本创建失败: ' + JSON.stringify(created));
+  const d = await connect(`?room=${created.code}&role=director`);
+  await d.waitFor('welcome');
+  const s0 = (await d.waitFor('state'))[0];
+  const maxTurns = s0.view.max_turns || 14;
+
+  for (const side of ['red', 'blue']) d.send({ type: 'director_cmd', action: 'ai', side, on: true });
+  await sleep(400);
+
+  const t0 = Date.now();
+  let state = s0;
+  for (let i = 0; i < maxTurns + 2 && !state.over; i++) {
+    const before = d.msgs.filter(m => m.type === 'state').length;
+    d.send({ type: 'resolve' });
+    const arr = await d.waitFor('state', before + 1, 20000);
+    state = arr[arr.length - 1];
+  }
+  const ms = Date.now() - t0;
+  const info = await (await fetch(API + '/api/room/' + created.code)).json();
+  d.ws.close();
+  return { ms, turn: state.turn, over: state.over === true, winner: state.winner, fp: info.fingerprint };
+}
+
+const runA = await autoBattle('a');
+const runB = await autoBattle('b');
+if (!runA.over) fail(`双 AI 打完 ${runA.turn} 回合仍未分胜负（max_turns 14），副官僵住了`);
+if (runA.fp !== runB.fp) fail(`同种子双 AI 终局指纹不一致：${runA.fp} vs ${runB.fp}`);
+if (runA.ms > 5000) fail(`14 回合双 AI 自动对抗耗时 ${runA.ms}ms，超过 5s 门槛`);
+log('8d. 全 AI 自动对抗 ok：', runA.turn, '回合，胜方', runA.winner || '平',
+  '耗时', runA.ms + 'ms', '两局终局指纹一致', runA.fp);
 
 // 7. takeover: second red terminal with force=1 kicks the first
 const red2 = await connect(`?room=${room}&role=red&force=1`);

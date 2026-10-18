@@ -8,6 +8,7 @@ import HexMap, { type MapUnit } from '../components/HexMap'
 import { useRoom } from '../room/RoomSocket'
 import { useUnitTypes, useWeatherList } from '../room/useUnitFull'
 import type { Frame, WireCommand, WireDirectorView, WireFactors, WireUnit } from '../room/protocol'
+import { sideLabel } from '../room/protocol'
 import { play } from '../services/sound'
 
 const CLS_LABEL: Record<string, string> = {
@@ -120,7 +121,7 @@ export default function DirectorView() {
                 {hhmm(view.hour)} {view.day?.label || ''} · {view.weather?.label || ''} ·{' '}
                 迷雾 {view.flags?.fog ? '开' : '关'} · 要点 红 {held.red}/蓝 {held.blue}
                 {view.power && <> · 电网 红×{view.power.red} 蓝×{view.power.blue}</>}
-                {view.over && <> · <b>已结束 {view.winner || ''}</b></>}
+                {view.over && <> · <b>已结束 {sideLabel(view.winner)}</b></>}
               </>
             ) : '连接中…'}
           </div>

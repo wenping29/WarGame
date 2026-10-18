@@ -165,7 +165,10 @@ public static class MechanicsService
             var t = g.TypeOf(u);
             if (t.IsAir)
             {
-                var zone = u.Airborne ? (u.MissionZone ?? u.Pos) : u.Pos;
+                // 制空来自「战斗机 CAP 巡逻」（doc §6.4 制空权行）：落在机场上的飞机不控制任何空域，
+                // 按 AirRange 铺开更是把整个作战半径算成自己的势力范围。
+                if (!u.Airborne) continue;
+                var zone = u.MissionZone ?? u.Pos;
                 var w = roleWeight.GetValueOrDefault(t.AirRole, 0.1);
                 Add(u.Side, zone, u.Mission == "patrol" ? w : w * 0.4, t.AirRange);
             }

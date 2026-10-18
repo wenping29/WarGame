@@ -184,9 +184,18 @@ public class CommandValidatorP3Tests
     public void Enemy_Ground_Hex_Blocks_But_Enemy_Air_Overflight_Does_Not()
     {
         var g = Standard();
+        See(g, "red", "B1", 1); // 阻挡只看下令方看得见谁：未知的敌人留给结算去遭遇
         Reason(g, "red", Move("R1", (0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0))).Should().Be("blocked");
         Reason(g, "red", Move("R1", (0, 0), (1, 0), (2, 0), (3, 0), (4, 0))).Should().Be(
             "", "蓝战斗机在 (4,0) 过境：不占地也不该拦住红步兵行军");
+    }
+
+    [Fact]
+    public void Unobserved_Enemy_Hex_Is_Traversable()
+    {
+        var g = Standard();
+        Reason(g, "red", Move("R1", (0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0))).Should().Be(
+            "", "doc §2「移动路径只校验己方可通行性；进入未知格可能遭遇」：拿服务端真值一律拒会让遭遇战分支永远跑不到");
     }
 
     // ───────── 攻击令：目标合法性、暴露等级、射程 ─────────
@@ -237,9 +246,10 @@ public class CommandValidatorP3Tests
     {
         var g = Standard();
         g.Flags["fog"] = false;
+        Add(g, "B2", "blue", "rifle", 4); // 炮兵射程用对地目标验，别让"打不到飞机"这条混进来
 
         Reason(g, "red", Attack("R1", "B1")).Should().Be("out_of_range", "步枪直射 1 格，(0,0)→(5,0) 打不到");
-        Reason(g, "red", Attack("A1", "J1")).Should().Be("", "炮兵 range=3，(1,0)→(4,0) 正好够");
+        Reason(g, "red", Attack("A1", "B2")).Should().Be("", "炮兵 range=3，(1,0)→(4,0) 正好够");
         Reason(g, "red", Attack("A1", "B1")).Should().Be("out_of_range");
         Reason(g, "red", Attack("F1", "B1")).Should().Be("", "航空兵按作战半径（fighter air_range=10）");
 
@@ -251,6 +261,18 @@ public class CommandValidatorP3Tests
             Firepower = 6, Personnel = 240, Consumption = 2.4, Range = 8,
         };
         Reason(g2, "red", Attack("A1", "B1")).Should().Be("", "剧本覆盖射程要立刻生效，射程不能写死在校验器里");
+    }
+
+    [Fact]
+    public void Ground_Units_Need_Anti_Air_To_Engage_An_Aircraft()
+    {
+        var g = Standard();
+        g.Flags["fog"] = false; // 明牌，排除 not_observed 干扰
+        Add(g, "S1", "red", "aa", 3);
+
+        Reason(g, "red", Attack("R1", "J1")).Should().Be("cannot_hit_air",
+            "兵种表里只有 AntiAir 这一项地面反机能力；放行步枪打飞机等于让步兵班删光敌方航空兵");
+        Reason(g, "red", Attack("S1", "J1")).Should().Be("", "防空单位接战空中目标是它的本职（aa→战斗机 相邻）");
     }
 
     // ───────── 间接火力 ─────────

@@ -73,8 +73,8 @@ public static class StoreService
         public string ResolvedBy { get; set; } = "auto";
 
         /// <summary>
-        /// 结算开始前的随机源状态。AI 代管方补令本身也抽随机数，重放只跑指令不跑补令，
-        /// 不把这里拨回去，续跑的随机流就会少几抽，从第一次抖动开始分叉。
+        /// 结算开始前的随机源状态。副官补令本身不抽随机数（同局面必出同令），
+        /// 但重放只跑指令、不跑补令，把随机源钉回这一刻，续跑才不会从第一次抖动开始分叉。
         /// </summary>
         public uint? RngAtResolve { get; set; }
 

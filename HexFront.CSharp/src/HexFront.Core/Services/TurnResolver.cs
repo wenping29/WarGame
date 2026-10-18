@@ -388,6 +388,11 @@ public static class TurnResolver
                 spent += step;
                 cur = h;
                 moved_any = true;
+
+                // 踩进有敌方地面部队的格子就停脚 —— 校验只看下令方看得见谁（doc §2「进入未知格可能遭遇」），
+                // 所以"从敌人队列上径直走过去"必须由结算拦下：不拦，遭遇战就只剩终点恰好压到人家里这一种触发方式。
+                // 谓词与 Encounters 同一条，免得出现"停了却没遭遇"的空转。
+                if (g.UnitsAt(h).Any(e => e.Side != u.Side && !g.TypeOf(e).IsAir)) break;
             }
 
             if (!moved_any || cur == u.Pos) continue;
@@ -822,17 +827,23 @@ public static class TurnResolver
             (int)Math.Round(anchors.Average(u => (double)u.Pos.R)));
     }
 
+    /// <summary>
+    /// 减员落状态：人员清零 ⇒ 成建制损失（战报要留下 destroyed），残余则按士气见底判溃退。
+    /// 守卫不能写成 <c>Personnel &lt;= 0 &amp;&amp; Alive</c>：Alive 就是 Personnel &gt; 0，
+    /// 这条分支永远进不去，全歼只会留下一支"兵力 0 但状态 ready"的幽灵部队。
+    /// </summary>
     private static void CheckDestroy(GameState g, Unit u, Action<string, string, List<string>> emit)
     {
-        if (u.Personnel <= 0 && u.Alive)
+        if (u.Personnel <= 0)
         {
+            if (u.Status == UnitStatus.Destroyed) return;
             u.Status = UnitStatus.Destroyed;
             emit("destroyed", $"{u.Id} 被歼灭", new List<string> { u.Side, "spectator" });
+            return;
         }
-        else if (u.Morale < g.Rules.Combat.RoutMorale && u.Status != UnitStatus.Routed)
-        {
+
+        if (u.Morale < g.Rules.Combat.RoutMorale && u.Status != UnitStatus.Routed)
             u.Status = UnitStatus.Routed;
-        }
     }
 
     private static T Clamp<T>(T value, T min, T max) where T : IComparable<T>
