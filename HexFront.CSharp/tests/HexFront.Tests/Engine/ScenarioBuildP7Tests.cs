@@ -15,7 +15,7 @@ namespace HexFront.Tests.Engine;
 /// P7-a 回归：剧本 → 副本这一段（校验、OOB 人员水平、覆盖合并、点数预算、要点胜利）。
 /// 一律用随仓剧本 rhine_corridor 真建局：自造 GameState 锁不住"剧本字段有没有真的落进引擎"，
 /// 而这一段恰恰是向导提交的 JSON 与引擎之间唯一的接缝。
-/// 对应 verify.dart 第 1/2/3/4/16/17/18/19/20/39/40/41/59/60 项。
+/// 对应 verify.dart 第 1/2/3/4/16/17/18/19/20/23–29/39/40/41/53/59/60/61 项。
 /// </summary>
 public class ScenarioBuildP7Tests
 {
@@ -139,6 +139,7 @@ public class ScenarioBuildP7Tests
         Count(c => c.PowerPlant).Should().BeGreaterThan(0);
         Count(c => c.Substation).Should().BeGreaterThan(0);
         Count(c => c.Airport > 0).Should().BeGreaterThan(0);
+        g.Cells.Values.Should().OnlyContain(c => c.Airport <= 2, "机场等级只用 1/2（野战/干线），第 3 档前端没有画法");
 
         var broken = g.Cells.Where(e =>
         {
@@ -244,5 +245,32 @@ public class ScenarioBuildP7Tests
 
         g.Over.Should().BeTrue("同时掌握够多处战场要点即达成（doc §6.4 kind=nodes）");
         g.Winner.Should().Be("red");
+    }
+
+    /// <summary>
+    /// 带地物的真实地图要能连续推演（verify §9-61）：1645 格把补给 BFS 与观测刷新推到另一个量级，
+    /// 结算里任何一处只在稠密格网下才踩到的空引用，都只能在这张图上暴露。
+    /// </summary>
+    [Fact]
+    public void Auto_Battle_Runs_On_The_Feature_Map_Without_Stalling()
+    {
+        var g = RealScenario.Build(RealScenario.Overrides("""{ "gis_package": "rhine_ruhr_2p5km.json" }"""));
+        g.Cells.Count.Should().BeGreaterThan(1000, "这张图的意义就是稠密地物格网，退回小图等于没测");
+
+        var turnAtStart = g.Turn;
+        var fpAtStart = g.Fingerprint();
+        for (var t = 0; t < 4; t++)
+        {
+            TurnResolver.ResolveTurn(g, new Dictionary<string, List<Command>>
+            {
+                ["red"] = AiService.GenerateOrders(g, "red"),
+                ["blue"] = AiService.GenerateOrders(g, "blue"),
+            });
+        }
+
+        (g.Turn - turnAtStart).Should().Be(4, "四个回合都得真正推进回合号");
+        g.Fingerprint().Should().NotBe(fpAtStart, "推了四回合指纹没变 = 结算被静默跳过");
+        MechanicsService.ComputeSupply(g)["red"].Should().NotBeEmpty("地物再多也不能把双方都算成断供");
+        MechanicsService.ComputeSupply(g)["blue"].Should().NotBeEmpty();
     }
 }

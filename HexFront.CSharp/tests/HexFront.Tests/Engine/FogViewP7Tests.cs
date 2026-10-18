@@ -187,10 +187,17 @@ public class FogViewP7Tests
 
         var nodes = (List<Dictionary<string, object?>>)FogService.DirectorView(g)["nodes"]!;
         nodes.Should().HaveCount(2, "要点是地图上的事实，对谁都不该藏");
-        nodes.Should().OnlyContain(n => n["label"] != null && n["kind"] != null);
+        nodes.Should().OnlyContain(n => n["label"] != null && n["kind"] != null,
+            "要点清单要带类别与中文标签，否则前端只能显示一串坐标");
 
-        var redHolders = (Dictionary<string, string>)FogService.SideView(g, "red")["node_holders"]!;
-        var blueHolders = (Dictionary<string, string>)FogService.SideView(g, "blue")["node_holders"]!;
+        var redView = FogService.SideView(g, "red");
+        var blueView = FogService.SideView(g, "blue");
+        ((List<Dictionary<string, object?>>)redView["nodes"]!).Should().HaveCount(nodes.Count,
+            "地形不是情报：双方视图里的要点地理必须与导演部同数");
+        ((List<Dictionary<string, object?>>)blueView["nodes"]!).Should().HaveCount(nodes.Count);
+
+        var redHolders = (Dictionary<string, string>)redView["node_holders"]!;
+        var blueHolders = (Dictionary<string, string>)blueView["node_holders"]!;
 
         redHolders.Should().Equal(new Dictionary<string, string> { ["5,0"] = "red" });
         blueHolders.Should().Equal(new Dictionary<string, string> { ["9,0"] = "blue" });
