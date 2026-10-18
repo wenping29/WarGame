@@ -17,8 +17,10 @@ dotnet test tests/HexFront.Tests --filter "FullyQualifiedName~P7Tests"   # 只�
 dotnet test tests/HexFront.Tests --filter "FullyQualifiedName~Protocol"  # 只看 P7-b 协议侧
 ```
 
-当前实测：**总计 239 / 通过 238 / 失败 1**（引擎侧 199 + 协议侧 40；唯一红灯是 `AiOfficerP3Tests.Auto_Battle_Fights_And_Keeps_The_Front_Moving`，挂账 #94）。
-协议侧 40 项连跑三次全绿（同一 Kestrel 子进程、同一临时存档目录）。
+当前实测：**总计 241 / 通过 241 / 失败 0**（引擎侧 201 + 协议侧 40）。P7-a 遗留的那盏红灯
+`AiOfficerP3Tests.Auto_Battle_Fights_And_Keeps_The_Front_Moving` 已在 P7-c 随 `Hex.Range` 遍历序修正一并转绿，
+#94 已按此结案（2026-10-18 拍板），不再单独排期改 `AiService`。
+协议侧 40 项连跑三次全绿（同一 Kestrel 子进程、同一临时存档目录），全量 241 同样连跑三次全绿。
 
 建局一律走 `tests/HexFront.Tests/Engine/RealScenario.cs`：读随仓剧本 `data/scenarios/rhine_corridor.json`，
 overrides 走线上同一份 `ScenarioService.MergeOverrides`，所以测出来的语义就是 `POST /api/instances` 的语义。
@@ -247,6 +249,17 @@ overrides 走线上同一份 `ScenarioService.MergeOverrides`，所以测出来�
   `Range_First_Band_Is_The_Neighbor_Table_Sorted` 把"半径遍历按 (距离, q, r) 定序、同环按列再按行"钉成用例——
   剧本落位兜底 `SpawnAt` 这类"取第一个可用格"的调用只有在这个序下才等于"取最近格"，Dart 侧靠 `hexRange` 内部 sort 实现，
   verify.dart 没有对应断言（Dart 的 `hexRing` 零调用，按不复刻死代码的基准不移植，环这一档由 `Range` 的距离分层 6·d 格代证）。
+- **#94 红灯的真实根因不是 AI**（探针实测，探针文件已删）：`Range` 改序前后逐字复刻两种枚举，对比 36 个开局落位，
+  与引擎实际落位 **0 处不符**（说明复刻准确），且落位与随机种子无关（seed 1 / 7 / 20261018 三组完全一致）。
+  旧的 `dq` 主序把 **15 个红方单位**甩出名义格，其中 10 个甩到半径上限 `d=4`：HQ `R1 (2,9)→(0,12)`、
+  `R21 (3,13)→(0,15)`、补给/工兵 `R17/R18/R16` 全部退到棋盘左缘 `q=0`；改序后同样的名义格只挪 `d≤2`（多数 `d=1`），
+  `R1→(3,8)`、`R21→(2,13)`、`R15` 直接留在名义格。真河网把 14 处开局坐标淹成 `river` 才让兜底这么高频率触发，
+  而兜底一不按距离取格，就等于把红方纵深单位整建制扔到棋盘角上——副官再怎么权衡也推不动战线，表现为"战线震荡/不推进"。
+  改序后用一次性探针扫 5 个种子 × 14 回合双 AI 全托管：`rejected` 5 例全 0，交战 25–54 场，30/36 单位有位移，
+  红方平均深度 13.6 → 11.5–11.8 单调推进（第 4 回合一次回撤后续推）。#94 因此不需要再单独改 `AiService`。
+- **浏览器侧取证（同一份代码，红方终端 21 张部队卡）**：逐卡读 `.meta` 里的 `q,r`，断言每个单位距剧本名义格 ≤2 格
+  （最大位移 `R12 7,7→6,5` 恰为 2）、`R1@3,8`、`R21@2,13`、西南角（q≤1 且 r≥10）无单位、HUD 正常渲染回合/天气/掌握要点。
+  顺带发现 doc §6 结尾那句"落位后红方确握 3 处要点"是 Dart 时代数字，现在红方开局握 **5** 处，归 #91 文档一致性改。
 
 ## 协议侧没有 Dart 对应、按设计文档补上的用例
 

@@ -473,7 +473,10 @@ label{display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--
 }
 .panel.grow{flex:1 1 auto; min-height:0;}
 .panel h3{margin:0 0 6px; font-size:11px;}
-.panel .scroll{flex:1; min-height:0;}
+.panel .scroll{flex:1; min-height:0; overflow:auto;}
+/* 非 grow 面板按内容撑高（上限 28%），否则 flex 收缩会把 .scroll 压成 0 高、列表整块看不见；
+   上限是为了给同列的 .grow 面板（兵力/事件日志）留出可见高度 */
+.terminal .col .panel:not(.grow){flex:0 0 auto; max-height:28%;}
 
 .maphud{
   position:absolute; left:8px; top:8px; background:rgba(15,19,23,.82);
