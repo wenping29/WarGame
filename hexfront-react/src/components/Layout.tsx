@@ -23,6 +23,9 @@ export default function Layout({ children }: LayoutProps) {
           <Link to="/lobby" className={location.pathname === '/lobby' ? 'on' : ''}>
             大厅
           </Link>
+          <Link to="/grid" className={location.pathname === '/grid' ? 'on' : ''}>
+            六角格管理
+          </Link>
         </nav>
         <button
           className="btn btn-sm"

@@ -228,6 +228,7 @@ public sealed class Cell
     public bool Powerline { get; init; }
     public bool PowerPlant { get; init; }
     public bool Substation { get; init; }
+    public bool FuelStation { get; init; }  // 加油站（GIS fuel_station 层）
     public int Airport { get; init; }       // 0=none, 1=field, 2=major
 
     public Cell With(string? terrain = null, bool? bridge = null, int? city = null, double? elev = null) =>
@@ -246,6 +247,7 @@ public sealed class Cell
             Powerline = Powerline,
             PowerPlant = PowerPlant,
             Substation = Substation,
+            FuelStation = FuelStation,
             Airport = Airport,
         };
 }

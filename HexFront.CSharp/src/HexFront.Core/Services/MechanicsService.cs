@@ -299,11 +299,12 @@ public static class MechanicsService
         ("airport_major", "干线机场"),
         ("airport", "野战机场"),
         ("rail_station", "火车站"),
+        ("fuel_station", "加油站"),
         ("city_major", "大城市"),
         ("city", "城镇"),
     };
 
-    /// <summary>该格是要点则返回类别（电厂 &gt; 变电站 &gt; 机场 &gt; 车站 &gt; 城镇）。</summary>
+    /// <summary>该格是要点则返回类别（电厂 &gt; 变电站 &gt; 机场 &gt; 车站 &gt; 加油站 &gt; 城镇）。</summary>
     public static string? NodeKindOf(Cell c)
     {
         if (c.PowerPlant) return "power_plant";
@@ -311,6 +312,7 @@ public static class MechanicsService
         if (c.Airport >= 2) return "airport_major";
         if (c.Airport == 1) return "airport";
         if (c.RailStation) return "rail_station";
+        if (c.FuelStation) return "fuel_station";
         if (c.City >= 2) return "city_major";
         if (c.City == 1) return "city";
         return null;

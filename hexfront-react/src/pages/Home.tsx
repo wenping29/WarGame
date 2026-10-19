@@ -79,6 +79,11 @@ export default function Home() {
           <span className="hint">默认剧本 · 零配置 · 直接进导演部</span>
         </button>
 
+        <button className="home-tile" onClick={() => navigate('/grid')}>
+          <b>六角格管理</b>
+          <span className="hint">创建 / 删除 / 修改六角格网络 · 行列数与对边距</span>
+        </button>
+
         <button className="home-tile" onClick={toggleSaves}>
           <b>存档副本</b>
           <span className="hint">
