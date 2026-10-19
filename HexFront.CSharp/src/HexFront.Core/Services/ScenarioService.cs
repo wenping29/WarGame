@@ -76,11 +76,15 @@ public static class ScenarioService
         public string Weather { get; init; } = "clear";
     }
 
-    /// <summary>Clock block: start hour and season.</summary>
+    /// <summary>Clock block: start hour, season and day/night window.</summary>
     public class ClockCfg
     {
         public int StartHour { get; init; } = 6;
         public string Season { get; init; } = "夏";
+        /// <summary>夜幕起始时刻（0–23）；缺省 20，拂晓/黄昏窗口随之推算。</summary>
+        public int? NightFrom { get; init; }
+        /// <summary>夜幕结束时刻（0–23，可小于 NightFrom 表示跨零点）；缺省 6。</summary>
+        public int? NightTo { get; init; }
     }
 
     /// <summary>One side's order of battle.</summary>
@@ -237,6 +241,8 @@ public static class ScenarioService
             MaxTurns = config.MaxTurns,
             HourOfDay = config.Clock?.StartHour ?? 6,
             Season = config.Clock?.Season ?? "夏",
+            NightFrom = config.Clock?.NightFrom,
+            NightTo = config.Clock?.NightTo,
             Weather = config.Weather?.Initial ?? "clear",
             WeatherMode = config.Weather?.Mode ?? config.WeatherMode,
             // 剧本只预排计划（未启动）；执行控制归导演部
@@ -661,6 +667,27 @@ public static class ScenarioService
                     errs.Add($"天气计划时段重叠：{prev.From}-{prev.To} 与 {p.From}-{p.To}");
                 prev = p;
             }
+        }
+
+        // 昼夜窗口：时刻 0–23，夜幕起止不可相同（相同 = 无法划分昼夜）
+        if (cfg.Clock is { } clock)
+        {
+            if (clock.StartHour < 0 || clock.StartHour > 23)
+                errs.Add($"起始时刻 {clock.StartHour} 无效（需 0–23）");
+            if (clock.NightFrom is { } nfr && (nfr < 0 || nfr > 23))
+                errs.Add($"夜幕起始 {nfr} 无效（需 0–23）");
+            if (clock.NightTo is { } nte && (nte < 0 || nte > 23))
+                errs.Add($"夜幕结束 {nte} 无效（需 0–23）");
+            if (clock.NightFrom is { } nf2 && clock.NightTo is { } nt2 && nf2 == nt2)
+                errs.Add($"夜幕起止相同（{nf2} 时），无法划分昼夜");
+        }
+
+        // 每回合推进小时：控制日夜交替节奏（1–24）
+        if (cfg.Rules != null && cfg.Rules.TryGetValue("turn_hours", out var thEl)
+            && thEl.ValueKind == JsonValueKind.Number)
+        {
+            var th = thEl.GetInt32();
+            if (th < 1 || th > 24) errs.Add($"每回合推进 {th} 小时无效（需 1–24）");
         }
 
         foreach (var vc in cfg.VictoryConds)

@@ -152,6 +152,11 @@ export interface WireDirectorView extends WireCommon {
   node_holders: Record<string, string>
   power: { red: number; blue: number }
   air_control: Array<{ q: number; r: number; v: number }>
+  /** 天气计划：仅导演视图下发；off 未启动 / running 执行中 / paused 暂停 */
+  weather_schedule?: {
+    state: 'off' | 'running' | 'paused'
+    phases: Array<{ from_turn: number; to_turn: number; weather: string }>
+  }
 }
 
 export interface WireSpectatorView extends WireCommon {

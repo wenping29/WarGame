@@ -146,7 +146,7 @@ public static class CombatChain
         var defType = g.TypeOf(def);
         var td = g.TerrainOf(def.Pos);
         var wx = g.WeatherOf();
-        var day = DayPhase.FromHours(g.HourOfDay);
+        var day = g.DayPhaseOf();
 
         var ammo = Clamp(att.Ammo <= 0
             ? cf.AmmoMinCf
@@ -184,7 +184,7 @@ public static class CombatChain
         var ratio = atkCf / defCf;
 
         var wx = g.WeatherOf();
-        var day = DayPhase.FromHours(g.HourOfDay);
+        var day = g.DayPhaseOf();
         var seasonK = MechanicsService.SeasonAttrition(g);
 
         // 两抽顺序即协议：先守方噪声、后攻方噪声，重放必须复现同一串

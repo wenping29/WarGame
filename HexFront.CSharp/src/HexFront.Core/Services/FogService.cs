@@ -18,7 +18,7 @@ public static class FogService
     {
         var t = g.TypeOf(u);
         var wx = g.WeatherOf();
-        var day = DayPhase.FromHours(g.HourOfDay);
+        var day = g.DayPhaseOf();
         var obsTerrain = g.TerrainOf(u.Pos);
         var r = (1.0 + t.Recon * 0.55) * wx.Recon * day.Recon;
         if (u.Fatigue > 60) r *= 0.85;
@@ -376,7 +376,7 @@ public static class FogService
     private static Dictionary<string, object?> Common(GameState g)
     {
         var wx = g.WeatherOf();
-        var day = DayPhase.FromHours(g.HourOfDay);
+        var day = g.DayPhaseOf();
 
         var cells = g.Cells.Select(kv =>
         {

@@ -148,6 +148,8 @@ export default function DirectorView() {
               <button className="btn btn-sm" onClick={() => send({ action: 'weather', id: newWeather || view?.weather?.id })}>设定</button>
             </div>
 
+            <WeatherScheduleCard sched={view?.weather_schedule} weatherList={weatherList} send={send} />
+
             <div className="toolbar">
               <Toggle label="战争迷雾" on={view?.flags?.fog === true} onChange={on => send({ action: 'fog', on })} />
               <Toggle label="观战全知" on={view?.spectator_omniscient === true} onChange={on => send({ action: 'spectator_omniscient', on })} />
@@ -319,6 +321,81 @@ function Toggle({ label, on, onChange }: { label: string; on: boolean; onChange:
     <button className={`btn btn-sm${on ? ' btn-primary' : ''}`} onClick={() => onChange(!on)}>
       {(on ? '● ' : '○ ') + label}
     </button>
+  )
+}
+
+/// 天气计划：预排"回合区间 → 天气"，执行中每逢结算按区间强制切换。
+/// 设置/启动/暂停/删除是导演部专属操作（服务端在 director_cmd 里挡 role）。
+const SCHED_STATE: Record<string, string> = { off: '未启动', running: '执行中', paused: '已暂停' }
+
+function WeatherScheduleCard({ sched, weatherList, send }: {
+  sched?: WireDirectorView['weather_schedule']
+  weatherList: Array<{ id: string; label: string }>
+  send: (o: Record<string, unknown>) => void
+}) {
+  const [rows, setRows] = useState<Array<{ from: string; to: string; weather: string }>>([])
+  const has = !!sched && sched.phases.length > 0
+  const wxLabel = (id: string) => weatherList.find(w => w.id === id)?.label || id
+
+  const submit = () => {
+    const phases = rows
+      .map(r => ({ from: parseInt(r.from, 10), to: parseInt(r.to, 10), weather: r.weather }))
+      .filter(p => Number.isFinite(p.from) && Number.isFinite(p.to) && p.from >= 1 && p.to >= p.from)
+    if (phases.length) send({ action: 'weather_schedule_set', phases })
+  }
+
+  return (
+    <>
+      <div className="mini" style={{ marginTop: 6 }}>
+        天气计划：{has ? <b>{SCHED_STATE[sched!.state] || sched!.state}</b> : '未设置'}
+        {has && sched!.state === 'paused' && <span>（天气冻结）</span>}
+      </div>
+      {has && (
+        <div className="mini">
+          {sched!.phases.map((p, i) => (
+            <span key={i} style={{ marginRight: 8 }}>T{p.from_turn}–{p.to_turn} {wxLabel(p.weather)}</span>
+          ))}
+        </div>
+      )}
+      <div className="toolbar">
+        <button className="btn btn-sm" disabled={!has || sched!.state === 'running'}
+          onClick={() => send({ action: 'weather_schedule_start' })}>启动</button>
+        <button className="btn btn-sm" disabled={sched?.state !== 'running'}
+          onClick={() => send({ action: 'weather_schedule_pause' })}>暂停</button>
+        <button className="btn btn-sm" disabled={!has}
+          onClick={() => send({ action: 'weather_schedule_delete' })}>删除</button>
+      </div>
+      <details>
+        <summary className="mini">设定 / 编辑计划（整组替换）</summary>
+        {rows.map((r, i) => (
+          <div className="row" key={i}>
+            <label>
+              <span>起始回合</span>
+              <input type="number" min={1} value={r.from}
+                onChange={e => setRows(rows.map((x, j) => j === i ? { ...x, from: e.target.value } : x))} />
+            </label>
+            <label>
+              <span>结束回合</span>
+              <input type="number" min={1} value={r.to}
+                onChange={e => setRows(rows.map((x, j) => j === i ? { ...x, to: e.target.value } : x))} />
+            </label>
+            <label>
+              <span>天气</span>
+              <select value={r.weather}
+                onChange={e => setRows(rows.map((x, j) => j === i ? { ...x, weather: e.target.value } : x))}>
+                {weatherList.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
+              </select>
+            </label>
+            <button className="btn btn-sm" onClick={() => setRows(rows.filter((_, j) => j !== i))}>×</button>
+          </div>
+        ))}
+        <div className="toolbar">
+          <button className="btn btn-sm"
+            onClick={() => setRows([...rows, { from: '1', to: '3', weather: weatherList[0]?.id || 'clear' }])}>＋ 时段</button>
+          <button className="btn btn-sm btn-primary" onClick={submit}>提交计划</button>
+        </div>
+      </details>
+    </>
   )
 }
 

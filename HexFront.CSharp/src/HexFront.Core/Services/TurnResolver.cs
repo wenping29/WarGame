@@ -95,7 +95,7 @@ public static class TurnResolver
 
         CheckVictory(g, Emit);
 
-        var day = DayPhase.FromHours(g.HourOfDay);
+        var day = g.DayPhaseOf();
         Emit("turn_end", $"回合 {g.Turn - 1} 结束（{day.Label} / {g.WeatherOf().Label}）",
             new List<string> { "red", "blue", "spectator" });
 
@@ -355,7 +355,7 @@ public static class TurnResolver
     {
         var moved = new List<Unit>();
         var wx = g.WeatherOf();
-        var day = DayPhase.FromHours(g.HourOfDay);
+        var day = g.DayPhaseOf();
         var cf = g.Rules.Combat;
 
         var plan = accepted.Values
@@ -676,7 +676,7 @@ public static class TurnResolver
     private static void RecoveryPhase(GameState g, Action<string, string, List<string>> emit)
     {
         var r = g.Rules;
-        var day = DayPhase.FromHours(g.HourOfDay);
+        var day = g.DayPhaseOf();
         var wx = g.WeatherOf();
 
         foreach (var u in g.Units)

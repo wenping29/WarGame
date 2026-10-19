@@ -97,7 +97,14 @@ interface WizardState {
     name: string
   }
   flags: Record<string, string>
-  weather: { initial: string; mode: string }
+  weather: {
+    initial: string
+    mode: string
+    /** 天气计划：回合区间 → 天气；只预排，启动/暂停/删除归导演部 */
+    schedule: Array<{ from: string; to: string; weather: string }>
+  }
+  /** 日夜交替：留空即继承剧本默认（起 6 时 / 每回合 6 小时 / 夜幕 20–6） */
+  clock: { start_hour: string; turn_hours: string; night_from: string; night_to: string }
   sides: { red: { oob: OOBRow[]; budget: string }; blue: { oob: OOBRow[]; budget: string } }
   typeRows: string[]
   typeAttrs: Record<string, Record<string, string>>
@@ -162,7 +169,8 @@ export default function Wizard() {
       roads: true, water: true, network: true, features: true, name: '',
     },
     flags: Object.fromEntries(FLAGS.map(([k]) => [k, 'default'])),
-    weather: { initial: '', mode: '' },
+    weather: { initial: '', mode: '', schedule: [] },
+    clock: { start_hour: '', turn_hours: '', night_from: '', night_to: '' },
     sides: { red: { oob: [], budget: '' }, blue: { oob: [], budget: '' } },
     typeRows: [],
     typeAttrs: {},
@@ -184,7 +192,8 @@ export default function Wizard() {
     }))
   }, [meta, state.scenarioId])
 
-  const u = (updates: Partial<WizardState>) => setState(prev => ({ ...prev, ...updates }))
+  const u = (updates: Partial<WizardState> | ((prev: WizardState) => Partial<WizardState>)) =>
+    setState(prev => ({ ...prev, ...(typeof updates === 'function' ? updates(prev) : updates) }))
 
   // ── 现场生成六角格：能力探测 / 格网方案 / 作业轮询 ──
   const [gen, setGen] = useState<GenSession>({ caps: null, plan: null, planErr: '', planBusy: false, job: null, jobErr: '' })
@@ -311,7 +320,23 @@ export default function Wizard() {
     const wx: Record<string, unknown> = {}
     if (st.weather.initial) wx.initial = st.weather.initial
     if (st.weather.mode) wx.mode = st.weather.mode
+    const phases = st.weather.schedule
+      .map(p => ({ from: num(p.from), to: num(p.to), weather: p.weather }))
+      .filter((p): p is { from: number; to: number; weather: string } =>
+        p.from !== null && p.to !== null && p.from >= 1 && p.to >= p.from)
+    if (phases.length) wx.schedule = phases
     if (Object.keys(wx).length) ov.weather = wx
+    // 昼夜交替：起始时刻/夜幕起止 → clock；每回合推进 → rules.turn_hours
+    const ck: Record<string, unknown> = {}
+    const ckStart = num(st.clock.start_hour)
+    const ckNf = num(st.clock.night_from)
+    const ckNt = num(st.clock.night_to)
+    if (ckStart !== null) ck.start_hour = ckStart
+    if (ckNf !== null) ck.night_from = ckNf
+    if (ckNt !== null) ck.night_to = ckNt
+    if (Object.keys(ck).length) ov.clock = ck
+    const th = num(st.clock.turn_hours)
+    if (th !== null) ov.rules = { turn_hours: th }
     const sides: Record<string, unknown> = {}
     for (const side of ['red', 'blue'] as const) {
       const cfg: Record<string, unknown> = {}
@@ -370,7 +395,7 @@ export default function Wizard() {
   useEffect(() => {
     if (step >= 1 && state.scenarioId) doValidate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.weather.initial, state.weather.mode, state.gis.pkg, state.gis.genPkg, state.flags,
+  }, [state.weather.initial, state.weather.mode, state.weather.schedule, state.clock, state.gis.pkg, state.gis.genPkg, state.flags,
       state.sides, state.typeRows, state.typeAttrs, state.scenarioId, oobDirty])
 
   return (
@@ -762,9 +787,27 @@ function JobCard({ job, err }: { job: GisJob | null; err: string }) {
 // Step 3: Weather
 function Step3Weather({ state, updateState, weatherList }: {
   state: WizardState
-  updateState: (u: Partial<WizardState>) => void
+  updateState: (u: Partial<WizardState> | ((prev: WizardState) => Partial<WizardState>)) => void
   weatherList: Array<{ id: string; label: string }>
 }) {
+  const sched = state.weather.schedule
+  // 函数式更新：连点"添加时段"不会因旧闭包互相覆盖
+  const setSched = (fn: (prev: WizardState['weather']['schedule']) => WizardState['weather']['schedule']) =>
+    updateState(prev => ({ weather: { ...prev.weather, schedule: fn(prev.weather.schedule) } }))
+  const patch = (i: number, p: Partial<{ from: string; to: string; weather: string }>) =>
+    setSched(rows => rows.map((x, j) => j === i ? { ...x, ...p } : x))
+  const addRow = () => setSched(rows => {
+    const lastTo = rows.length ? Number(rows[rows.length - 1].to) || 0 : 0
+    return [...rows, { from: String(lastTo + 1), to: String(lastTo + 3), weather: weatherList[0]?.id || 'clear' }]
+  })
+  const clock = state.clock
+  const setClock = (p: Partial<WizardState['clock']>) =>
+    updateState(prev => ({ clock: { ...prev.clock, ...p } }))
+  const nf = Number(clock.night_from), nt = Number(clock.night_to)
+  const cycleHint = Number.isInteger(nf) && Number.isInteger(nt) && nf >= 0 && nf <= 23 && nt >= 0 && nt <= 23 && nf !== nt
+    ? `夜幕 ${clock.night_from}–${clock.night_to} 时，其前后各约 3 小时为拂晓/黄昏，其余为昼间`
+    : '默认夜幕 20–6 时：拂晓 6–9 / 黄昏 17–20 / 夜间 20–6'
+
   return (
     <div>
       <h2>第 3 步 · 天气与演变</h2>
@@ -786,6 +829,65 @@ function Step3Weather({ state, updateState, weatherList }: {
         </label>
       </div>
       <p className="muted small">天气可在导演部终端逐回合手改；此处仅设定初始与默认演变。</p>
+
+      <h3 style={{ marginTop: 12 }}>天气计划（可选）</h3>
+      <p className="muted small">
+        按回合区间预排多段天气，执行中每逢结算自动切换。
+        副本开局只装载不执行 —— 启动 / 暂停 / 改排 / 删除都是导演部的专属操作，红蓝双方无法干预。
+      </p>
+      {sched.map((p, i) => (
+        <div className="row" key={i}>
+          <label>
+            <span>起始回合</span>
+            <input type="number" min={1} value={p.from} onChange={e => patch(i, { from: e.target.value })} />
+          </label>
+          <label>
+            <span>结束回合</span>
+            <input type="number" min={1} value={p.to} onChange={e => patch(i, { to: e.target.value })} />
+          </label>
+          <label>
+            <span>天气</span>
+            <select value={p.weather} onChange={e => patch(i, { weather: e.target.value })}>
+              {weatherList.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
+            </select>
+          </label>
+          <button className="btn btn-sm" onClick={() => setSched(sched.filter((_, j) => j !== i))}>删除</button>
+        </div>
+      ))}
+      <div className="toolbar" style={{ marginTop: 6 }}>
+        <button className="btn btn-sm" onClick={addRow}>＋ 添加时段</button>
+      </div>
+      <p className="muted small">留空的时段不会提交；区间需满足 1 ≤ 起始 ≤ 结束，且互不重叠，校验不通过会在上方报错。</p>
+
+      <h3 style={{ marginTop: 12 }}>日夜交替</h3>
+      <div className="row">
+        <label>
+          <span>起始时刻</span>
+          <input type="number" min={0} max={23} placeholder="6" value={clock.start_hour}
+            onChange={e => setClock({ start_hour: e.target.value })} />
+        </label>
+        <label>
+          <span>每回合推进（小时）</span>
+          <input type="number" min={1} max={24} placeholder="6" value={clock.turn_hours}
+            onChange={e => setClock({ turn_hours: e.target.value })} />
+        </label>
+      </div>
+      <div className="row">
+        <label>
+          <span>夜幕开始（时）</span>
+          <input type="number" min={0} max={23} placeholder="20" value={clock.night_from}
+            onChange={e => setClock({ night_from: e.target.value })} />
+        </label>
+        <label>
+          <span>夜幕结束（时）</span>
+          <input type="number" min={0} max={23} placeholder="6" value={clock.night_to}
+            onChange={e => setClock({ night_to: e.target.value })} />
+        </label>
+      </div>
+      <p className="muted small">
+        时间随回合推进自动循环，拂晓/黄昏/夜间对侦察与战斗有修正。
+        {cycleHint}；夜幕结束可小于开始（跨零点）。
+      </p>
     </div>
   )
 }

@@ -112,6 +112,10 @@ public sealed class GameState
     public string Phase { get; set; } = "orders"; // orders/movement/combat/resolution
     public string? Weather { get; set; } = "clear";
     public string WeatherMode { get; set; } = "director"; // director/realistic/random
+    /// <summary>夜幕起始时刻（0–23，null = 出厂默认 20）。拂晓/黄昏窗口随夜幕自动推算。</summary>
+    public int? NightFrom { get; set; }
+    /// <summary>夜幕结束时刻（0–23，可小于 NightFrom 表示跨零点；null = 出厂默认 6）。</summary>
+    public int? NightTo { get; set; }
     /// <summary>
     /// 天气计划（导演部专属）：回合区间 → 天气的预排列表。
     /// 只有导演部能整组设置 / 启动 / 暂停 / 删除；红蓝双方既看不到操作入口也改不动。
@@ -183,6 +187,28 @@ public sealed class GameState
     public WeatherDef WeatherOf()
     {
         return Weathers.GetValueOrDefault(Weather ?? "clear") ?? LibraryService.GetWeather("clear");
+    }
+
+    /// <summary>
+    /// 当前昼夜相位：按剧本夜幕窗口（NightFrom→NightTo，支持跨零点）划分，
+    /// 夜幕前后各 3 小时为拂晓/黄昏，其余为昼间；窗口非法或昼夜等长时回落出厂默认。
+    /// </summary>
+    public DayPhase DayPhaseOf()
+    {
+        var nf = NightFrom ?? 20;
+        var nt = NightTo ?? 6;
+        var h = ((HourOfDay % 24) + 24) % 24;
+
+        var nightLen = ((nf - nt) % 24 + 24) % 24;   // 夜长（小时）
+        if (nightLen == 0) return DayPhase.FromHours(h); // 起止相同视为无效，回落默认
+
+        var sinceDawn = ((h - nt) % 24 + 24) % 24;   // 距拂晓开始的小时数
+        if (sinceDawn >= nightLen) return new DayPhase("night", "夜间", 0.45, 0.75);
+
+        var edge = Math.Min(3, nightLen / 3);        // 夜太短时拂晓/黄昏按比例压缩
+        if (sinceDawn < edge) return new DayPhase("dawn", "拂晓", 0.8, 0.95);
+        if (sinceDawn >= nightLen - edge) return new DayPhase("dusk", "黄昏", 0.8, 0.95);
+        return new DayPhase("day", "昼间", 1.0, 1.0);
     }
 
     /// <summary>Get unit type definition for a unit.</summary>
@@ -258,6 +284,8 @@ public sealed class GameState
             WeatherMode = WeatherMode,
             WeatherSchedule = WeatherSchedule?.ToList(),
             WeatherScheduleState = WeatherScheduleState,
+            NightFrom = NightFrom,
+            NightTo = NightTo,
             Over = Over,
             Winner = Winner,
             EndedTurn = EndedTurn,
