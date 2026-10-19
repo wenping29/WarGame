@@ -264,18 +264,18 @@ export default function GridManager() {
 
   const onFrame = (b: BBox) => {
     if (!geom) return toast('请先填写有效的对边距', 'err')
+    // 范围以用户框选的矩形为准（不整格外扩）；对边距保持不变；行列号由范围 + 对边距重新计算（向上取整覆盖整个范围）
     const size = geom.ftf / SQRT3
     const C = clamp(Math.ceil((lngToMx(b.east) - lngToMx(b.west)) / (SQRT3 * size)), 1, 200)
     const R = clamp(Math.ceil((latToMy(b.north) - latToMy(b.south)) / (1.5 * size)), 1, 200)
-    const bb = deriveBBox(b.west, b.south, R, C, geom.ftf)
     setDraft((prev) => ({
       ...prev,
       west: b.west.toFixed(4),
       south: b.south.toFixed(4),
+      east: b.east.toFixed(4),
+      north: b.north.toFixed(4),
       rows: String(R),
       cols: String(C),
-      east: bb.east.toFixed(4),
-      north: bb.north.toFixed(4),
     }))
     toast(`已框选范围：${R} 行 × ${C} 列`)
   }
@@ -369,7 +369,7 @@ export default function GridManager() {
     <div className="page gridmgr">
       {/* 左栏：网格列表 + 导入导出 + 统计 */}
       <div className="gm-col">
-        <div className="panel">
+        <div className="panel gm-list-panel">
           <div className="panel-header">
             <h3>网格列表（{grids.length}）</h3>
           </div>

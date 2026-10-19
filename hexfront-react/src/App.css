@@ -761,6 +761,14 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .gm-coordhead span{font-size:12px; color:#aeb9c4}
 .gm-modehint{margin-left:auto}
 
+/* 左栏网格列表：面板内滚动，列表自身出滚动条 */
+.gm-list-panel{flex:1; min-height:0}
+.gm-list-panel .gm-list{flex:1; min-height:0; overflow-y:auto; padding-right:3px}
+.gm-list-panel .gm-list::-webkit-scrollbar{width:8px}
+.gm-list-panel .gm-list::-webkit-scrollbar-track{background:rgba(255,255,255,.04); border-radius:4px}
+.gm-list-panel .gm-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22); border-radius:4px}
+.gm-list-panel .gm-list::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.36)}
+
 /* 框选地图范围弹窗 */
 .gm-modal-mask{position:fixed; inset:0; z-index:100; background:rgba(4,8,12,.62); display:flex; align-items:center; justify-content:center; padding:24px}
 .gm-modal{width:min(880px, 94vw); height:min(640px, 88vh); display:flex; flex-direction:column; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; box-shadow:0 14px 48px rgba(0,0,0,.55)}
