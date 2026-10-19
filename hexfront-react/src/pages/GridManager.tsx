@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from '../components/Toast'
+import BBoxPicker, { type BBox } from '../components/BBoxPicker'
 
 type TerrainKey = 'plain' | 'forest' | 'city' | 'water' | 'mountain'
 type Tool = 'select' | 'paint' | 'dig' | 'fill'
@@ -28,6 +29,8 @@ interface GridDoc {
   flatToFlat: number // 对边距
   holes: string[] // 已删除格键 "col,row"
   terrains: Record<string, TerrainKey>
+  /** 在线地图框选来源的经纬度范围（可选溯源信息） */
+  bbox?: BBox
   createdAt: number
 }
 
@@ -116,6 +119,7 @@ export default function GridManager() {
   const [hover, setHover] = useState<string | null>(null)
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
   const [form, setForm] = useState({ name: '', rows: 10, cols: 14, flatToFlat: 2500 })
+  const [showPicker, setShowPicker] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -303,6 +307,17 @@ export default function GridManager() {
     toast(`已创建「${name}」`)
   }
 
+  /** 在线地图框选 → 生成网格 */
+  const createFromBBox = (p: { rows: number; cols: number; flatToFlat: number; bbox: BBox; name: string }) => {
+    const name = p.name || `框选 ${grids.length + 1}`
+    const d: GridDoc = { ...makeGrid(name, p.rows, p.cols, p.flatToFlat), bbox: p.bbox }
+    setGrids((list) => [...list, d])
+    setActiveId(d.id)
+    setSelected(null)
+    setShowPicker(false)
+    toast(`已按选区创建「${name}」（${p.rows}×${p.cols}）`)
+  }
+
   const deleteGrid = (id: string) => {
     setGrids((list) => {
       const next = list.filter((g) => g.id !== id)
@@ -398,6 +413,7 @@ export default function GridManager() {
             <input type="number" min={10} value={form.flatToFlat} onChange={(e) => setForm({ ...form, flatToFlat: Number(e.target.value) })} />
           </label>
           <button className="btn btn-primary" onClick={createGrid}>创建网格</button>
+          <button className="btn" onClick={() => setShowPicker(true)}>🗺 在线地图框选</button>
         </div>
         <div className="panel">
           <div className="panel-header">
@@ -460,6 +476,11 @@ export default function GridManager() {
           <div className="muted small gm-geom">
             外接圆半径（边长）{side.toFixed(2)} · 顶对顶 {((2 / SQRT3) * active.flatToFlat).toFixed(2)} · 单格面积 {area.toFixed(1)}
           </div>
+          {active.bbox && (
+            <div className="muted small gm-geom">
+              源自地图框选：{active.bbox.west.toFixed(3)}~{active.bbox.east.toFixed(3)}°E · {active.bbox.south.toFixed(3)}~{active.bbox.north.toFixed(3)}°N
+            </div>
+          )}
         </div>
         <div className="panel">
           <div className="panel-header">
@@ -500,6 +521,8 @@ export default function GridManager() {
           <div className="kv"><span>涂装格数</span><span>{Object.keys(active.terrains).length}</span></div>
         </div>
       </div>
+
+      {showPicker && <BBoxPicker onClose={() => setShowPicker(false)} onCreate={createFromBBox} />}
     </div>
   )
 }
