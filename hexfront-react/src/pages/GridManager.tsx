@@ -1,25 +1,24 @@
 /**
- * 六角格管理系统：创建 / 删除 / 修改六角格网络。
- * 几何与主地图一致：pointy-top + odd-r 偏移坐标，对边距（flat-to-flat）= √3 · 外接圆半径。
- * 数据持久化在浏览器 localStorage，支持导出 / 导入 JSON。
+ * 六角格管理系统：左侧网格列表（删除/修改/点击在地图上显示），
+ * 中间在线地图显示六角格网，右侧创建/编辑表单（行列、对边距、区域坐标、名称、
+ * 地图拾取坐标、创建按钮）。几何与主地图一致：pointy-top + odd-r，对边距 = √3 · 半径，
+ * 几何量以墨卡托米计（与天地图底图同坐标系）。数据持久化 localStorage，支持导入导出 JSON。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from '../components/Toast'
-import BBoxPicker, { type BBox } from '../components/BBoxPicker'
+import GeoMapView, { type BBox, type HexOverlay, type MapMode, TERRAINS, lngToMx, latToMy, mxToLng, myToLat } from '../components/GeoMapView'
 
-type TerrainKey = 'plain' | 'forest' | 'city' | 'water' | 'mountain'
-type Tool = 'select' | 'paint' | 'dig' | 'fill'
-
-const TERRAINS: Array<[TerrainKey, string, string]> = [
-  ['plain', '平原', '#5d7a4a'],
-  ['forest', '森林', '#38573c'],
-  ['city', '城镇', '#8a8072'],
-  ['water', '水域', '#33587a'],
-  ['mountain', '山地', '#6e675c'],
-]
-const TERRAIN_COLOR = Object.fromEntries(TERRAINS.map(([k, , c]) => [k, c])) as Record<TerrainKey, string>
-const TERRAIN_NAME = Object.fromEntries(TERRAINS.map(([k, n]) => [k, n])) as Record<TerrainKey, string>
+const SQRT3 = Math.sqrt(3)
+const LS_KEY = 'hexfront.gridmgr.v1'
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+const key = (col: number, row: number) => `${col},${row}`
+const parseKey = (k: string): [number, number] => {
+  const [a, b] = k.split(',')
+  return [Number(a), Number(b)]
+}
+const KM_PER_DEG = (Math.PI * 6378137) / 180 / 1000
+const TERRAIN_NAME = Object.fromEntries(TERRAINS.map(([k, n]) => [k, n])) as Record<string, string>
 
 interface GridDoc {
   id: string
@@ -28,19 +27,27 @@ interface GridDoc {
   cols: number
   flatToFlat: number // 对边距
   holes: string[] // 已删除格键 "col,row"
-  terrains: Record<string, TerrainKey>
-  /** 在线地图框选来源的经纬度范围（可选溯源信息） */
+  terrains: Record<string, string>
+  /** 溯源：网格覆盖的经纬度范围 */
   bbox?: BBox
   createdAt: number
 }
 
-const LS_KEY = 'hexfront.gridmgr.v1'
-const SQRT3 = Math.sqrt(3)
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
-const key = (col: number, row: number) => `${col},${row}`
-const parseKey = (k: string): [number, number] => {
-  const [a, b] = k.split(',')
-  return [Number(a), Number(b)]
+/** 行列/锚点/对边距 → 派生区域范围（经纬度） */
+function deriveBBox(west: number, south: number, rows: number, cols: number, flatToFlat: number): BBox {
+  const size = flatToFlat / SQRT3
+  return {
+    west,
+    south,
+    east: mxToLng(lngToMx(west) + SQRT3 * size * (cols + 0.5)),
+    north: myToLat(latToMy(south) + size * (1.5 * rows + 0.5)),
+  }
+}
+/** 由东/北边界反推行列 */
+function deriveCount(west: number, south: number, edge: number, flatToFlat: number, isEast: boolean): number {
+  const size = flatToFlat / SQRT3
+  if (isEast) return clamp(Math.round((lngToMx(edge) - lngToMx(west)) / (SQRT3 * size) - 0.5), 1, 200)
+  return clamp(Math.round((latToMy(edge) - latToMy(south)) / (1.5 * size) - 1 / 3), 1, 200)
 }
 
 function loadStore(): GridDoc[] {
@@ -53,7 +60,7 @@ function loadStore(): GridDoc[] {
   } catch {
     /* 忽略坏数据 */
   }
-  return [makeGrid('默认棋盘', 10, 14, 2500)]
+  return [makeGrid('默认棋盘', 10, 14, 2500, { west: 107, south: 33, east: 107.7, north: 33.6 })]
 }
 
 function saveStore(list: GridDoc[]) {
@@ -64,7 +71,7 @@ function saveStore(list: GridDoc[]) {
   }
 }
 
-function makeGrid(name: string, rows: number, cols: number, flatToFlat: number): GridDoc {
+function makeGrid(name: string, rows: number, cols: number, flatToFlat: number, bbox?: BBox): GridDoc {
   return {
     id: crypto.randomUUID(),
     name,
@@ -73,6 +80,7 @@ function makeGrid(name: string, rows: number, cols: number, flatToFlat: number):
     flatToFlat,
     holes: [],
     terrains: {},
+    ...(bbox ? { bbox } : {}),
     createdAt: Date.now(),
   }
 }
@@ -86,48 +94,37 @@ function pruneDoc(d: GridDoc): GridDoc {
   return { ...d, holes: d.holes.filter(inRange), terrains: Object.fromEntries(Object.entries(d.terrains).filter(([k]) => inRange(k))) }
 }
 
-/** odd-r 偏移坐标：格心（格坐标系，未含缩放与原点偏移） */
-function cellCenter(col: number, row: number, size: number): [number, number] {
-  return [SQRT3 * size * (col + 0.5 * (row & 1)), 1.5 * size * row]
+interface Draft {
+  name: string
+  rows: string
+  cols: string
+  flatToFlat: string
+  west: string
+  south: string
+  east: string
+  north: string
 }
 
-function hexPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) {
-  ctx.beginPath()
-  for (let i = 0; i < 6; i++) {
-    const a = (Math.PI / 180) * (60 * i - 30)
-    const x = cx + size * Math.cos(a)
-    const y = cy + size * Math.sin(a)
-    if (i === 0) ctx.moveTo(x, y)
-    else ctx.lineTo(x, y)
-  }
-  ctx.closePath()
-}
-
-const TOOLS: Array<[Tool, string]> = [
-  ['select', '浏览'],
-  ['paint', '涂刷'],
-  ['dig', '挖格'],
-  ['fill', '补格'],
-]
+const DEFAULT_DRAFT: Draft = { name: '', rows: '10', cols: '14', flatToFlat: '2500', west: '107', south: '33', east: '', north: '' }
+const DEFAULT_BBOX: BBox = { west: 107, south: 33, east: 107.7, north: 33.6 }
 
 export default function GridManager() {
   const [grids, setGrids] = useState<GridDoc[]>(loadStore)
-  const [activeId, setActiveId] = useState<string>(() => loadStore()[0]?.id ?? '')
-  const [tool, setTool] = useState<Tool>('select')
-  const [brush, setBrush] = useState<TerrainKey>('plain')
-  const [selected, setSelected] = useState<string | null>(null)
-  const [hover, setHover] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(() => loadStore()[0]?.id ?? null)
+  const [draft, setDraft] = useState<Draft>(DEFAULT_DRAFT)
+  const [mode, setMode] = useState<MapMode>('pan')
+  const [brush, setBrush] = useState('plain')
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', rows: 10, cols: 14, flatToFlat: 2500 })
-  const [showPicker, setShowPicker] = useState(false)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const wrapRef = useRef<HTMLDivElement>(null)
+  const [fit, setFit] = useState<{ bbox: BBox; nonce: number } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
 
-  const active = useMemo(() => grids.find((g) => g.id === activeId) ?? grids[0], [grids, activeId])
+  const active = useMemo(() => grids.find((g) => g.id === editingId) ?? null, [grids, editingId])
 
   useEffect(() => {
-    saveStore(grids)
+    // 防抖持久化：涂刷/拖动时避免每格全量序列化写 localStorage
+    const t = setTimeout(() => saveStore(grids), 250)
+    return () => clearTimeout(t)
   }, [grids])
 
   const patch = useCallback(
@@ -138,199 +135,168 @@ export default function GridManager() {
     [active],
   )
 
-  /* ---------- 画布渲染 ---------- */
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current
-    const wrap = wrapRef.current
-    if (!canvas || !wrap || !active) return
-    const W = wrap.clientWidth
-    const H = wrap.clientHeight
-    const dpr = window.devicePixelRatio || 1
-    if (canvas.width !== W * dpr || canvas.height !== H * dpr) {
-      canvas.width = W * dpr
-      canvas.height = H * dpr
-    }
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, W, H)
+  /* ---------- 草稿几何 ---------- */
+  const geom = useMemo(() => {
+    const rows = Math.round(Number(draft.rows))
+    const cols = Math.round(Number(draft.cols))
+    const ftf = Number(draft.flatToFlat)
+    const west = Number(draft.west)
+    const south = Number(draft.south)
+    if (![rows, cols, ftf, west, south].every(Number.isFinite) || ftf < 10) return null
+    return { rows: clamp(rows, 1, 200), cols: clamp(cols, 1, 200), ftf: clamp(ftf, 10, 1_000_000), west, south }
+  }, [draft])
 
-    const size = active.flatToFlat / SQRT3
-    const gridW = SQRT3 * size * (active.cols + 0.5)
-    const gridH = size * (1.5 * active.rows + 0.5)
-    const scale = Math.min((W - 32) / gridW, (H - 32) / gridH)
-    const ox = (W - gridW * scale) / 2
-    const oy = (H - gridH * scale) / 2
-
-    const holeSet = new Set(active.holes)
-    for (let row = 0; row < active.rows; row++) {
-      for (let col = 0; col < active.cols; col++) {
-        const k = key(col, row)
-        if (holeSet.has(k)) continue
-        const [gx, gy] = cellCenter(col, row, size)
-        const cx = gx * scale + ox
-        const cy = gy * scale + oy
-        hexPath(ctx, cx, cy, size * scale)
-        ctx.fillStyle = TERRAIN_COLOR[active.terrains[k] ?? 'plain']
-        ctx.fill()
-        ctx.strokeStyle = 'rgba(12,16,20,.55)'
-        ctx.lineWidth = 1
-        ctx.stroke()
-        // 城镇/水域加一个简单纹理标记
-        const t = active.terrains[k]
-        if (t === 'city') {
-          ctx.fillStyle = 'rgba(20,20,20,.5)'
-          ctx.fillRect(cx - 2, cy - 2, 4, 4)
-        } else if (t === 'water') {
-          ctx.strokeStyle = 'rgba(190,215,235,.5)'
-          ctx.beginPath()
-          ctx.moveTo(cx - 6, cy + 2)
-          ctx.quadraticCurveTo(cx, cy - 3, cx + 6, cy + 2)
-          ctx.stroke()
-        }
-      }
+  const overlay: HexOverlay | null = useMemo(() => {
+    if (!geom) return null
+    return {
+      west: geom.west,
+      south: geom.south,
+      rows: geom.rows,
+      cols: geom.cols,
+      size: geom.ftf / SQRT3,
+      holes: active?.holes,
+      terrains: active?.terrains,
+      preview: !active || active.rows !== geom.rows || active.cols !== geom.cols || active.flatToFlat !== geom.ftf,
     }
-    // 挖掉的格画虚线轮廓（补格工具下可见）
-    if (tool === 'fill' || tool === 'select') {
-      ctx.setLineDash([4, 3])
-      ctx.strokeStyle = 'rgba(150,160,170,.4)'
-      for (const k of active.holes) {
-        const [col, row] = parseKey(k)
-        const [gx, gy] = cellCenter(col, row, size)
-        hexPath(ctx, gx * scale + ox, gy * scale + oy, size * scale)
-        ctx.stroke()
-      }
-      ctx.setLineDash([])
-    }
-    // 悬停 / 选中高亮
-    for (const [k, color] of [
-      [hover, 'rgba(240,220,140,.9)'],
-      [selected, 'rgba(250,200,90,1)'],
-    ] as const) {
-      if (!k) continue
-      const [col, row] = parseKey(k)
-      if (col >= active.cols || row >= active.rows) continue
-      const [gx, gy] = cellCenter(col, row, size)
-      hexPath(ctx, gx * scale + ox, gy * scale + oy, size * scale)
-      ctx.strokeStyle = color
-      ctx.lineWidth = 2.5
-      ctx.stroke()
-    }
-  }, [active, tool, hover, selected])
+  }, [geom, active])
 
-  useEffect(() => {
-    draw()
-    const wrap = wrapRef.current
-    if (!wrap) return
-    const ro = new ResizeObserver(draw)
-    ro.observe(wrap)
-    return () => ro.disconnect()
-  }, [draw])
+  const fitGrid = (b: BBox) => setFit({ bbox: b, nonce: Date.now() })
 
-  /* ---------- 鼠标：坐标 → 格 ---------- */
-  const hitCell = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>): string | null => {
-      const canvas = canvasRef.current
-      const wrap = wrapRef.current
-      if (!canvas || !wrap || !active) return null
-      const rect = canvas.getBoundingClientRect()
-      const px = e.clientX - rect.left
-      const py = e.clientY - rect.top
-      const size = active.flatToFlat / SQRT3
-      const gridW = SQRT3 * size * (active.cols + 0.5)
-      const gridH = size * (1.5 * active.rows + 0.5)
-      const scale = Math.min((wrap.clientWidth - 32) / gridW, (wrap.clientHeight - 32) / gridH)
-      const ox = (wrap.clientWidth - gridW * scale) / 2
-      const oy = (wrap.clientHeight - gridH * scale) / 2
-      const wx = (px - ox) / scale
-      const wy = (py - oy) / scale
-      let best: string | null = null
-      let bestD = Infinity
-      const lim = size * size // 六角格最近格心的最大距离 = 外接圆半径（角区由相邻格共享）
-      for (let row = 0; row < active.rows; row++) {
-        for (let col = 0; col < active.cols; col++) {
-          const [gx, gy] = cellCenter(col, row, size)
-          const d = (wx - gx) ** 2 + (wy - gy) ** 2
-          if (d < bestD && d <= lim) {
-            bestD = d
-            best = key(col, row)
-          }
-        }
-      }
-      return best
-    },
-    [active],
-  )
-
-  const onMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const k = hitCell(e)
-    if (k !== hover) setHover(k)
-  }
-
-  const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!active) return
-    const k = hitCell(e)
-    if (!k) return
-    const holeSet = new Set(active.holes)
-    if (tool === 'select') {
-      setSelected(k === selected ? null : k)
-      return
-    }
-    if (tool === 'paint') {
-      if (holeSet.has(k)) return toast('该格已挖除，请先补格', 'err')
-      setSelected(k)
-      patch({ terrains: { ...active.terrains, [k]: brush } })
-      return
-    }
-    if (tool === 'dig') {
-      if (holeSet.has(k)) return
-      const terrains = { ...active.terrains }
-      delete terrains[k]
-      setSelected(null)
-      patch({ holes: [...active.holes, k], terrains })
-      return
-    }
-    if (tool === 'fill') {
-      if (!holeSet.has(k)) return
-      patch({ holes: active.holes.filter((h) => h !== k) })
-    }
-  }
-
-  /* ---------- 网格增删改 ---------- */
-  const createGrid = () => {
-    const name = form.name.trim() || `棋盘 ${grids.length + 1}`
-    const d = makeGrid(name, clamp(Math.round(form.rows), 1, 200), clamp(Math.round(form.cols), 1, 200), clamp(form.flatToFlat, 10, 1_000_000))
-    setGrids((list) => [...list, d])
-    setActiveId(d.id)
-    setSelected(null)
-    setForm({ name: '', rows: 10, cols: 14, flatToFlat: 2500 })
-    toast(`已创建「${name}」`)
-  }
-
-  /** 在线地图框选 → 生成网格 */
-  const createFromBBox = (p: { rows: number; cols: number; flatToFlat: number; bbox: BBox; name: string }) => {
-    const name = p.name || `框选 ${grids.length + 1}`
-    const d: GridDoc = { ...makeGrid(name, p.rows, p.cols, p.flatToFlat), bbox: p.bbox }
-    setGrids((list) => [...list, d])
-    setActiveId(d.id)
-    setSelected(null)
-    setShowPicker(false)
-    toast(`已按选区创建「${name}」（${p.rows}×${p.cols}）`)
+  /* ---------- 列表操作 ---------- */
+  const openGrid = (g: GridDoc) => {
+    setEditingId(g.id)
+    const b = g.bbox ?? deriveBBox(107, 33, g.rows, g.cols, g.flatToFlat)
+    setDraft({
+      name: g.name,
+      rows: String(g.rows),
+      cols: String(g.cols),
+      flatToFlat: String(g.flatToFlat),
+      west: b.west.toFixed(4),
+      south: b.south.toFixed(4),
+      east: b.east.toFixed(4),
+      north: b.north.toFixed(4),
+    })
+    fitGrid(b)
   }
 
   const deleteGrid = (id: string) => {
     setGrids((list) => {
       const next = list.filter((g) => g.id !== id)
       const final = next.length ? next : [makeGrid('默认棋盘', 10, 14, 2500)]
-      if (id === activeId) setActiveId(final[0].id)
+      if (id === editingId) {
+        setEditingId(null)
+        setDraft(DEFAULT_DRAFT)
+      }
       return final
     })
     setConfirmDel(null)
-    setSelected(null)
+    toast('已删除网格')
   }
 
+  /* ---------- 草稿字段更新：锚点/行列/对边距 → 重新推导东/北边界 ---------- */
+  const updGeom = (p: Partial<{ rows: string; cols: string; flatToFlat: string; west: string; south: string }>) =>
+    setDraft((prev) => {
+      const rows = Math.round(Number(p.rows ?? prev.rows))
+      const cols = Math.round(Number(p.cols ?? prev.cols))
+      const ftf = Number(p.flatToFlat ?? prev.flatToFlat)
+      const west = Number(p.west ?? prev.west)
+      const south = Number(p.south ?? prev.south)
+      if (![rows, cols, ftf, west, south].every(Number.isFinite) || ftf < 10) return { ...prev, ...p }
+      const R = clamp(rows, 1, 200)
+      const C = clamp(cols, 1, 200)
+      const F = clamp(ftf, 10, 1_000_000)
+      const bb = deriveBBox(west, south, R, C, F)
+      return {
+        ...prev,
+        rows: String(R),
+        cols: String(C),
+        flatToFlat: String(F),
+        west: west.toFixed(4),
+        south: south.toFixed(4),
+        east: bb.east.toFixed(4),
+        north: bb.north.toFixed(4),
+      }
+    })
+
+  /** 东/北边界输入：反推行列 */
+  const updEdge = (isEast: boolean, v: string) => {
+    const num = Number(v)
+    setDraft((prev) => {
+      if (!Number.isFinite(num) || !geom) return { ...prev, [isEast ? 'east' : 'north']: v }
+      if (isEast) {
+        const C = deriveCount(geom.west, geom.south, num, geom.ftf, true)
+        const bb = deriveBBox(geom.west, geom.south, geom.rows, C, geom.ftf)
+        return { ...prev, cols: String(C), east: bb.east.toFixed(4) }
+      }
+      const R = deriveCount(geom.west, geom.south, num, geom.ftf, false)
+      const bb = deriveBBox(geom.west, geom.south, R, geom.cols, geom.ftf)
+      return { ...prev, rows: String(R), north: bb.north.toFixed(4) }
+    })
+  }
+
+  /* ---------- 地图交互回调 ---------- */
+  const onPick = (lng: number, lat: number) => {
+    updGeom({ west: lng, south: lat })
+    setMode('pan')
+    toast(`已拾取锚点 ${lng.toFixed(4)}°E, ${lat.toFixed(4)}°N`)
+  }
+
+  const onFrame = (b: BBox) => {
+    if (!geom) return toast('请先填写有效的对边距', 'err')
+    const size = geom.ftf / SQRT3
+    const C = clamp(Math.ceil((lngToMx(b.east) - lngToMx(b.west)) / (SQRT3 * size)), 1, 200)
+    const R = clamp(Math.ceil((latToMy(b.north) - latToMy(b.south)) / (1.5 * size)), 1, 200)
+    const bb = deriveBBox(b.west, b.south, R, C, geom.ftf)
+    setDraft((prev) => ({
+      ...prev,
+      west: b.west.toFixed(4),
+      south: b.south.toFixed(4),
+      rows: String(R),
+      cols: String(C),
+      east: bb.east.toFixed(4),
+      north: bb.north.toFixed(4),
+    }))
+    toast(`已框选范围：${R} 行 × ${C} 列`)
+  }
+
+  const onCellClick = (k: string | null) => {
+    if (!k) return
+    if (!active) return toast('先创建/选中一个网格，才能涂刷编辑', 'err')
+    const holeSet = new Set(active.holes)
+    if (mode === 'paint') {
+      if (holeSet.has(k)) return toast('该格已挖除，请先补格', 'err')
+      patch({ terrains: { ...active.terrains, [k]: brush } })
+    } else if (mode === 'dig') {
+      if (holeSet.has(k)) return
+      const terrains = { ...active.terrains }
+      delete terrains[k]
+      patch({ holes: [...active.holes, k], terrains })
+    } else if (mode === 'fill') {
+      if (!holeSet.has(k)) return
+      patch({ holes: active.holes.filter((h) => h !== k) })
+    }
+  }
+
+  /* ---------- 创建 / 保存 ---------- */
+  const saveFromDraft = () => {
+    if (!geom) return toast('参数无效：请检查行列、对边距与坐标', 'err')
+    const bb = deriveBBox(geom.west, geom.south, geom.rows, geom.cols, geom.ftf)
+    const name = draft.name.trim() || (editingId ? active?.name : '') || `棋盘 ${grids.length + 1}`
+    if (editingId && active) {
+      setGrids((list) => list.map((g) => (g.id === editingId ? pruneDoc({ ...g, name, rows: geom.rows, cols: geom.cols, flatToFlat: geom.ftf, bbox: bb }) : g)))
+      toast(`已保存「${name}」（${geom.rows}×${geom.cols}）`)
+    } else {
+      const d = makeGrid(name, geom.rows, geom.cols, geom.ftf, bb)
+      setGrids((list) => [...list, d])
+      setEditingId(d.id)
+      toast(`已创建「${name}」（${geom.rows}×${geom.cols}）`)
+    }
+    fitGrid(bb)
+  }
+
+  /* ---------- 导入导出 ---------- */
   const exportDoc = () => {
-    if (!active) return
+    if (!active) return toast('先选择一个网格', 'err')
     const blob = new Blob([JSON.stringify(active, null, 2)], { type: 'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
@@ -344,16 +310,14 @@ export default function GridManager() {
     file.text().then((text) => {
       try {
         const j = JSON.parse(text)
-        if (typeof j.rows !== 'number' || typeof j.cols !== 'number' || typeof j.flatToFlat !== 'number') {
-          throw new Error('字段缺失')
-        }
+        if (typeof j.rows !== 'number' || typeof j.cols !== 'number' || typeof j.flatToFlat !== 'number') throw new Error('字段缺失')
         const d = pruneDoc({
-          ...makeGrid(String(j.name || '导入网格'), j.rows, j.cols, j.flatToFlat),
+          ...makeGrid(String(j.name || '导入网格'), j.rows, j.cols, j.flatToFlat, j.bbox),
           holes: Array.isArray(j.holes) ? j.holes.map(String) : [],
           terrains: j.terrains && typeof j.terrains === 'object' ? j.terrains : {},
         })
         setGrids((list) => [...list, d])
-        setActiveId(d.id)
+        openGrid(d)
         toast(`已导入「${d.name}」`)
       } catch {
         toast('导入失败：不是有效的网格 JSON', 'err')
@@ -361,18 +325,22 @@ export default function GridManager() {
     })
   }
 
-  if (!active) return null
-
-  const selCol = selected ? parseKey(selected)[0] : -1
-  const selRow = selected ? parseKey(selected)[1] : -1
-  const selIn = selected && selCol < active.cols && selRow < active.rows
-  const selIsHole = selected != null && active.holes.includes(selected)
-  const side = active.flatToFlat / SQRT3
-  const area = (3 * SQRT3 / 2) * side * side // 单格面积（平方单位）
+  const TOOLS: Array<[MapMode, string]> = [
+    ['pan', '浏览'],
+    ['paint', '涂刷'],
+    ['dig', '挖格'],
+    ['fill', '补格'],
+    ['frame', '框选范围'],
+  ]
+  const side = geom ? geom.ftf / SQRT3 : 0
+  const area = geom ? ((3 * SQRT3) / 2) * side * side : 0
+  const bb = geom ? deriveBBox(geom.west, geom.south, geom.rows, geom.cols, geom.ftf) : null
+  const wKm = bb ? (bb.east - bb.west) * KM_PER_DEG * Math.cos(((bb.north + bb.south) / 2) * (Math.PI / 180)) : 0
+  const hKm = bb ? (bb.north - bb.south) * KM_PER_DEG : 0
 
   return (
     <div className="page gridmgr">
-      {/* 左栏：网格列表 */}
+      {/* 左栏：网格列表 + 导入导出 + 统计 */}
       <div className="gm-col">
         <div className="panel">
           <div className="panel-header">
@@ -380,40 +348,22 @@ export default function GridManager() {
           </div>
           <div className="gm-list">
             {grids.map((g) => (
-              <div key={g.id} className={`gm-item${g.id === active.id ? ' on' : ''}`} onClick={() => { setActiveId(g.id); setSelected(null) }}>
+              <div key={g.id} className={`gm-item${g.id === editingId ? ' on' : ''}`} onClick={() => openGrid(g)}>
                 <div className="gm-item-main">
                   <b>{g.name}</b>
                   <span className="muted small">{g.rows} 行 × {g.cols} 列 · 对边距 {g.flatToFlat}</span>
                 </div>
-                {confirmDel === g.id ? (
-                  <button className="btn btn-sm btn-red" onClick={(e) => { e.stopPropagation(); deleteGrid(g.id) }}>确认删除</button>
-                ) : (
-                  <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); setConfirmDel(g.id); setTimeout(() => setConfirmDel((c) => (c === g.id ? null : c)), 3000) }}>删</button>
-                )}
+                <div className="gm-item-ops">
+                  <button className="btn btn-sm" title="修改" onClick={(e) => { e.stopPropagation(); openGrid(g); nameRef.current?.focus() }}>改</button>
+                  {confirmDel === g.id ? (
+                    <button className="btn btn-sm btn-red" onClick={(e) => { e.stopPropagation(); deleteGrid(g.id) }}>确认</button>
+                  ) : (
+                    <button className="btn btn-sm" title="删除" onClick={(e) => { e.stopPropagation(); setConfirmDel(g.id); setTimeout(() => setConfirmDel((c) => (c === g.id ? null : c)), 3000) }}>删</button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
-        </div>
-        <div className="panel">
-          <div className="panel-header">
-            <h3>新建网格</h3>
-          </div>
-          <label>名称
-            <input value={form.name} placeholder="留空自动编号" onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </label>
-          <div className="gm-row2">
-            <label>行数
-              <input type="number" min={1} max={200} value={form.rows} onChange={(e) => setForm({ ...form, rows: Number(e.target.value) })} />
-            </label>
-            <label>列数
-              <input type="number" min={1} max={200} value={form.cols} onChange={(e) => setForm({ ...form, cols: Number(e.target.value) })} />
-            </label>
-          </div>
-          <label>对边距（两平行边间距）
-            <input type="number" min={10} value={form.flatToFlat} onChange={(e) => setForm({ ...form, flatToFlat: Number(e.target.value) })} />
-          </label>
-          <button className="btn btn-primary" onClick={createGrid}>创建网格</button>
-          <button className="btn" onClick={() => setShowPicker(true)}>🗺 在线地图框选</button>
         </div>
         <div className="panel">
           <div className="panel-header">
@@ -425,17 +375,28 @@ export default function GridManager() {
           </div>
           <input ref={fileRef} type="file" accept=".json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importDoc(f); e.target.value = '' }} />
         </div>
+        {active && (
+          <div className="panel">
+            <div className="panel-header">
+              <h3>统计</h3>
+            </div>
+            <div className="kv"><span>网格规格</span><span>{active.rows} 行 × {active.cols} 列</span></div>
+            <div className="kv"><span>有效格数</span><span>{active.rows * active.cols - active.holes.length}</span></div>
+            <div className="kv"><span>已挖格数</span><span>{active.holes.length}</span></div>
+            <div className="kv"><span>涂装格数</span><span>{Object.keys(active.terrains).length}</span></div>
+          </div>
+        )}
       </div>
 
-      {/* 中间：画布 */}
+      {/* 中间：在线地图 */}
       <div className="gm-canvas-col">
         <div className="gm-toolbar">
           {TOOLS.map(([t, label]) => (
-            <button key={t} className={`btn btn-sm${tool === t ? ' btn-primary' : ''}`} onClick={() => { setTool(t); if (t !== 'select') setSelected(null) }}>
+            <button key={t} className={`btn btn-sm${mode === t ? ' btn-primary' : ''}`} onClick={() => setMode(t)}>
               {label}
             </button>
           ))}
-          {tool === 'paint' && (
+          {mode === 'paint' && (
             <span className="gm-palette">
               {TERRAINS.map(([k, n, c]) => (
                 <button key={k} className={`gm-swatch${brush === k ? ' on' : ''}`} style={{ background: c }} title={n} onClick={() => setBrush(k)} />
@@ -443,86 +404,76 @@ export default function GridManager() {
               <span className="muted small">{TERRAIN_NAME[brush]}</span>
             </span>
           )}
+          <span className="muted small gm-modehint">
+            {mode === 'frame' && '在地图上拖拽矩形框选范围'}
+            {mode === 'pan' && '拖动地图 · 滚轮缩放'}
+            {(mode === 'paint' || mode === 'dig' || mode === 'fill') && '点击/拖动格子进行编辑'}
+            {mode === 'pick' && '点击地图拾取网格锚点'}
+          </span>
         </div>
-        <div ref={wrapRef} className="gm-canvas-wrap">
-          <canvas ref={canvasRef} onClick={onClick} onMouseMove={onMove} onMouseLeave={() => setHover(null)} />
-          <div className="gm-status">
-            {active.name} · {active.rows}×{active.cols} · 对边距 {active.flatToFlat} · 有效格 {active.rows * active.cols - active.holes.length}
-            {hover && ` · 悬停 (${hover})`}
-          </div>
+        <div className="gm-canvas-wrap">
+          <GeoMapView mode={mode} overlay={overlay} onFrame={onFrame} onPick={onPick} onCellClick={onCellClick} fit={fit} />
         </div>
       </div>
 
-      {/* 右栏：参数与选中格 */}
+      {/* 右栏：创建 / 编辑表单 */}
       <div className="gm-col">
         <div className="panel">
           <div className="panel-header">
-            <h3>网格参数</h3>
+            <h3>{editingId ? '修改网格' : '新建网格'}</h3>
           </div>
-          <label>名称
-            <input value={active.name} onChange={(e) => patch({ name: e.target.value })} />
+          <label>六角网格名称
+            <input ref={nameRef} value={draft.name} placeholder="留空自动编号" onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
           </label>
           <div className="gm-row2">
             <label>行数
-              <input type="number" min={1} max={200} value={active.rows} onChange={(e) => patch({ rows: clamp(Math.round(Number(e.target.value)), 1, 200) })} />
+              <input type="number" min={1} max={200} value={draft.rows} onChange={(e) => updGeom({ rows: e.target.value })} />
             </label>
             <label>列数
-              <input type="number" min={1} max={200} value={active.cols} onChange={(e) => patch({ cols: clamp(Math.round(Number(e.target.value)), 1, 200) })} />
+              <input type="number" min={1} max={200} value={draft.cols} onChange={(e) => updGeom({ cols: e.target.value })} />
             </label>
           </div>
-          <label>对边距（flat-to-flat）
-            <input type="number" min={10} value={active.flatToFlat} onChange={(e) => patch({ flatToFlat: clamp(Number(e.target.value), 10, 1_000_000) })} />
+          <label>对边距（墨卡托米）
+            <input type="number" min={10} value={draft.flatToFlat} onChange={(e) => updGeom({ flatToFlat: e.target.value })} />
           </label>
+          <div className="gm-coordhead">
+            <span>区域坐标（度）</span>
+            <button className={`btn btn-sm${mode === 'pick' ? ' btn-primary' : ''}`} title="在地图上点击拾取网格锚点（西南角）" onClick={() => setMode(mode === 'pick' ? 'pan' : 'pick')}>
+              {mode === 'pick' ? '拾取中…点击地图' : '📍 地图拾取坐标'}
+            </button>
+          </div>
+          <div className="gm-row2">
+            <label>西（锚点）
+              <input type="number" step="0.0001" value={draft.west} onChange={(e) => updGeom({ west: e.target.value })} />
+            </label>
+            <label>南（锚点）
+              <input type="number" step="0.0001" value={draft.south} onChange={(e) => updGeom({ south: e.target.value })} />
+            </label>
+          </div>
+          <div className="gm-row2">
+            <label>东（推算列数）
+              <input type="number" step="0.0001" value={draft.east} onChange={(e) => updEdge(true, e.target.value)} />
+            </label>
+            <label>北（推算行数）
+              <input type="number" step="0.0001" value={draft.north} onChange={(e) => updEdge(false, e.target.value)} />
+            </label>
+          </div>
           <div className="muted small gm-geom">
-            外接圆半径（边长）{side.toFixed(2)} · 顶对顶 {((2 / SQRT3) * active.flatToFlat).toFixed(2)} · 单格面积 {area.toFixed(1)}
+            {geom ? (
+              <>
+                外接圆半径 {side.toFixed(1)} m · 单格面积 {area.toFixed(0)} m²
+                <br />覆盖约 {wKm.toFixed(1)} × {hKm.toFixed(1)} km · 共 {geom.rows * geom.cols} 格
+              </>
+            ) : (
+              '填写有效的行列与对边距后，地图上实时预览网格范围'
+            )}
           </div>
-          {active.bbox && (
-            <div className="muted small gm-geom">
-              源自地图框选：{active.bbox.west.toFixed(3)}~{active.bbox.east.toFixed(3)}°E · {active.bbox.south.toFixed(3)}~{active.bbox.north.toFixed(3)}°N
-            </div>
+          <button className="btn btn-primary" onClick={saveFromDraft}>{editingId ? '保存修改' : '创建网格'}</button>
+          {editingId && (
+            <button className="btn" onClick={() => { setEditingId(null); setDraft(DEFAULT_DRAFT); toast('已切换为新建模式') }}>新建（清空表单）</button>
           )}
-        </div>
-        <div className="panel">
-          <div className="panel-header">
-            <h3>选中格</h3>
-          </div>
-          {!selected || !selIn ? (
-            <div className="muted small">浏览模式下点击格子选中。</div>
-          ) : selIsHole ? (
-            <>
-              <div className="kv"><span>坐标</span><span>({selected})</span></div>
-              <div className="kv"><span>状态</span><span>已挖除</span></div>
-              <button className="btn" onClick={() => patch({ holes: active.holes.filter((h) => h !== selected) })}>补回该格</button>
-            </>
-          ) : (
-            <>
-              <div className="kv"><span>坐标</span><span>({selected})</span></div>
-              <div className="kv"><span>地形</span><span>{TERRAIN_NAME[active.terrains[selected] ?? 'plain']}</span></div>
-              <div className="gm-row2">
-                {TERRAINS.map(([k, n, c]) => (
-                  <button key={k} className={`btn btn-sm${(active.terrains[selected] ?? 'plain') === k ? ' btn-primary' : ''}`} onClick={() => patch({ terrains: { ...active.terrains, [selected]: k } })}>
-                    <span className="gm-dot" style={{ background: c }} />{n}
-                  </button>
-                ))}
-              </div>
-              <button className="btn btn-red" onClick={() => { const t = { ...active.terrains }; delete t[selected]; patch({ holes: [...active.holes, selected], terrains: t }); setSelected(null) }}>
-                删除该格（挖洞）
-              </button>
-            </>
-          )}
-        </div>
-        <div className="panel">
-          <div className="panel-header">
-            <h3>统计</h3>
-          </div>
-          <div className="kv"><span>网格规格</span><span>{active.rows} 行 × {active.cols} 列</span></div>
-          <div className="kv"><span>有效格数</span><span>{active.rows * active.cols - active.holes.length}</span></div>
-          <div className="kv"><span>已挖格数</span><span>{active.holes.length}</span></div>
-          <div className="kv"><span>涂装格数</span><span>{Object.keys(active.terrains).length}</span></div>
         </div>
       </div>
-
-      {showPicker && <BBoxPicker onClose={() => setShowPicker(false)} onCreate={createFromBBox} />}
     </div>
   )
 }
