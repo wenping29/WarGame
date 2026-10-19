@@ -769,10 +769,10 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .gm-list-panel .gm-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22); border-radius:4px}
 .gm-list-panel .gm-list::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.36)}
 
-/* 框选地图范围弹窗 */
-.gm-modal-mask{position:fixed; inset:0; z-index:100; background:rgba(4,8,12,.62); display:flex; align-items:center; justify-content:center; padding:24px}
-.gm-modal{width:min(880px, 94vw); height:min(640px, 88vh); display:flex; flex-direction:column; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; box-shadow:0 14px 48px rgba(0,0,0,.55)}
-.gm-modal-head{display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line)}
-.gm-modal-head h3{margin:0; font-size:14px; color:#eef3f7}
-.gm-modal-hint{margin-left:auto; font-size:12px; color:#8fa0af; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.gm-modal-body{flex:1; min-height:0; position:relative; background:#1b2228}
+/* 向导「地图选取范围」弹窗 */
+.wz-modal-mask{position:fixed; inset:0; z-index:100; background:rgba(4,8,12,.62); display:flex; align-items:center; justify-content:center; padding:24px}
+.wz-modal{width:min(880px, 94vw); height:min(640px, 88vh); display:flex; flex-direction:column; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; box-shadow:0 14px 48px rgba(0,0,0,.55)}
+.wz-modal-head{display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line)}
+.wz-modal-head h3{margin:0; font-size:14px; color:#eef3f7}
+.wz-modal-hint{margin-left:auto; font-size:12px; color:#8fa0af; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.wz-modal-body{flex:1; min-height:0; position:relative; background:#1b2228}

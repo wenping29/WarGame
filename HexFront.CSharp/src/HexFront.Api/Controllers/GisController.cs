@@ -153,6 +153,23 @@ public sealed class GisController : ControllerBase
         return error != null ? Error(error, code) : Json(meta!.DeepClone());
     }
 
+    /// <summary>GET /api/gis/packages/{name} — 数据包全文（含 hexes，供前端格级映射）。</summary>
+    [HttpGet("packages/{name}")]
+    public IActionResult PackageFull(string name)
+    {
+        var path = ResolvePackagePath(name, out var error, out var code);
+        if (path == null) return Error(error!, code);
+        try
+        {
+            var node = JsonNode.Parse(System.IO.File.ReadAllText(path));
+            return node == null ? Error($"数据包 '{name}' 解析失败", 500) : Json(node);
+        }
+        catch (Exception ex)
+        {
+            return Error($"数据包读取失败：{ex.Message}", 500);
+        }
+    }
+
     /// <summary>POST /api/gis/validate — 对已落盘数据包跑 37 项自校验；body {package_name}。</summary>
     [HttpPost("validate")]
     public async Task<IActionResult> ValidatePackage()

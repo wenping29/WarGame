@@ -1,13 +1,15 @@
 /**
  * 六角格管理系统：左侧网格列表（删除/修改/点击在地图上显示），
  * 中间在线地图显示六角格网，右侧创建/编辑表单（行列、对边距、区域坐标、名称、
- * 框选地图范围弹窗、创建按钮）。几何与主地图一致：pointy-top + odd-r，对边距 = √3 · 半径，
+ * 框选地图范围、创建按钮）。框选与主地图工具一致，完成后矩形常驻显示在地图上。几何与主地图一致：pointy-top + odd-r，对边距 = √3 · 半径，
  * 几何量以墨卡托米计（与天地图底图同坐标系）。数据持久化 localStorage，支持导入导出 JSON。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from '../components/Toast'
 import GeoMapView, { type BBox, type HexOverlay, type MapMode, TERRAINS, lngToMx, latToMy, mxToLng, myToLat } from '../components/GeoMapView'
+import { api, netError } from '../services/api'
+import { gisFromPackage, type GisData, type PackageJson } from '../gis/hexgen'
 
 const SQRT3 = Math.sqrt(3)
 const LS_KEY = 'hexfront.gridmgr.v1'
@@ -30,6 +32,10 @@ interface GridDoc {
   terrains: Record<string, string>
   /** 溯源：网格覆盖的经纬度范围 */
   bbox?: BBox
+  /** GIS 生成数据包名（/api/gis/jobs 产物，存于 data/gis/） */
+  gisPkg?: string
+  /** GIS 生成的全套格数据（保存修改后自动计算） */
+  gis?: GisData
   createdAt: number
 }
 
@@ -106,7 +112,6 @@ interface Draft {
 }
 
 const DEFAULT_DRAFT: Draft = { name: '', rows: '10', cols: '14', flatToFlat: '2500', west: '107', south: '33', east: '', north: '' }
-const DEFAULT_BBOX: BBox = { west: 107, south: 33, east: 107.7, north: 33.6 }
 
 export default function GridManager() {
   const [grids, setGrids] = useState<GridDoc[]>(loadStore)
@@ -116,9 +121,10 @@ export default function GridManager() {
   const [brush, setBrush] = useState('plain')
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
   const [fit, setFit] = useState<{ bbox: BBox; nonce: number } | null>(null)
-  /** 框选弹窗：打开时飞到当前草稿范围，框选完成后回填表单并关闭 */
-  const [pickOpen, setPickOpen] = useState(false)
-  const [pickFit, setPickFit] = useState<{ bbox: BBox; nonce: number } | null>(null)
+  /** 常驻显示在地图上的框选范围矩形（与表单四至对应，手动改字段时清除） */
+  const [rangeBox, setRangeBox] = useState<BBox | null>(null)
+  /** GIS 分析进行中的阶段提示（null = 空闲） */
+  const [gisBusy, setGisBusy] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
 
@@ -179,6 +185,7 @@ export default function GridManager() {
       east: b.east.toFixed(4),
       north: b.north.toFixed(4),
     })
+    setRangeBox(b)
     fitGrid(b)
   }
 
@@ -197,7 +204,8 @@ export default function GridManager() {
   }
 
   /* ---------- 草稿字段更新：锚点/行列/对边距 → 重新推导东/北边界 ---------- */
-  const updGeom = (p: Partial<{ rows: string; cols: string; flatToFlat: string; west: string; south: string }>) =>
+  const updGeom = (p: Partial<{ rows: string; cols: string; flatToFlat: string; west: string; south: string }>) => {
+    setRangeBox(null) // 手动修改字段后，原框选矩形不再对应表单
     setDraft((prev) => {
       const rows = Math.round(Number(p.rows ?? prev.rows))
       const cols = Math.round(Number(p.cols ?? prev.cols))
@@ -220,10 +228,12 @@ export default function GridManager() {
         north: bb.north.toFixed(4),
       }
     })
+  }
 
   /** 东/北边界输入：反推行列 */
   const updEdge = (isEast: boolean, v: string) => {
     const num = Number(v)
+    setRangeBox(null) // 手动修改边界后，原框选矩形不再对应表单
     setDraft((prev) => {
       if (!Number.isFinite(num) || !geom) return { ...prev, [isEast ? 'east' : 'north']: v }
       if (isEast) {
@@ -238,24 +248,6 @@ export default function GridManager() {
   }
 
   /* ---------- 地图交互回调 ---------- */
-  const openPick = () => {
-    const b = geom ? deriveBBox(geom.west, geom.south, geom.rows, geom.cols, geom.ftf) : DEFAULT_BBOX
-    setPickFit({ bbox: b, nonce: Date.now() })
-    setPickOpen(true)
-  }
-
-  const closePick = useCallback(() => setPickOpen(false), [])
-
-  // 弹窗内 ESC 关闭
-  useEffect(() => {
-    if (!pickOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closePick()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [pickOpen, closePick])
-
   const onPick = (lng: number, lat: number) => {
     updGeom({ west: lng, south: lat })
     setMode('pan')
@@ -277,13 +269,8 @@ export default function GridManager() {
       rows: String(R),
       cols: String(C),
     }))
+    setRangeBox(b) // 框选后矩形常驻显示在地图上
     toast(`已框选范围：${R} 行 × ${C} 列`)
-  }
-
-  /** 弹窗内框选：回填表单并关闭弹窗 */
-  const onFrameInModal = (b: BBox) => {
-    onFrame(b)
-    setPickOpen(false)
   }
 
   const onCellClick = (k: string | null) => {
@@ -310,16 +297,58 @@ export default function GridManager() {
     const bb = deriveBBox(geom.west, geom.south, geom.rows, geom.cols, geom.ftf)
     const name = draft.name.trim() || (editingId ? active?.name : '') || `棋盘 ${grids.length + 1}`
     if (editingId && active) {
-      setGrids((list) => list.map((g) => (g.id === editingId ? pruneDoc({ ...g, name, rows: geom.rows, cols: geom.cols, flatToFlat: geom.ftf, bbox: bb }) : g)))
+      const id = editingId
+      setGrids((list) => list.map((g) => (g.id === id ? pruneDoc({ ...g, name, rows: geom.rows, cols: geom.cols, flatToFlat: geom.ftf, bbox: bb }) : g)))
       toast(`已保存「${name}」（${geom.rows}×${geom.cols}）`)
+      void runGis(id, name, geom.rows, geom.cols, geom.ftf, bb, active.holes, active.terrains)
     } else {
       const d = makeGrid(name, geom.rows, geom.cols, geom.ftf, bb)
       setGrids((list) => [...list, d])
       setEditingId(d.id)
       toast(`已创建「${name}」（${geom.rows}×${geom.cols}）`)
+      void runGis(d.id, name, geom.rows, geom.cols, geom.ftf, bb, [], {})
     }
+    setRangeBox(bb)
     fitGrid(bb)
   }
+
+  /* ---------- GIS 分析：保存修改后调用服务端工具链生成全套格数据（道路/铁路/地形等） ---------- */
+  const runGis = useCallback(
+    async (id: string, gridName: string, rows: number, cols: number, ftf: number, bb: BBox, holes: string[], manual: Record<string, string>) => {
+      if (gisBusy) return
+      try {
+        setGisBusy('提交生成作业…')
+        const job = await api.gisStartJob({
+          bbox: [bb.west, bb.south, bb.east, bb.north],
+          cell_km: ftf / 1000,
+          name: 'gridmgr-' + (gridName.trim() || '棋盘'),
+          dem: 'auto',
+          landuse: 'auto',
+          roads: true,
+          water: true,
+          network: true,
+          features: true,
+        })
+        let cur = job
+        while (cur.status === 'queued' || cur.status === 'running') {
+          await new Promise((r) => setTimeout(r, 1500))
+          cur = await api.gisJob(job.id)
+          setGisBusy(cur.log.length ? cur.log[cur.log.length - 1] : '生成中…')
+        }
+        if (cur.status !== 'done' || !cur.name) throw new Error(cur.error || '生成失败（见作业日志）')
+        setGisBusy('加载数据包并映射六角格…')
+        const pkg = (await api.gisPackage(cur.name)) as PackageJson
+        const gis = gisFromPackage(pkg, { west: bb.west, south: bb.south, rows, cols, size: ftf / SQRT3 }, holes, manual)
+        setGrids((list) => list.map((g) => (g.id === id ? { ...g, gis, gisPkg: cur.name } : g)))
+        toast(`GIS 分析完成：道路 ${Object.keys(gis.roads).length} 格 · 铁路 ${gis.rails.length} 格 · 河流 ${gis.rivers.length} 格 · 自动地形 ${Object.keys(gis.terrains).length} 格`)
+      } catch (e) {
+        toast(`GIS 分析失败：${e instanceof Error ? e.message : netError(e)}`, 'err')
+      } finally {
+        setGisBusy(null)
+      }
+    },
+    [gisBusy],
+  )
 
   /* ---------- 导入导出 ---------- */
   const exportDoc = () => {
@@ -432,13 +461,13 @@ export default function GridManager() {
             </span>
           )}
           <span className="muted small gm-modehint">
-            {mode === 'frame' && '在地图上拖拽矩形框选范围'}
+            {mode === 'frame' && '在地图上拖拽矩形框选范围（松开后矩形保持显示）'}
             {mode === 'pan' && '拖动地图 · 滚轮缩放'}
             {(mode === 'paint' || mode === 'dig' || mode === 'fill') && '点击/拖动格子进行编辑'}
           </span>
         </div>
         <div className="gm-canvas-wrap">
-          <GeoMapView mode={mode} overlay={overlay} onFrame={onFrame} onPick={onPick} onCellClick={onCellClick} fit={fit} />
+          <GeoMapView mode={mode} overlay={overlay} onFrame={onFrame} onPick={onPick} onCellClick={onCellClick} fit={fit} range={rangeBox} gis={active?.gis ?? null} />
         </div>
       </div>
 
@@ -464,8 +493,8 @@ export default function GridManager() {
           </label>
           <div className="gm-coordhead">
             <span>区域坐标（度）</span>
-            <button className="btn btn-sm" title="打开地图弹窗，框选范围自动生成网格" onClick={openPick}>
-              🗺️ 框选地图范围
+            <button className={`btn btn-sm${mode === 'frame' ? ' btn-primary' : ''}`} title="在地图上拖拽框选范围，矩形常驻显示并自动生成网格" onClick={() => setMode(mode === 'frame' ? 'pan' : 'frame')}>
+              {mode === 'frame' ? '框选中…在地图拖拽' : '🔲 框选地图范围'}
             </button>
           </div>
           <div className="gm-row2">
@@ -494,28 +523,26 @@ export default function GridManager() {
               '填写有效的行列与对边距后，地图上实时预览网格范围'
             )}
           </div>
-          <button className="btn btn-primary" onClick={saveFromDraft}>{editingId ? '保存修改' : '创建网格'}</button>
+          <button className="btn btn-primary" onClick={saveFromDraft} disabled={!!gisBusy}>{editingId ? '保存修改' : '创建网格'}</button>
+          {gisBusy ? (
+            <div className="muted small gm-geom">⏳ GIS 分析中：{gisBusy}</div>
+          ) : active?.gis ? (
+            <div className="muted small gm-geom">
+              GIS：道路 {Object.keys(active.gis.roads).length} 格 · 铁路 {active.gis.rails.length} 格 · 河流 {active.gis.rivers.length} 格 · 自动地形 {Object.keys(active.gis.terrains).length} 格
+              {active.gis.pkg?.terrainCounts && (
+                <><br />地形分布：{Object.entries(active.gis.pkg.terrainCounts).map(([k, v]) => `${k} ${v}`).join(' · ')}</>
+              )}
+              <br />数据包 {active.gisPkg ?? active.gis.pkg?.name}（{new Date(active.gis.at).toLocaleString()}）
+            </div>
+          ) : null}
+          {!gisBusy && active?.gis && geom && (
+            <button className="btn" onClick={() => void runGis(active.id, draft.name || active.name, geom.rows, geom.cols, geom.ftf, bb!, active.holes, active.terrains)}>重新分析 GIS 数据</button>
+          )}
           {editingId && (
-            <button className="btn" onClick={() => { setEditingId(null); setDraft(DEFAULT_DRAFT); toast('已切换为新建模式') }}>新建（清空表单）</button>
+            <button className="btn" onClick={() => { setEditingId(null); setDraft(DEFAULT_DRAFT); setRangeBox(null); toast('已切换为新建模式') }}>新建（清空表单）</button>
           )}
         </div>
       </div>
-
-      {/* 框选地图范围弹窗 */}
-      {pickOpen && (
-        <div className="gm-modal-mask" onMouseDown={(e) => { if (e.target === e.currentTarget) closePick() }}>
-          <div className="gm-modal">
-            <div className="gm-modal-head">
-              <h3>框选地图范围</h3>
-              <span className="gm-modal-hint">在地图上拖拽矩形框，松开后自动按对边距推算行列并填入区域坐标（Esc 关闭）</span>
-              <button className="btn btn-sm" onClick={closePick}>✕</button>
-            </div>
-            <div className="gm-modal-body">
-              <GeoMapView mode="frame" overlay={overlay} onFrame={onFrameInModal} fit={pickFit} />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

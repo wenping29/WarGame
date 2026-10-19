@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from
 import { useNavigate } from 'react-router-dom'
 import { api, netError, type CreateInstanceBody, type GisCapabilities, type GisJob, type GisPlan, type ValidateResult } from '../services/api'
 import { loadMeta, useMeta, type UnitTypeDef } from '../room/useUnitFull'
+import GeoMapView, { type BBox } from '../components/GeoMapView'
 import { toast } from '../components/Toast'
 
 const STEP_TITLES = ['剧本与名称', '战场环境', '天气', '部队编成', '审阅并创建']
@@ -618,6 +619,36 @@ function GeneratePanel({ state, updateState, gen, onStart }: {
   const caps = gen.caps
   const notes = capsNotes(caps, g)
 
+  /* ── 地图选取弹窗：在在线地图上框选范围回填四至 ── */
+  const [pickOpen, setPickOpen] = useState(false)
+  const [pickFit, setPickFit] = useState<{ bbox: BBox; nonce: number } | null>(null)
+
+  const openPick = () => {
+    const bb = bboxOf(g.bbox)
+    // 已填了合法四至就飞过去，否则给一个默认视野（关中地区）
+    setPickFit(bb ? { bbox: { west: bb[0], south: bb[1], east: bb[2], north: bb[3] }, nonce: Date.now() } : { bbox: { west: 107, south: 33, east: 108.5, north: 34.2 }, nonce: Date.now() })
+    setPickOpen(true)
+  }
+
+  // 弹窗内 ESC 关闭
+  useEffect(() => {
+    if (!pickOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPickOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pickOpen])
+
+  const onFramePick = (b: BBox) => {
+    setGis({
+      bbox: { w: b.west.toFixed(4), s: b.south.toFixed(4), e: b.east.toFixed(4), n: b.north.toFixed(4) },
+      genPkg: '',
+    })
+    setPickOpen(false)
+    toast(`已选取范围：西 ${b.west.toFixed(3)} / 南 ${b.south.toFixed(3)} / 东 ${b.east.toFixed(3)} / 北 ${b.north.toFixed(3)}`)
+  }
+
   return (
     <div style={{ marginTop: '10px' }}>
       <div className="row">
@@ -628,6 +659,9 @@ function GeneratePanel({ state, updateState, gen, onStart }: {
               onChange={e => setGis({ bbox: { ...g.bbox, [k]: e.target.value } })} />
           </label>
         ))}
+        <button className="btn btn-sm" style={{ alignSelf: 'flex-end' }}
+          title="打开在线地图，框选范围自动填入四至"
+          onClick={openPick}>🗺️ 地图选取</button>
       </div>
       <p className="muted small">四至指六角格「格心」范围（WGS84）。单边不超过 8°，超过 3 万格会被拒绝。</p>
 
@@ -707,6 +741,22 @@ function GeneratePanel({ state, updateState, gen, onStart }: {
       </div>
 
       <JobCard job={gen.job} err={gen.jobErr} />
+
+      {/* 地图选取弹窗：框选范围回填四至 */}
+      {pickOpen && (
+        <div className="wz-modal-mask" onMouseDown={e => { if (e.target === e.currentTarget) setPickOpen(false) }}>
+          <div className="wz-modal">
+            <div className="wz-modal-head">
+              <h3>地图选取范围</h3>
+              <span className="wz-modal-hint">在地图上拖拽矩形框，松开后自动填入四至（Esc 关闭）</span>
+              <button className="btn btn-sm" onClick={() => setPickOpen(false)}>✕</button>
+            </div>
+            <div className="wz-modal-body">
+              <GeoMapView mode="frame" overlay={null} onFrame={onFramePick} fit={pickFit} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

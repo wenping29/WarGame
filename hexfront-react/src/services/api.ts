@@ -247,6 +247,7 @@ export const api = {
   gisJobs: () => get<{ jobs: GisJob[] }>('/gis/jobs'),
   gisJob: (id: string) => get<GisJob>('/gis/jobs/' + id),
   gisStartJob: (spec: GisJobSpec) => post<GisJob>('/gis/jobs', spec),
+  gisPackage: (name: string) => get<unknown>('/gis/packages/' + name),
   gisValidate: (packageName: string) =>
     post<{ file: string; total: number; fails: number; warns: number; passes: number; results: Array<{ level: string; check: string; detail: string }> }>('/gis/validate', { package_name: packageName }),
 }

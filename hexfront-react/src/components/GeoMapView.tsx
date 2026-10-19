@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadMeta } from '../room/useUnitFull'
+import type { GisData, GisLine } from '../gis/hexgen'
 
 const E = 20037508.342789244 // EPSG:3857 半周长（米）
 const SQRT3 = Math.sqrt(3)
@@ -81,6 +82,10 @@ interface Props {
   onCellClick?: (k: string | null) => void
   /** 变更 nonce 时飞到 bbox 范围 */
   fit?: { bbox: BBox; nonce: number } | null
+  /** 常驻显示的框选范围矩形（随视图缩放平移） */
+  range?: BBox | null
+  /** GIS 生成数据（道路/铁路/河流线要素） */
+  gis?: GisData | null
 }
 
 /* ---------- 墨卡托 <-> 经纬度 ---------- */
@@ -108,10 +113,29 @@ interface BaseCache {
 interface SmallCache { ref: object; path: Path2D }
 /** 涂装层按地形分组的路径集 */
 type TerrGroups = Map<string, Path2D>
+/** GIS 线要素缓存：按 gis 对象引用失效 */
+interface GisCache { ref: GisData; roads: Map<string, Path2D>; rails: Path2D; rivers: Path2D }
+
+/** 道路等级 → [颜色, 屏幕线宽px] */
+function roadStyle(cls: string): [string, number] {
+  if (cls === 'motorway') return ['#e8912d', 3.2]
+  if (cls === 'trunk') return ['#e8a33d', 3]
+  if (cls === 'primary') return ['#e6c34d', 2.6]
+  if (cls === 'secondary') return ['#d8c26a', 2.2]
+  if (cls === 'road') return ['#e0b54d', 2.2]
+  return ['#c9bd80', 2]
+}
+/** 扁平 [lng,lat,...] 折线 → 世界坐标 Path2D（逐段 moveTo/lineTo） */
+function buildLine(pts: number[], path: Path2D) {
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    path.moveTo(lngToMx(pts[i]), latToMy(pts[i + 1]))
+    path.lineTo(lngToMx(pts[i + 2]), latToMy(pts[i + 3]))
+  }
+}
 
 const ckey = (col: number, row: number) => `${col},${row}`
 
-export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick, fit }: Props) {
+export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick, fit, range, gis }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewRef = useRef<View>({ cx: lngToMx(107), cy: latToMy(34), scale: (256 * Math.pow(2, 5)) / (2 * E) })
@@ -126,6 +150,7 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
   const baseRef = useRef<BaseCache | null>(null)
   const terrCacheRef = useRef<SmallCache | null>(null)
   const holeCacheRef = useRef<SmallCache | null>(null)
+  const gisCacheRef = useRef<GisCache | null>(null)
 
   const [tk, setTk] = useState<string | null>(null)
   const [basemap, setBasemap] = useState<keyof typeof LAYERS>('vec')
@@ -134,11 +159,15 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
 
   const modeRef = useRef(mode)
   const overlayRef = useRef(overlay)
+  const rangeRef = useRef(range)
+  const gisRef = useRef(gis)
   const bmRef = useRef(basemap)
   const tkRef = useRef(tk)
   const cbRef = useRef({ onFrame, onPick, onCellClick })
   modeRef.current = mode
   overlayRef.current = overlay
+  rangeRef.current = range
+  gisRef.current = gis
   bmRef.current = basemap
   tkRef.current = tk
   cbRef.current = { onFrame, onPick, onCellClick }
@@ -182,10 +211,10 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
     return () => clearInterval(iv)
   }, [schedule])
 
-  // overlay 变化（表单输入/涂刷/点列表）→ 立即重绘
+  // overlay/range/gis 变化（表单输入/涂刷/点列表/框选回显/GIS 生成）→ 立即重绘
   useEffect(() => {
     schedule()
-  }, [overlay, schedule])
+  }, [overlay, range, gis, schedule])
 
   /* ---------- 瓦片 ---------- */
   const tileUrl = (layer: string, zi: number, tx: number, ty: number) => {
@@ -477,6 +506,57 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
       }
     }
 
+    // GIS 线要素：河流 / 道路 / 铁路（世界坐标绝对定位，缩放平移跟随）
+    const gd = gisRef.current
+    if (gd) {
+      let gc = gisCacheRef.current
+      if (gc?.ref !== gd) {
+        const rmap = new Map<string, Path2D>()
+        for (const w of gd.ways.r) {
+          const c = w.cls ?? ''
+          let p = rmap.get(c)
+          if (!p) {
+            p = new Path2D()
+            rmap.set(c, p)
+          }
+          buildLine(w.p, p)
+        }
+        const lp = new Path2D()
+        for (const w of gd.ways.l) buildLine(w.p, lp)
+        const wp = new Path2D()
+        for (const w of gd.ways.w) buildLine(w.p, wp)
+        gc = { ref: gd, roads: rmap, rails: lp, rivers: wp }
+        gisCacheRef.current = gc
+      }
+      ctx.save()
+      ctx.translate(W / 2 - v.cx * v.scale, H / 2 + v.cy * v.scale)
+      ctx.scale(v.scale, -v.scale)
+      const lw = 1 / v.scale
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      // 河流
+      ctx.strokeStyle = 'rgba(90,150,210,.85)'
+      ctx.lineWidth = 2.6 * lw
+      ctx.stroke(gc.rivers)
+      // 道路按等级
+      for (const [cls, p] of gc.roads) {
+        const [c, wd] = roadStyle(cls)
+        ctx.strokeStyle = c
+        ctx.lineWidth = wd * lw
+        ctx.stroke(p)
+      }
+      // 铁路：深色底线 + 白色短划
+      ctx.strokeStyle = '#2e3338'
+      ctx.lineWidth = 2.6 * lw
+      ctx.stroke(gc.rails)
+      ctx.strokeStyle = '#e8e8e8'
+      ctx.lineWidth = 1.1 * lw
+      ctx.setLineDash([6 * lw, 6 * lw])
+      ctx.stroke(gc.rails)
+      ctx.setLineDash([])
+      ctx.restore()
+    }
+
     // 框选橡皮筋
     if (bandRef.current) {
       const b = bandRef.current
@@ -499,6 +579,29 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
       ctx.fillRect(x0, y0 - 22, tw, 19)
       ctx.fillStyle = '#bfe9ff'
       ctx.fillText(label, x0 + 7, y0 - 8)
+    }
+
+    // 常驻框选范围矩形（框选完成后保持显示，随视图缩放平移）
+    const rb = rangeRef.current
+    if (rb) {
+      const [rx0, ry0] = toScreen(lngToMx(rb.west), latToMy(rb.north))
+      const [rx1, ry1] = toScreen(lngToMx(rb.east), latToMy(rb.south))
+      const wKm = (rb.east - rb.west) * KM_PER_DEG * Math.cos(((rb.north + rb.south) / 2) * (Math.PI / 180))
+      const hKm = (rb.north - rb.south) * KM_PER_DEG
+      ctx.fillStyle = 'rgba(120,220,255,.10)'
+      ctx.fillRect(rx0, ry0, rx1 - rx0, ry1 - ry0)
+      ctx.strokeStyle = 'rgba(120,220,255,.9)'
+      ctx.lineWidth = 2
+      ctx.setLineDash([6, 4])
+      ctx.strokeRect(rx0, ry0, rx1 - rx0, ry1 - ry0)
+      ctx.setLineDash([])
+      const label = `范围 ${wKm.toFixed(1)} × ${hKm.toFixed(1)} km`
+      ctx.font = '12px sans-serif'
+      const tw = ctx.measureText(label).width + 14
+      ctx.fillStyle = 'rgba(10,16,22,.8)'
+      ctx.fillRect(rx0, ry0 - 22, tw, 19)
+      ctx.fillStyle = '#bfe9ff'
+      ctx.fillText(label, rx0 + 7, ry0 - 8)
     }
 
     // 底层还在分片构建：继续下一帧
