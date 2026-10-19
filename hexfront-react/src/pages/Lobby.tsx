@@ -18,6 +18,17 @@ const ROLES = [
   ['spectator', '观战']
 ] as const
 
+// 天气 ID → 中文（与 C# LibraryService.WEATHER_JSON 的 Label 同源）
+const WEATHER_LABEL: Record<string, string> = {
+  clear: '晴',
+  overcast: '多云',
+  rain: '降雨',
+  storm: '暴雨',
+  snow: '降雪',
+  fog: '浓雾',
+  sandstorm: '沙尘'
+}
+
 export default function Lobby() {
   const navigate = useNavigate()
   const [scenarios, setScenarios] = useState<ScenarioInfo[]>([])
@@ -175,7 +186,7 @@ export default function Lobby() {
                   </div>
                   <div className="name">{room.name}</div>
                   <div className="sub">
-                    {room.scenario_name || room.scenario} · {room.width}×{room.height} · {room.weather || '—'}
+                    {room.scenario_name || room.scenario} · {room.width}×{room.height} · {WEATHER_LABEL[room.weather ?? ''] ?? (room.weather || '—')}
                   </div>
                   <div className="kv">
                     <span>{online.length ? '在线 ' + online.map(([, l]) => l).join(' · ') : '无人在线'}</span>

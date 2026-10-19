@@ -290,6 +290,17 @@ public static class HexPackageValidator
             Check = "车站数 ≤ 聚落数",
             Detail = $"车站 {stationCount} / 聚落 {cityCount}"
         });
+
+        // [20b] 加油站在公路上且不在桥面（与 hexgen.py 契约同源）
+        var badFuel = pkg.Hexes.Count(h => h.FuelStation && (!h.Road || h.Bridge));
+        results.Add(new ValidationResult
+        {
+            Level = badFuel == 0 ? "OK" : "FAIL",
+            Check = "加油站在公路上且不在桥面",
+            Detail = badFuel == 0
+                ? $"共 {pkg.Hexes.Count(h => h.FuelStation)} 处"
+                : $"{badFuel} 处违规"
+        });
     }
 
     private static void CheckPowerGridRules(HexPackage pkg, List<ValidationResult> results)

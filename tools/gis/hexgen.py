@@ -217,6 +217,12 @@ AIRPORT_MAX = 3
 # 真实机场点按格心吸附后可能压在水面/城镇格上（契约禁止），向外找最近合法格
 AIRPORT_RELOCATE_HOPS = 3
 AIRPORT_FORBIDDEN_TERRAIN = ("water", "river", "city")
+# 加油站：无公开真实加油站矢量（Natural Earth 无此图层）⇒ 沿公路派生。
+# 城镇及近郊优先（进镇加油），其次干线公路沿线等距布点；桥面不布。
+FUEL_MIN = 2
+FUEL_MAX = 6
+FUEL_SEPARATION = 4         # 相邻加油站最小格距，避免扎堆
+FUEL_CITY_MAX_DIST = 2      # 距城镇 ≤2 格视为「城镇/近郊」站
 
 # =====================================================================================
 # 3) 投影 / 格网几何
@@ -1267,6 +1273,45 @@ def build_power(grid, elev, terr, slopes, city_marks, river_dist):
     return plants, substations, lines
 
 
+def build_fuel(grid, road, bridge_set, city_marks):
+    """
+    加油站：无公开真实加油站矢量 ⇒ 沿公路派生（与铁路/电网同一「诚实派生」策略）。
+    规则：城镇及近郊（距城镇 ≤FUEL_CITY_MAX_DIST）的公路格优先 —— 进镇加油；
+    数量不足再沿干线公路按格序等距补点；桥面不布站。
+    返回 fuel_station 格集合（determinstic：全程按 grid.index 排序取含）。
+    """
+    if not road:
+        return set()
+    city_cells = {c for c, g in city_marks.items() if g >= 1}
+    city_dist = grid.distance_field(city_cells) if city_cells else {}
+    cand_urban, cand_hw = [], []
+    for cell in sorted(road, key=lambda c: grid.index(*c)):
+        if cell in bridge_set:
+            continue
+        d = city_dist.get(cell, 99)
+        if d <= FUEL_CITY_MAX_DIST:
+            cand_urban.append((d, grid.index(*cell), cell))
+        else:
+            cand_hw.append((grid.index(*cell), cell))
+    picked: set = set()
+
+    def far_enough(cell):
+        return all(hex_distance(cell, u) >= FUEL_SEPARATION for u in picked)
+
+    for d, _, cell in sorted(cand_urban):
+        if len(picked) >= FUEL_MAX:
+            break
+        if far_enough(cell):
+            picked.add(cell)
+    if len(picked) < FUEL_MIN:
+        for _, cell in cand_hw:
+            if len(picked) >= FUEL_MAX:
+                break
+            if far_enough(cell):
+                picked.add(cell)
+    return picked
+
+
 def _airport_cell(grid, terr, cell):
     """机场落脚格：本格合法则原样用；压在水面/城镇上则 BFS 取最近的合法格；跳完仍无解返回 None。"""
     if not grid.in_bounds(*cell):
@@ -1342,18 +1387,21 @@ def build_features(grid, elev, terr, slopes, relief, th, road, bridge_set, city_
     保持「关掉这层 = 地图回到只有地形/道路/河/桥」的干净语义）。
     """
     feat = {"railway": set(), "rail_station": {}, "tunnel": set(), "power_plant": set(),
-            "substation": set(), "powerline": set(), "airport": {}}
+            "substation": set(), "powerline": set(), "airport": {}, "fuel_station": set()}
     if args.features == "off":
-        return feat, {"railway": "off", "power": "off", "tunnels": "off", "airports": "off"}
+        return feat, {"railway": "off", "power": "off", "tunnels": "off", "airports": "off",
+                      "fuel": "off"}
     rail, stations = build_railway(grid, elev, terr, road, bridge_set, city_marks)
     tunnels, tun_note = build_tunnels(grid, road | rail, terr, slopes, relief, th,
                                       real_tunnel or set())
     plants, subs, lines = build_power(grid, elev, terr, slopes, city_marks, river_dist)
     airports, src = place_airports(grid, terr, slopes, road, rail, city_marks, real_airports)
+    fuel = build_fuel(grid, road, bridge_set, city_marks)
     feat.update(railway=rail, rail_station=stations, tunnel=tunnels,
-                power_plant=plants, substation=subs, powerline=lines, airport=airports)
+                power_plant=plants, substation=subs, powerline=lines, airport=airports,
+                fuel_station=fuel)
     return feat, {"railway": "derived-route", "power": "derived-grid",
-                  "tunnels": tun_note, "airports": src}
+                  "tunnels": tun_note, "airports": src, "fuel": "derived-roadside"}
 
 
 # =====================================================================================
@@ -1382,7 +1430,8 @@ def build_hexes(grid, elev, slopes, terr, road, river_set, bridge_set, city_mark
         }
         if feat is not None:                        # 地物层只写「有」的格：30k 格包省下几十列 false
             cell = (q, r)
-            for key in ("railway", "tunnel", "powerline", "power_plant", "substation"):
+            for key in ("railway", "tunnel", "powerline", "power_plant", "substation",
+                        "fuel_station"):
                 if cell in feat[key]:
                     hx[key] = True
             if feat["rail_station"].get(cell):
@@ -1447,7 +1496,7 @@ def validate(data: dict, grid: HexGrid, cell_km: float, strict: bool = True):
     roads_off = ((layers.get("roads") or {}).get("kind") == "off")
     lc_real = ((layers.get("landcover") or {}).get("kind") == "esa-worldcover-v200")
     need_layers = ("elevation", "landcover", "roads", "hydrology", "settlements",
-                   "railway", "power", "tunnels", "airports")
+                   "railway", "power", "tunnels", "airports", "fuel")
     layer_note = json.dumps({k: (v or {}).get("kind") or (v or {}).get("source")
                              for k, v in layers.items()}, ensure_ascii=False) if layers else "无 meta.layers"
     lvl = "OK" if all(k in layers for k in need_layers) else ("WARN" if not strict else "FAIL")
@@ -1603,7 +1652,8 @@ def validate(data: dict, grid: HexGrid, cell_km: float, strict: bool = True):
     return res
 
 
-FEATURE_BOOL_KEYS = ("railway", "tunnel", "powerline", "power_plant", "substation", "rail_station")
+FEATURE_BOOL_KEYS = ("railway", "tunnel", "powerline", "power_plant", "substation", "rail_station",
+                     "fuel_station")
 
 
 def _validate_features(data, grid, meta, hexes, by_cell, layers):
@@ -1616,6 +1666,7 @@ def _validate_features(data, grid, meta, hexes, by_cell, layers):
     rail, tun = cells_of("railway"), cells_of("tunnel")
     line, plant = cells_of("powerline"), cells_of("power_plant")
     subs, station = cells_of("substation"), cells_of("rail_station")
+    fuel = cells_of("fuel_station")
     apt = {(hx["q"], hx["r"]): int(hx.get("airport", 0) or 0) for hx in hexes if hx.get("airport")}
     road = {(hx["q"], hx["r"]) for hx in hexes if hx["road"]}
     river = {(hx["q"], hx["r"]) for hx in hexes if hx["river"]}
@@ -1625,18 +1676,19 @@ def _validate_features(data, grid, meta, hexes, by_cell, layers):
     res = []
 
     if "railway_cells" not in (meta.get("stats") or {}):
-        res.append((("WARN" if not (rail or tun or line or plant or subs or station or apt) else "FAIL"),
+        any_feat = rail or tun or line or plant or subs or station or apt or fuel
+        res.append((("WARN" if not any_feat else "FAIL"),
                     "旧数据包无地物层",
-                    "重新生成可得到铁路/电网/机场/隧道；本次未见字段"
-                    if not (rail or tun or line or plant or subs or station or apt)
-                    else "无 stats 计数却有地物格 %d" % len(rail | tun | line | plant | subs | station)))
+                    "重新生成可得到铁路/电网/机场/隧道/加油站；本次未见字段"
+                    if not any_feat
+                    else "无 stats 计数却有地物格 %d" % len(rail | tun | line | plant | subs | station | fuel)))
         return res
 
     if feats_off:
-        res.append((("OK" if not (rail or tun or line or plant or subs or station or apt) else "FAIL"),
+        res.append((("OK" if not (rail or tun or line or plant or subs or station or apt or fuel) else "FAIL"),
                     "地物层关闭时无残留",
-                    "铁路 %d / 隧道 %d / 线路 %d / 电厂 %d / 变电站 %d / 车站 %d / 机场 %d"
-                    % (len(rail), len(tun), len(line), len(plant), len(subs), len(station), len(apt))))
+                    "铁路 %d / 隧道 %d / 线路 %d / 电厂 %d / 变电站 %d / 车站 %d / 机场 %d / 加油站 %d"
+                    % (len(rail), len(tun), len(line), len(plant), len(subs), len(station), len(apt), len(fuel))))
         return res
 
     bad_tun = [c for c in sorted(tun)
@@ -1650,6 +1702,12 @@ def _validate_features(data, grid, meta, hexes, by_cell, layers):
     res.append((("OK" if not bad_st else "FAIL"), "车站是铁路格", "%s" % (bad_st if bad_st else "无")))
     res.append((("OK" if len(station) <= max(1, len(city)) else "WARN"), "车站数 ≤ 聚落数",
                 "车站 %d / 聚落 %d" % (len(station), len(city))))
+
+    bad_fuel = sorted(c for c in fuel if c not in road or c in bridge)
+    res.append((("OK" if not bad_fuel else "FAIL"), "加油站在公路上且不在桥面",
+                "%s" % (bad_fuel[:6] if bad_fuel else "无，共 %d 处" % len(fuel))))
+    res.append((("OK" if FUEL_MIN <= len(fuel) <= FUEL_MAX else "WARN"), "加油站数量 %d–%d"
+                % (FUEL_MIN, FUEL_MAX), "实际 %d" % len(fuel)))
 
     comps, unvisited = [], set(rail)
     while unvisited:
@@ -1703,14 +1761,14 @@ def _validate_features(data, grid, meta, hexes, by_cell, layers):
     st = meta.get("stats", {})
     want = {"railway_cells": rail, "tunnel_cells": tun, "powerline_cells": line,
             "power_plant_cells": plant, "substation_cells": subs, "rail_station_cells": station,
-            "airport_cells": {c for c in apt}}
+            "airport_cells": {c for c in apt}, "fuel_station_cells": fuel}
     drift = {k: (st.get(k), len(v)) for k, v in want.items() if st.get(k) != len(v)}
     res.append((("OK" if not drift else "FAIL"), "地物 stats 与 hexes 一致",
-                "%s" % (json.dumps(drift, ensure_ascii=False) if drift else "7 项计数相符")))
+                "%s" % (json.dumps(drift, ensure_ascii=False) if drift else "8 项计数相符")))
 
     type_ok = all(isinstance(hx.get(k, False), bool) for hx in hexes for k in FEATURE_BOOL_KEYS) and \
         all(isinstance(v, int) and v in (1, 2) for v in apt.values())
-    res.append((("OK" if type_ok else "FAIL"), "地物字段类型有效", "bool×6 + airport∈{1,2}"))
+    res.append((("OK" if type_ok else "FAIL"), "地物字段类型有效", "bool×7 + airport∈{1,2}"))
     return res
 
 
@@ -2104,6 +2162,7 @@ def build_payload(args):
             "power_plant_cells": len(feat["power_plant"]),
             "substation_cells": len(feat["substation"]),
             "airport_cells": len(feat["airport"]),
+            "fuel_station_cells": len(feat["fuel_station"]),
         },
         "projection": "EPSG:3857 (Web Mercator); pointy-top odd-r offset hexes (brick board), cx=ox+W*(q+(r&1)/2), cy=oy-1.5*radius*r",
         "hex_order": "r outer loop, q inner loop; index = r*width + q",
@@ -2139,6 +2198,9 @@ def build_payload(args):
                         "note": feat_note["tunnels"]},
             "airports": dict(apt_info or {"kind": "off"},
                              derived=bool(feat_note["airports"] == "derived")),
+            "fuel": {"kind": feat_note["fuel"],
+                     "note": "无公开真实加油站矢量 ⇒ 沿公路派生：城镇及近郊优先，桥面不布站"
+                             if feat_note["fuel"] == "derived-roadside" else "未生成加油站"},
         },
     }
     if real_river or lake_share:
@@ -2151,6 +2213,8 @@ def build_payload(args):
         {"q": c[0], "r": c[1], "kind": "substation"} for c in sorted(feat["substation"])
     ] + [
         {"q": c[0], "r": c[1], "kind": "rail_station"} for c in sorted(feat["rail_station"])
+    ] + [
+        {"q": c[0], "r": c[1], "kind": "fuel_station"} for c in sorted(feat["fuel_station"])
     ] + [
         {"q": c[0], "r": c[1], "kind": "airport", "grade": g}
         for c, g in sorted(feat["airport"].items())

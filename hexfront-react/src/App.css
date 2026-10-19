@@ -56,10 +56,16 @@ input,select,textarea{
 }
 input:focus,select:focus{outline:none; border-color:var(--accent)}
 label{display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--dim)}
+/* 复选/单选框用主题色，避免深色主题下默认白蓝控件突兀 */
+input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; height:15px; cursor:pointer}
 
 /* Home page */
 .page{padding:18px; height:100%; overflow:auto}
 .home-page{padding:12vh 18px 18px; display:flex; flex-direction:column; align-items:center; gap:18px}
+.home-hero{max-width:760px; text-align:center}
+.home-hero h2{margin:0 0 8px; font-size:20px; letter-spacing:1px}
+.home-hero p{margin:0; line-height:1.9; font-size:13px}
+.home-hero .tag{margin:0 2px}
 .home{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px; width:min(760px,100%)}
 .home-tile{
   display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left;

@@ -58,6 +58,16 @@ export default function Home() {
 
   return (
     <div className="page home-page">
+      <div className="home-hero">
+        <h2>引擎权威的 Web 多人兵棋</h2>
+        <p className="muted">
+          战争迷雾隔离信息 · 指令双盲 · 服务端裁决。四种终端角色：
+          <span className="tag">导演部</span>全知控局、
+          <span className="tag red">红方</span>/<span className="tag blue">蓝方</span>对抗推演、
+          <span className="tag">观战</span>复盘学习。
+          同一浏览器可多开做双人同桌。
+        </p>
+      </div>
       <div className="home">
         <button className="home-tile" onClick={() => navigate('/new')}>
           <b>创建副本</b>

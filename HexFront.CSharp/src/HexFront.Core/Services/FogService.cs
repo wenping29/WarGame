@@ -400,6 +400,7 @@ public static class FogService
             if (c.Powerline) j["powerline"] = true;
             if (c.PowerPlant) j["power_plant"] = true;
             if (c.Substation) j["substation"] = true;
+            if (c.FuelStation) j["fuel_station"] = true;
             if (c.Airport > 0) j["airport"] = c.Airport;
             return j;
         }).ToList();

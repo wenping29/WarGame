@@ -330,6 +330,7 @@ public static class ScenarioService
                 Powerline = JsonBool(h, "powerline"),
                 PowerPlant = JsonBool(h, "power_plant"),
                 Substation = JsonBool(h, "substation"),
+                FuelStation = JsonBool(h, "fuel_station"),
                 Airport = (int)JsonDbl(h, "airport"),
             };
         }
