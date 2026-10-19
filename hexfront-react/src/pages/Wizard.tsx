@@ -634,7 +634,7 @@ function GeneratePanel({ state, updateState, gen, onStart }: {
           ['roads', '道路走廊（地形派生：补齐真实路网卡住的渡河点）'],
           ['water', '水系（真实矢量：Natural Earth 10m 河流/湖泊，叠加于 DEM 派生河带之上）'],
           ['network', '真实矢量地物（World_Roads 干道 + Natural Earth 机场/桥隧标注）'],
-          ['features', '地物玩法层（铁路/火车站/公路桥/隧道/电网/电厂/变电站/机场）'],
+          ['features', '地物玩法层（铁路/火车站/公路桥/隧道/电网/电厂/变电站/机场/加油站）'],
         ] as const).map(([key, label]) => (
           <label key={key} className="sw">
             <input type="checkbox" checked={g[key]}

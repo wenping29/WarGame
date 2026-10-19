@@ -1762,7 +1762,9 @@ def _validate_features(data, grid, meta, hexes, by_cell, layers):
     want = {"railway_cells": rail, "tunnel_cells": tun, "powerline_cells": line,
             "power_plant_cells": plant, "substation_cells": subs, "rail_station_cells": station,
             "airport_cells": {c for c in apt}, "fuel_station_cells": fuel}
-    drift = {k: (st.get(k), len(v)) for k, v in want.items() if st.get(k) != len(v)}
+    # 旧包没有新字段的 stats ⇒ 视为「未生成该层」而非漂移：无格子且无统计就不追责
+    drift = {k: (st.get(k), len(v)) for k, v in want.items()
+             if st.get(k) != len(v) and not (st.get(k) is None and len(v) == 0)}
     res.append((("OK" if not drift else "FAIL"), "地物 stats 与 hexes 一致",
                 "%s" % (json.dumps(drift, ensure_ascii=False) if drift else "8 项计数相符")))
 

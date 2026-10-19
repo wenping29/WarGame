@@ -78,6 +78,7 @@ export interface WireCell {
   powerline?: boolean
   power_plant?: boolean
   substation?: boolean
+  fuel_station?: boolean
   airport?: number
 }
 

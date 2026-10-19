@@ -66,6 +66,12 @@ public static class HexGenService
     private const int AirportCityMinDist = 2;
     private const int AirportCityMaxDist = 6;
     private const int AirportMax = 3;
+
+    // Fuel stations（与 hexgen.py FUEL_* 同源：城镇近郊优先，桥面不布）
+    private const int FuelMin = 2;
+    private const int FuelMax = 6;
+    private const int FuelSeparation = 4;
+    private const int FuelCityMaxDist = 2;
     
     /// <summary>
     /// Generate complete hex package with terrain and features.
@@ -85,10 +91,12 @@ public static class HexGenService
         var railway = BuildRailway(grid, elev, terr, road, cities, spec.Seed);
         var powerGrid = BuildPowerGrid(grid, elev, terr, road, cities, riverBand, spec.Seed);
         var airports = PlaceAirports(grid, elev, terr, cities, spec.Seed);
-        
-        var hexes = BuildHexCells(grid, elev, slopes, terr, road, riverBand, bridges, 
-                                   cities, railway, powerGrid, airports);
-        var meta = BuildMeta(grid, spec, elev, terr, road, riverBand, railway, powerGrid, airports);
+        var fuelStations = BuildFuelStations(grid, road, bridges, cities);
+
+        var hexes = BuildHexCells(grid, elev, slopes, terr, road, riverBand, bridges,
+                                   cities, railway, powerGrid, airports, fuelStations);
+        var meta = BuildMeta(grid, spec, elev, terr, road, riverBand, railway, powerGrid,
+                             airports, fuelStations);
         
         return new Models.HexPackage
         {
@@ -680,12 +688,55 @@ public static class HexGenService
         return airports;
     }
     
+    /// <summary>
+    /// 加油站：沿公路派生。城镇及近郊（≤FuelCityMaxDist）优先，数量不足再沿公路按格序补点；
+    /// 桥面不布站，站间最小间隔 FuelSeparation。与 hexgen.py build_fuel 同源。
+    /// </summary>
+    private static List<(int Q, int R)> BuildFuelStations(
+        HexGridGeometry grid, HashSet<(int Q, int R)> road, HashSet<(int Q, int R)> bridges,
+        List<(int Q, int R, int Size)> cities)
+    {
+        var fuel = new List<(int Q, int R)>();
+        if (road.Count == 0 || cities.Count == 0)
+            return fuel;
+
+        bool FarEnough((int Q, int R) c) =>
+            fuel.All(f => HexDistance(f.Q, f.R, c.Q, c.R) >= FuelSeparation);
+
+        // ① 城镇近郊：按 (距离, r, q) 排序取含
+        var urban = road
+            .Where(c => !bridges.Contains(c))
+            .Select(c => (Cell: c, Dist: cities.Min(ct => HexDistance(ct.Q, ct.R, c.Q, c.R))))
+            .Where(t => t.Dist <= FuelCityMaxDist)
+            .OrderBy(t => t.Dist).ThenBy(t => t.Cell.R).ThenBy(t => t.Cell.Q);
+        foreach (var t in urban)
+        {
+            if (fuel.Count >= FuelMax) break;
+            if (FarEnough(t.Cell)) fuel.Add(t.Cell);
+        }
+
+        // ② 数量不足再沿普通公路按格序（r 外 q 内）等距补点
+        if (fuel.Count < FuelMin)
+        {
+            var highway = road
+                .Where(c => !bridges.Contains(c) && !fuel.Contains(c))
+                .OrderBy(c => c.R).ThenBy(c => c.Q);
+            foreach (var c in highway)
+            {
+                if (fuel.Count >= FuelMax) break;
+                if (FarEnough(c)) fuel.Add(c);
+            }
+        }
+        return fuel;
+    }
+
     /// <summary>Build final hex cells with all features.</summary>
     private static List<Models.HexCell> BuildHexCells(
         HexGridGeometry grid, double[] elev, double[] slopes, string[] terr,
-        HashSet<(int Q, int R)> road, List<(int Q, int R)> riverBand, 
+        HashSet<(int Q, int R)> road, List<(int Q, int R)> riverBand,
         HashSet<(int Q, int R)> bridges, List<(int Q, int R, int Size)> cities,
-        RailwayNetwork railway, PowerGrid powerGrid, List<(int Q, int R, bool IsMajor)> airports)
+        RailwayNetwork railway, PowerGrid powerGrid, List<(int Q, int R, bool IsMajor)> airports,
+        List<(int Q, int R)> fuelStations)
     {
         var riverSet = riverBand.ToHashSet();
         var hexes = new List<Models.HexCell>();
@@ -705,6 +756,7 @@ public static class HexGenService
                 var isPowerline = powerGrid.Lines.Contains((q, r));
                 var isPowerPlant = powerGrid.Plants.Any(p => p.Q == q && p.R == r);
                 var isSubstation = powerGrid.Substations.Any(s => s.Q == q && s.R == r);
+                var isFuel = fuelStations.Any(f => f.Q == q && f.R == r);
                 var airport = airports.FirstOrDefault(a => a.Q == q && a.R == r);
                 
                 var terrain = terr[idx];
@@ -728,6 +780,7 @@ public static class HexGenService
                     Powerline = isPowerline,
                     PowerPlant = isPowerPlant,
                     Substation = isSubstation,
+                    FuelStation = isFuel,
                     Airport = airport.IsMajor ? 2 : (airport.Q != 0 ? 1 : 0),
                 });
             }
@@ -737,10 +790,11 @@ public static class HexGenService
     }
     
     /// <summary>Build metadata with statistics.</summary>
-    private static Models.PackageMeta BuildMeta(HexGridGeometry grid, GenSpec spec, 
-        double[] elev, string[] terr, HashSet<(int Q, int R)> road, 
-        List<(int Q, int R)> riverBand, RailwayNetwork railway, 
-        PowerGrid powerGrid, List<(int Q, int R, bool IsMajor)> airports)
+    private static Models.PackageMeta BuildMeta(HexGridGeometry grid, GenSpec spec,
+        double[] elev, string[] terr, HashSet<(int Q, int R)> road,
+        List<(int Q, int R)> riverBand, RailwayNetwork railway,
+        PowerGrid powerGrid, List<(int Q, int R, bool IsMajor)> airports,
+        List<(int Q, int R)> fuelStations)
     {
         var totalCells = grid.Width * grid.Height;
         var terrainCounts = terr.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count());
@@ -757,6 +811,7 @@ public static class HexGenService
             ["power_plant_cells"] = powerGrid.Plants.Count,
             ["substation_cells"] = powerGrid.Substations.Count,
             ["airport_cells"] = airports.Count,
+            ["fuel_station_cells"] = fuelStations.Count,
             ["city_cells"] = terr.Count(t => t == "city"),
             ["bridge_cells"] = terr.Count(t => t == "bridge"),
             ["elev_min"] = Math.Round(elev.Min(), 1),
@@ -774,6 +829,7 @@ public static class HexGenService
             ["railway"] = spec.Features ? "generated" : "off",
             ["power_grid"] = spec.Features ? "generated" : "off",
             ["airports"] = spec.Features ? "generated" : "off",
+            ["fuel"] = spec.Features ? "generated" : "off",
         };
         
         return new Models.PackageMeta

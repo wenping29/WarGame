@@ -241,12 +241,13 @@ public class HexGenServiceTests
     }
 
     [Fact]
-    public void Generate_Validator_Reports_All_38_Checks()
+    public void Generate_Validator_Reports_All_39_Checks()
     {
         var pkg = HexGenService.Generate(SmallSpec());
 
         var report = HexPackageValidator.Validate(pkg);
-        report.Total.Should().Be(38);
+        report.Total.Should().Be(39);
+        // 39 = 原 38 项 + [20b] 加油站在公路上且不在桥面
         report.Passes.Should().Be(report.Total - report.Fails - report.Warns);
     }
 

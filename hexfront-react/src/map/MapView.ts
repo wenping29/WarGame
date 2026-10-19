@@ -661,6 +661,7 @@ export class MapView {
       if (c.substation) this._glyphSubstation(ctx, sx, sy, rp)
       if ((c.airport ?? 0) > 0) this._glyphAirport(ctx, sx, sy, rp, c.airport ?? 0)
       if (c.rail_station) this._glyphStation(ctx, sx, sy, rp)
+      if (c.fuel_station) this._glyphFuel(ctx, sx, sy, rp)
     }
     for (const c of this._pylonCells()) {
       const [sx, sy] = this.toScreen(c.mx, c.my)
@@ -759,6 +760,23 @@ export class MapView {
     }
   }
 
+  /// 加油站：油泵造型（机身 + 油管弯钩），橙色系与机场/车站区分
+  _glyphFuel(ctx: CanvasRenderingContext2D, sx: number, sy: number, rp: number) {
+    const w = rp * 0.3, h = rp * 0.36, x = sx - w / 2 - rp * 0.05, y = sy - h / 2
+    ctx.fillStyle = '#33241a'
+    ctx.fillRect(x, y, w, h)
+    ctx.strokeStyle = '#e0913f'
+    ctx.lineWidth = 1
+    ctx.strokeRect(x, y, w, h)
+    ctx.fillStyle = '#e0913f'
+    ctx.fillRect(x + w * 0.22, y + h * 0.18, w * 0.56, h * 0.26) // 仪表窗
+    ctx.beginPath()                                              // 油管弯钩
+    ctx.moveTo(x + w, y + h * 0.3)
+    ctx.lineTo(x + w + rp * 0.12, y + h * 0.3)
+    ctx.lineTo(x + w + rp * 0.12, y + h * 0.75)
+    ctx.stroke()
+  }
+
   _glyphStation(ctx: CanvasRenderingContext2D, sx: number, sy: number, rp: number) {
     const w = rp * 0.46, h = rp * 0.3
     ctx.fillStyle = '#252a2f'
@@ -791,14 +809,14 @@ export class MapView {
 
   private _hasFeatures() {
     return this._cells.some((c) => c.railway || c.powerline || c.tunnel || (c.airport ?? 0) > 0
-      || c.power_plant || c.substation || c.rail_station)
+      || c.power_plant || c.substation || c.rail_station || c.fuel_station)
   }
 
   /// 图例：竖排在右上（让开缩放控件与底部瓦片提示），缩略时隐藏避免遮挡兵力
   private _drawFeatureLegend(rp: number) {
     if (!this._hasFeatures() || rp < 9 || this.w < 320) return
     const ctx = this.ctx
-    const has = (k: 'railway' | 'powerline' | 'tunnel' | 'rail_station' | 'power_plant' | 'substation' | 'airport') =>
+    const has = (k: 'railway' | 'powerline' | 'tunnel' | 'rail_station' | 'power_plant' | 'substation' | 'airport' | 'fuel_station') =>
       k === 'airport' ? this._cells.some((c) => (c.airport ?? 0) > 0) : this._cells.some((c) => !!c[k])
     const items: Array<[string, string, string]> = []
     if (has('railway')) items.push(['rail', '铁路', '#cfd3d6'])
@@ -807,6 +825,7 @@ export class MapView {
     if (has('substation')) items.push(['sub', '变电站', '#5fc9b8'])
     if (has('airport')) items.push(['air', '机场', '#e2e6e9'])
     if (has('rail_station')) items.push(['station', '火车站', '#e6e2d6'])
+    if (has('fuel_station')) items.push(['fuel', '加油站', '#e0913f'])
     if (has('tunnel')) items.push(['tunnel', '隧道', '#cfd3d6'])
     if (Object.keys(this.nodeHolders || {}).length) items.push(['ring', '掌握要点', ''])
     const power = this.power ? `电网 红×${this.power.red} 蓝×${this.power.blue}` : null
@@ -902,6 +921,19 @@ export class MapView {
       ctx.strokeStyle = color
       ctx.lineWidth = 1
       ctx.strokeRect(cx - 5, cy - 3.5, 10, 7)
+      return
+    }
+    if (kind === 'fuel') {
+      ctx.fillStyle = '#33241a'
+      ctx.fillRect(cx - 3, cy - 4, 6, 8)
+      ctx.strokeStyle = color
+      ctx.lineWidth = 1
+      ctx.strokeRect(cx - 3, cy - 4, 6, 8)
+      ctx.beginPath()
+      ctx.moveTo(cx + 3, cy - 1)
+      ctx.lineTo(cx + 6, cy - 1)
+      ctx.lineTo(cx + 6, cy + 3)
+      ctx.stroke()
       return
     }
     if (kind === 'tunnel') {
@@ -1085,6 +1117,7 @@ export class MapView {
     if (c.road) t.push('公路')
     if (c.railway) t.push('铁路')
     if (c.rail_station) t.push('火车站')
+    if (c.fuel_station) t.push('加油站')
     if (c.tunnel) t.push('隧道')
     if (c.power_plant) t.push('发电厂')
     if (c.substation) t.push('变电站')

@@ -35,6 +35,7 @@ public sealed class HexCell
     public bool Powerline { get; init; }
     public bool PowerPlant { get; init; }
     public bool Substation { get; init; }
+    public bool FuelStation { get; init; }
     public int Airport { get; init; }
 }
 
