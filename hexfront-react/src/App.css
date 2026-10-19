@@ -537,6 +537,25 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
   border-radius:4px; font-size:11px; padding:2px 3px; cursor:pointer;
 }
 .mapzoom .basemap-sel:disabled{opacity:.45; cursor:not-allowed;}
+.mapzoom button.on{border-color:var(--accent); background:#2f4d3a; color:#cfe9d6}
+
+/* 地图显示控制面板 */
+.mapdisp{
+  position:absolute; right:46px; top:8px; z-index:6;
+  background:rgba(16,21,26,.94); border:1px solid var(--line); border-radius:6px;
+  padding:10px 12px; display:flex; flex-direction:column; gap:7px;
+  font-size:12px; min-width:138px; box-shadow:0 4px 14px rgba(0,0,0,.4);
+}
+.mapdisp-head{display:flex; justify-content:space-between; align-items:center; gap:10px}
+.mapdisp-head b{color:#eef3f7; font-size:12px}
+.mapdisp label{display:flex; gap:7px; align-items:center; color:#cfd6dd; cursor:pointer; margin:0; font-size:12px}
+.mapdisp label:hover{color:var(--fg)}
+.mapdisp input[type=checkbox]{margin:0}
+.mapdisp-reset{
+  margin-top:2px; padding:3px 6px; font-size:11px; background:transparent;
+  border:1px solid var(--line); color:var(--dim); border-radius:4px; cursor:pointer;
+}
+.mapdisp-reset:hover{border-color:var(--accent); color:var(--fg)}
 
 .attrib{
   position:absolute; right:4px; bottom:2px; font-size:10px; color:#cdd6de;

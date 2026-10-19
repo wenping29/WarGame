@@ -64,6 +64,27 @@ export interface Pick {
   r: number
 }
 
+/** 地图图层显示开关（用户可在终端右上角面板逐项切换，localStorage 记忆） */
+export interface DisplayOptions {
+  showBasemap: boolean // 在线底图（天地图瓦片）
+  showTerrain: boolean // 六角格地形填充
+  showGrid: boolean // 六角格网描边
+  showFeatures: boolean // 地物层（铁路/输电线/机场/电厂/车站等图标与要点归属）
+  showUnits: boolean // 兵力块
+  showLegend: boolean // 地图图例
+  showCoords: boolean // 六角格坐标标注（放大到可读时显示）
+}
+
+export const DEFAULT_DISPLAY: DisplayOptions = {
+  showBasemap: true,
+  showTerrain: true,
+  showGrid: true,
+  showFeatures: true,
+  showUnits: true,
+  showLegend: true,
+  showCoords: false,
+}
+
 export class MapView {
   canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
@@ -72,6 +93,15 @@ export class MapView {
   own: WireUnit[] = []
   enemies: WireContact[] = []
   allUnits: WireUnit[] = []
+  display: DisplayOptions = { ...DEFAULT_DISPLAY }
+
+  /** 批量更新显示开关；底图开关变化时同步清瓦片缓存 */
+  setDisplay(patch: Partial<DisplayOptions>) {
+    const prev = this.display.showBasemap
+    Object.assign(this.display, patch)
+    if (prev !== this.display.showBasemap) this._resetTiles()
+    this.requestDraw()
+  }
 
   selection: { q: number; r: number } | null = null
   draftPath: [number, number][] | null = null
@@ -482,14 +512,14 @@ export class MapView {
       return
     }
     if (this.tk && this.tilesEnabled) this._tileStatus()
-    const showTiles = this._tilesAllowed()
+    const showTiles = this._tilesAllowed() && this.display.showBasemap
     if (showTiles) this._drawTiles()
     this._drawHexes(ctx, showTiles)
     this._drawOverlays(ctx)
-    this._drawUnits(ctx)
+    if (this.display.showUnits) this._drawUnits(ctx)
     this._drawCursorHex(ctx)
     this._drawTileHint()
-    this._drawFeatureLegend(this.view.geo ? this.view.geo.radius * this.scale : 0)
+    if (this.display.showLegend) this._drawFeatureLegend(this.view.geo ? this.view.geo.radius * this.scale : 0)
   }
 
   private _hexPath(ctx: CanvasRenderingContext2D, sx: number, sy: number, rp: number) {
@@ -520,25 +550,29 @@ export class MapView {
       c.mx >= x0 - rp * 2 && c.mx <= x1 + rp * 2 && c.my >= y0 - rp * 2 && c.my <= y1 + rp * 2
 
     ctx.globalAlpha = alpha
-    for (const c of this._cells) {
-      if (!visible(c)) continue
-      const [sx, sy] = this.toScreen(c.mx, c.my)
-      ctx.fillStyle = TERRAIN_COLOR[c.terrain] || '#555'
-      this._hexPath(ctx, sx, sy, rp)
-      ctx.fill()
+    if (this.display.showTerrain) {
+      for (const c of this._cells) {
+        if (!visible(c)) continue
+        const [sx, sy] = this.toScreen(c.mx, c.my)
+        ctx.fillStyle = TERRAIN_COLOR[c.terrain] || '#555'
+        this._hexPath(ctx, sx, sy, rp)
+        ctx.fill()
+      }
     }
     ctx.globalAlpha = 1
     // 道路 / 河流（仅在能看清时画）
     if (rp > 6) this._drawLines(ctx, rp)
     // 地物层：线状（铁路/输电线）→ 点状（机场/电厂/变电站/车站/隧道）→ 要点归属
-    if (rp > 5) this._drawFeatureLinks(rp)
-    if (rp > 9) {
-      this._drawFeatureGlyphs(ctx, rp)
-      this._drawNodeRings(ctx, rp)
+    if (this.display.showFeatures) {
+      if (rp > 5) this._drawFeatureLinks(rp)
+      if (rp > 9) {
+        this._drawFeatureGlyphs(ctx, rp)
+        this._drawNodeRings(ctx, rp)
+      }
     }
-    // 格网描边（无底图时更明显，有底图只在放大到能看清时画）
-    if (!showTiles || rp > 14) {
-      ctx.globalAlpha = showTiles ? 0.14 : 0.3
+    // 格网描边（无底图时更明显，有底图只在放大到能看清时画；纯格网模式下加亮）
+    if (this.display.showGrid && (!showTiles || rp > 14)) {
+      ctx.globalAlpha = showTiles ? 0.14 : (this.display.showTerrain ? 0.3 : 0.55)
       ctx.strokeStyle = '#0c1013'
       ctx.lineWidth = 1
       for (const c of this._cells) {
@@ -548,6 +582,20 @@ export class MapView {
         ctx.stroke()
       }
       ctx.globalAlpha = 1
+    }
+    // 格坐标标注：放大到单格半径可容纳小字时显示
+    if (this.display.showCoords && rp > 22) {
+      ctx.fillStyle = 'rgba(220,230,240,.6)'
+      ctx.font = `${Math.min(11, Math.round(rp * 0.38))}px monospace`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      for (const c of this._cells) {
+        if (!visible(c) || c.terrain === 'void') continue
+        const [sx, sy] = this.toScreen(c.mx, c.my)
+        ctx.fillText(`${c.q},${c.r}`, sx, sy)
+      }
+      ctx.textAlign = 'start'
+      ctx.textBaseline = 'alphabetic'
     }
   }
 

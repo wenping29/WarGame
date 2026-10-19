@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { BASEMAPS, MapView } from '../map/MapView'
+import { BASEMAPS, DEFAULT_DISPLAY, MapView, type DisplayOptions } from '../map/MapView'
 import { useMeta } from '../room/useUnitFull'
 import type { AnyView } from '../room/protocol'
 
@@ -17,6 +17,28 @@ interface HexMapProps {
   rangeRadius?: number
   onPick?: (p: { q: number; r: number }) => void
 }
+
+const DISP_KEY = 'hexfront.mapdisplay.v1'
+
+function loadDisplay(): DisplayOptions {
+  try {
+    const raw = localStorage.getItem(DISP_KEY)
+    if (raw) return { ...DEFAULT_DISPLAY, ...JSON.parse(raw) }
+  } catch {
+    /* 忽略坏数据 */
+  }
+  return { ...DEFAULT_DISPLAY }
+}
+
+const DISPLAY_ITEMS: Array<[keyof DisplayOptions, string]> = [
+  ['showBasemap', '在线底图'],
+  ['showTerrain', '地形填充'],
+  ['showGrid', '六角格网'],
+  ['showFeatures', '地物层'],
+  ['showUnits', '兵力块'],
+  ['showLegend', '图例'],
+  ['showCoords', '格坐标'],
+]
 
 export default function HexMap({
   view, selection = null, draftPath = null, rangeCenter = null, rangeRadius = 0, onPick,
@@ -58,6 +80,18 @@ export default function HexMap({
   const [basemap, setBasemap] = useState('vec')
   useEffect(() => { mapRef.current?.setBasemap(basemap) }, [basemap])
 
+  // 显示开关：挂载后同步一次（含首次），此后变化即下发并持久化
+  const [disp, setDisp] = useState<DisplayOptions>(loadDisplay)
+  const [panelOpen, setPanelOpen] = useState(false)
+  useEffect(() => {
+    mapRef.current?.setDisplay(disp)
+    try {
+      localStorage.setItem(DISP_KEY, JSON.stringify(disp))
+    } catch {
+      /* 存储满时静默，开关仍在本局生效 */
+    }
+  }, [disp])
+
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -73,17 +107,23 @@ export default function HexMap({
     if (map) fn(map)
   }
 
+  const toggle = (k: keyof DisplayOptions) => setDisp((prev) => ({ ...prev, [k]: !prev[k] }))
+  const onCount = DISPLAY_ITEMS.filter(([k]) => disp[k]).length
+
   return (
     <>
       <canvas ref={canvasRef} />
       <div className="mapzoom">
+        <button onClick={() => setPanelOpen((v) => !v)} title="地图显示控制" className={panelOpen ? 'on' : ''}>
+          ⚙
+        </button>
         <button onClick={act(m => m.zoomBy(1.3))} title="放大">+</button>
         <button onClick={act(m => m.zoomBy(1 / 1.3))} title="缩小">−</button>
         <button onClick={act(m => { m.fit(); m.requestDraw() })} title="复位">⤢</button>
         <select
           className="basemap-sel"
           value={basemap}
-          disabled={!tk}
+          disabled={!tk || !disp.showBasemap}
           title={tk ? '在线底图（天地图）' : '未配置天地图密钥'}
           onChange={(e) => setBasemap(e.target.value)}
         >
@@ -92,6 +132,21 @@ export default function HexMap({
           ))}
         </select>
       </div>
+      {panelOpen && (
+        <div className="mapdisp">
+          <div className="mapdisp-head">
+            <b>显示控制</b>
+            <span className="muted">{onCount}/{DISPLAY_ITEMS.length}</span>
+          </div>
+          {DISPLAY_ITEMS.map(([k, label]) => (
+            <label key={k}>
+              <input type="checkbox" checked={disp[k]} onChange={() => toggle(k)} />
+              <span>{label}</span>
+            </label>
+          ))}
+          <button className="mapdisp-reset" onClick={() => setDisp({ ...DEFAULT_DISPLAY })}>恢复默认</button>
+        </div>
+      )}
     </>
   )
 }
