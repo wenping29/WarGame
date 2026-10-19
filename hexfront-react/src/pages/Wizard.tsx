@@ -404,9 +404,22 @@ export default function Wizard() {
                       })
                     }}
                   >
-                    {(meta?.scenarios || []).map(s => (
-                      <option key={s.id || s.file} value={s.id || s.file}>{s.name || s.id}</option>
-                    ))}
+                    {(() => {
+                      // 按战争分期（era）分组展示，保持服务端组内顺序
+                      const groups = new Map<string, Array<{ id?: string; file?: string; name?: string; era?: string }>>()
+                      for (const s of meta?.scenarios || []) {
+                        const era = s.era || '其他'
+                        if (!groups.has(era)) groups.set(era, [])
+                        groups.get(era)!.push(s)
+                      }
+                      return [...groups.entries()].map(([era, list]) => (
+                        <optgroup key={era} label={era}>
+                          {list.map(s => (
+                            <option key={s.id || s.file} value={s.id || s.file}>{s.name || s.id}</option>
+                          ))}
+                        </optgroup>
+                      ))
+                    })()}
                   </select>
                 </label>
                 <label>
