@@ -1,7 +1,7 @@
 /**
  * 六角格管理系统：左侧网格列表（删除/修改/点击在地图上显示），
  * 中间在线地图显示六角格网，右侧创建/编辑表单（行列、对边距、区域坐标、名称、
- * 地图拾取坐标、创建按钮）。几何与主地图一致：pointy-top + odd-r，对边距 = √3 · 半径，
+ * 框选地图范围弹窗、创建按钮）。几何与主地图一致：pointy-top + odd-r，对边距 = √3 · 半径，
  * 几何量以墨卡托米计（与天地图底图同坐标系）。数据持久化 localStorage，支持导入导出 JSON。
  */
 
@@ -116,6 +116,9 @@ export default function GridManager() {
   const [brush, setBrush] = useState('plain')
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
   const [fit, setFit] = useState<{ bbox: BBox; nonce: number } | null>(null)
+  /** 框选弹窗：打开时飞到当前草稿范围，框选完成后回填表单并关闭 */
+  const [pickOpen, setPickOpen] = useState(false)
+  const [pickFit, setPickFit] = useState<{ bbox: BBox; nonce: number } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
 
@@ -235,6 +238,24 @@ export default function GridManager() {
   }
 
   /* ---------- 地图交互回调 ---------- */
+  const openPick = () => {
+    const b = geom ? deriveBBox(geom.west, geom.south, geom.rows, geom.cols, geom.ftf) : DEFAULT_BBOX
+    setPickFit({ bbox: b, nonce: Date.now() })
+    setPickOpen(true)
+  }
+
+  const closePick = useCallback(() => setPickOpen(false), [])
+
+  // 弹窗内 ESC 关闭
+  useEffect(() => {
+    if (!pickOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closePick()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pickOpen, closePick])
+
   const onPick = (lng: number, lat: number) => {
     updGeom({ west: lng, south: lat })
     setMode('pan')
@@ -257,6 +278,12 @@ export default function GridManager() {
       north: bb.north.toFixed(4),
     }))
     toast(`已框选范围：${R} 行 × ${C} 列`)
+  }
+
+  /** 弹窗内框选：回填表单并关闭弹窗 */
+  const onFrameInModal = (b: BBox) => {
+    onFrame(b)
+    setPickOpen(false)
   }
 
   const onCellClick = (k: string | null) => {
@@ -408,7 +435,6 @@ export default function GridManager() {
             {mode === 'frame' && '在地图上拖拽矩形框选范围'}
             {mode === 'pan' && '拖动地图 · 滚轮缩放'}
             {(mode === 'paint' || mode === 'dig' || mode === 'fill') && '点击/拖动格子进行编辑'}
-            {mode === 'pick' && '点击地图拾取网格锚点'}
           </span>
         </div>
         <div className="gm-canvas-wrap">
@@ -438,8 +464,8 @@ export default function GridManager() {
           </label>
           <div className="gm-coordhead">
             <span>区域坐标（度）</span>
-            <button className={`btn btn-sm${mode === 'pick' ? ' btn-primary' : ''}`} title="在地图上点击拾取网格锚点（西南角）" onClick={() => setMode(mode === 'pick' ? 'pan' : 'pick')}>
-              {mode === 'pick' ? '拾取中…点击地图' : '📍 地图拾取坐标'}
+            <button className="btn btn-sm" title="打开地图弹窗，框选范围自动生成网格" onClick={openPick}>
+              🗺️ 框选地图范围
             </button>
           </div>
           <div className="gm-row2">
@@ -474,6 +500,22 @@ export default function GridManager() {
           )}
         </div>
       </div>
+
+      {/* 框选地图范围弹窗 */}
+      {pickOpen && (
+        <div className="gm-modal-mask" onMouseDown={(e) => { if (e.target === e.currentTarget) closePick() }}>
+          <div className="gm-modal">
+            <div className="gm-modal-head">
+              <h3>框选地图范围</h3>
+              <span className="gm-modal-hint">在地图上拖拽矩形框，松开后自动按对边距推算行列并填入区域坐标（Esc 关闭）</span>
+              <button className="btn btn-sm" onClick={closePick}>✕</button>
+            </div>
+            <div className="gm-modal-body">
+              <GeoMapView mode="frame" overlay={overlay} onFrame={onFrameInModal} fit={pickFit} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

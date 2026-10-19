@@ -388,11 +388,12 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
             }
             holeCacheRef.current = { ref: holes, path: p }
           }
-          // 绘制：translate 到网格锚点的屏幕位置
+          // 绘制：translate 到网格锚点的屏幕位置，再按视图比例缩放并翻转 Y（世界坐标 Y 向上）
           const ox = (westM - v.cx) * v.scale + W / 2
           const oy = H / 2 - (southM - v.cy) * v.scale
           ctx.save()
           ctx.translate(ox, oy)
+          ctx.scale(v.scale, -v.scale)
           const lw = 1 / v.scale
           if (o.preview) {
             ctx.strokeStyle = 'rgba(120,220,255,.7)'
