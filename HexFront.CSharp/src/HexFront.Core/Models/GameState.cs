@@ -112,6 +112,14 @@ public sealed class GameState
     public string Phase { get; set; } = "orders"; // orders/movement/combat/resolution
     public string? Weather { get; set; } = "clear";
     public string WeatherMode { get; set; } = "director"; // director/realistic/random
+    /// <summary>
+    /// 天气计划（导演部专属）：回合区间 → 天气的预排列表。
+    /// 只有导演部能整组设置 / 启动 / 暂停 / 删除；红蓝双方既看不到操作入口也改不动。
+    /// 计划整体替换，条目本身不可变，浅拷贝列表即可。
+    /// </summary>
+    public List<WeatherPhase>? WeatherSchedule { get; set; }
+    /// <summary>计划执行状态：null/off 未启动、running 执行中、paused 暂停（冻结当前天气）。</summary>
+    public string? WeatherScheduleState { get; set; }
     public bool Over { get; set; }
     public string? Winner { get; set; }
     /// <summary>终局发生的回合号（未终局为 null）：回放时间轴要知道"打到第几回合就结了"。</summary>
@@ -248,6 +256,8 @@ public sealed class GameState
             Phase = Phase,
             Weather = Weather,
             WeatherMode = WeatherMode,
+            WeatherSchedule = WeatherSchedule?.ToList(),
+            WeatherScheduleState = WeatherScheduleState,
             Over = Over,
             Winner = Winner,
             EndedTurn = EndedTurn,
@@ -279,4 +289,15 @@ public sealed class TurnEvent
     public string UnitId { get; init; } = "";
     public string Detail { get; init; } = "";
     public Dictionary<string, object> Data { get; init; } = new();
+}
+
+/// <summary>
+/// 天气计划条目：[FromTurn, ToTurn] 回合闭区间内强制为 Weather。
+/// 存档序列化为 snake_case（from_turn/to_turn/weather），旧档缺键回落默认。
+/// </summary>
+public sealed class WeatherPhase
+{
+    public int FromTurn { get; init; } = 1;
+    public int ToTurn { get; init; } = 1;
+    public string Weather { get; init; } = "clear";
 }

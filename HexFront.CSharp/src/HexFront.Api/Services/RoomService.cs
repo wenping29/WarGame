@@ -709,6 +709,89 @@ public sealed class RoomService
                 }
                 break;
             }
+            case "weather_schedule_set":
+            {
+                // { action:'weather_schedule_set', phases:[{from,to,weather}] } —— 整组替换计划
+                var list = new List<WeatherPhase>();
+                if (root.TryGetProperty("phases", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var p in arr.EnumerateArray())
+                    {
+                        var from = p.TryGetProperty("from", out var fv) && fv.ValueKind == JsonValueKind.Number ? fv.GetInt32() : 0;
+                        var to = p.TryGetProperty("to", out var tv) && tv.ValueKind == JsonValueKind.Number ? tv.GetInt32() : 0;
+                        var wx = p.TryGetProperty("weather", out var wv) ? wv.GetString() ?? "" : "";
+                        if (from < 1 || to < from || !room.Game.Weathers.ContainsKey(wx))
+                        {
+                            await conn.SendAsync(ErrorPayload($"计划时段 {from}-{to}/{wx} 无效（需 1 ≤ from ≤ to，且天气存在）"));
+                            return;
+                        }
+                        list.Add(new WeatherPhase { FromTurn = from, ToTurn = to, Weather = wx });
+                    }
+                }
+                if (list.Count == 0)
+                {
+                    await conn.SendAsync(ErrorPayload("天气计划为空"));
+                    return;
+                }
+                lock (room.GameLock)
+                {
+                    room.Game.WeatherSchedule = list;
+                    var n = list.Count;
+                    newEvents.Add(EmitLocked(room, "weather_schedule",
+                        $"导演部更新天气计划（{n} 段时段）", new List<string> { "red", "blue", "spectator" }));
+                }
+                break;
+            }
+            case "weather_schedule_start":
+            {
+                if (room.Game.WeatherSchedule is not { Count: > 0 })
+                {
+                    await conn.SendAsync(ErrorPayload("尚未设置天气计划"));
+                    return;
+                }
+                lock (room.GameLock)
+                {
+                    room.Game.WeatherScheduleState = "running";
+                    // 启动即生效：当前回合若落在某段区间内立即切换
+                    var cur = room.Game.WeatherSchedule
+                        .FirstOrDefault(p => room.Game.Turn >= p.FromTurn && room.Game.Turn <= p.ToTurn);
+                    if (cur != null && room.Game.Weather != cur.Weather)
+                    {
+                        room.Game.Weather = cur.Weather;
+                        FogService.UpdateObservation(room.Game);
+                    }
+                    newEvents.Add(EmitLocked(room, "weather_schedule",
+                        $"导演部启动天气计划（{room.Game.WeatherSchedule.Count} 段）",
+                        new List<string> { "red", "blue", "spectator" }));
+                }
+                break;
+            }
+            case "weather_schedule_pause":
+            {
+                if (room.Game.WeatherScheduleState != "running")
+                {
+                    await conn.SendAsync(ErrorPayload("天气计划未在执行"));
+                    return;
+                }
+                lock (room.GameLock)
+                {
+                    room.Game.WeatherScheduleState = "paused";
+                    newEvents.Add(EmitLocked(room, "weather_schedule",
+                        "导演部暂停天气计划（当前天气冻结）", new List<string> { "red", "blue", "spectator" }));
+                }
+                break;
+            }
+            case "weather_schedule_delete":
+            {
+                lock (room.GameLock)
+                {
+                    room.Game.WeatherSchedule = new List<WeatherPhase>();
+                    room.Game.WeatherScheduleState = null;
+                    newEvents.Add(EmitLocked(room, "weather_schedule",
+                        "导演部删除天气计划（回到原演变模式）", new List<string> { "red", "blue", "spectator" }));
+                }
+                break;
+            }
             case "fog":
             {
                 var on = GetBool(root, "on", false);
@@ -907,6 +990,18 @@ public sealed class RoomService
             ["blue"] = room.AiBlue,
         };
         view["spectator_omniscient"] = FlagBool(room.Game, "spectator_omniscient", false);
+        // 天气计划只进导演视图：红蓝不看到计划内容，仅通过事件得知天气切换结果
+        view["weather_schedule"] = new Dictionary<string, object?>
+        {
+            ["state"] = room.Game.WeatherScheduleState ?? "off",
+            ["phases"] = (room.Game.WeatherSchedule ?? new List<WeatherPhase>()).Select(p =>
+                new Dictionary<string, object?>
+                {
+                    ["from_turn"] = p.FromTurn,
+                    ["to_turn"] = p.ToTurn,
+                    ["weather"] = p.Weather,
+                }).ToList(),
+        };
         return view;
     }
 

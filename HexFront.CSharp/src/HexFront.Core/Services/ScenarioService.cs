@@ -61,6 +61,19 @@ public static class ScenarioService
     {
         public string Initial { get; init; } = "clear";
         public string Mode { get; init; } = "director";
+        /// <summary>
+        /// 天气计划（可选）：按回合区间预排多段天气。
+        /// 副本开局时只装载不启动 —— 启动/暂停/删除/改排是导演部的专属操作。
+        /// </summary>
+        public List<WeatherPhaseCfg>? Schedule { get; init; }
+    }
+
+    /// <summary>剧本 weather.schedule 条目：[from, to] 闭区间回合 → weather。</summary>
+    public class WeatherPhaseCfg
+    {
+        public int From { get; init; } = 1;
+        public int To { get; init; } = 1;
+        public string Weather { get; init; } = "clear";
     }
 
     /// <summary>Clock block: start hour and season.</summary>
@@ -226,6 +239,13 @@ public static class ScenarioService
             Season = config.Clock?.Season ?? "夏",
             Weather = config.Weather?.Initial ?? "clear",
             WeatherMode = config.Weather?.Mode ?? config.WeatherMode,
+            // 剧本只预排计划（未启动）；执行控制归导演部
+            WeatherSchedule = config.Weather?.Schedule?.Select(p => new WeatherPhase
+            {
+                FromTurn = p.From,
+                ToTurn = p.To,
+                Weather = p.Weather,
+            }).ToList(),
             Over = false,
             Winner = null,
             Rules = MergeRules(LibraryService.DEFAULT_RULES, config.Rules),
@@ -624,6 +644,24 @@ public static class ScenarioService
         var initial = cfg.Weather?.Initial;
         if (initial != null && !LibraryService.WEATHER_JSON.ContainsKey(initial))
             errs.Add($"未知天气 {initial}");
+
+        // 天气计划：区间合法、天气存在、回合不越界、区间互不重叠
+        if (cfg.Weather?.Schedule is { Count: > 0 } sched)
+        {
+            WeatherPhaseCfg? prev = null;
+            foreach (var p in sched.OrderBy(p => p.From))
+            {
+                if (p.From < 1 || p.To < p.From)
+                    errs.Add($"天气计划时段 {p.From}-{p.To} 无效（需 1 ≤ from ≤ to）");
+                else if (p.To > cfg.MaxTurns)
+                    errs.Add($"天气计划时段 {p.From}-{p.To} 超出最大回合 {cfg.MaxTurns}");
+                if (!LibraryService.WEATHER_JSON.ContainsKey(p.Weather))
+                    errs.Add($"天气计划引用未知天气 {p.Weather}");
+                if (prev != null && prev.To >= p.From)
+                    errs.Add($"天气计划时段重叠：{prev.From}-{prev.To} 与 {p.From}-{p.To}");
+                prev = p;
+            }
+        }
 
         foreach (var vc in cfg.VictoryConds)
         {

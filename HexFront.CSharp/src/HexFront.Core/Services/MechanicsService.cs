@@ -27,11 +27,22 @@ public static class MechanicsService
     }
 
     /// <summary>
-    /// 天气演变：fixed/director 由剧本或导演部锁定不动，其余按 WEATHER_CHAIN 逐回合转移一次。
+    /// 天气演变：天气计划（导演部启动后）优先按回合区间强制切换；暂停则冻结当前天气。
+    /// 其次 fixed/director 由剧本或导演部锁定不动，其余按 WEATHER_CHAIN 逐回合转移一次。
     /// 只抽一列随机数（nextDouble），抽数固定才能让重放落在同一条链上。
     /// </summary>
     public static string EvolveWeather(GameState g)
     {
+        // 结算末尾演变的是"下一回合"的天候：Turn 尚未自增，故区间按 g.Turn + 1 匹配
+        if (g.WeatherScheduleState == "running" && g.WeatherSchedule is { Count: > 0 })
+        {
+            var next = g.Turn + 1;
+            var phase = g.WeatherSchedule.FirstOrDefault(p => next >= p.FromTurn && next <= p.ToTurn);
+            if (phase != null) return phase.Weather;
+        }
+        // 暂停 = 冻结：计划还在但不再切换；导演部可删除计划回到原演变模式
+        if (g.WeatherScheduleState == "paused") return g.Weather ?? "clear";
+
         var mode = g.WeatherMode ?? "director";
         if (mode is "fixed" or "director") return g.Weather ?? "clear";
 

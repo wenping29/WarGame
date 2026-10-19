@@ -83,8 +83,15 @@ public static class TurnResolver
 
         // Phase 7: State advancement
         g.HourOfDay = (g.HourOfDay + g.Rules.TurnHours) % 24;
+        var prevWeather = g.Weather;
         g.Weather = MechanicsService.EvolveWeather(g);
         g.Turn += 1;
+
+        // 天气计划执行中且实际发生了切换：向全部阵营广播（红蓝只知结果、改不了计划）
+        if (g.WeatherScheduleState == "running" && g.Weather != prevWeather)
+            Emit("weather_schedule",
+                $"天气计划切换（自回合 {g.Turn} 起）：{g.WeatherOf().Label}",
+                new List<string> { "red", "blue", "spectator" });
 
         CheckVictory(g, Emit);
 
