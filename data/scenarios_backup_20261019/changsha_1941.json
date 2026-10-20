@@ -1,0 +1,226 @@
+{
+  "id": "changsha_1941",
+  "name": "第三次长沙会战 1941",
+  "era": "抗日战争",
+  "scale": "战役级",
+  "description": "1941年12月至1942年1月，长沙的「天炉战法」。红方以城防吸住突进之敌、外线侧翼钳击断其退路，蓝方孤军攻坚陷入合围。",
+  "environment": {
+    "width": 24,
+    "height": 18,
+    "cell_km": 2.5,
+    "center_lonlat": [
+      112.9,
+      28.2
+    ],
+    "height_seed": 4112
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": true,
+    "strict_supply": false,
+    "night": false
+  },
+  "clock": {
+    "start_hour": 7,
+    "season": "冬"
+  },
+  "weather": {
+    "initial": "overcast",
+    "mode": "stochastic"
+  },
+  "max_turns": 14,
+  "sides": {
+    "red": {
+      "name": "第九战区 · 天炉战法",
+      "points_budget": 155,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            2,
+            9
+          ],
+          "commander": {
+            "name": "守军指挥所",
+            "quality": 0.6
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 75
+        },
+        {
+          "type": "light_inf",
+          "qty": 5,
+          "at": [
+            7,
+            7
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "rifle",
+          "qty": 4,
+          "at": [
+            7,
+            11
+          ],
+          "fort": 2,
+          "training": 42,
+          "experience": 40,
+          "morale": 75
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            4,
+            10
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            3,
+            8
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            5,
+            9
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            2,
+            10
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            1,
+            9
+          ]
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            4,
+            6
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "日军 · 攻长集群",
+      "points_budget": 145,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            2,
+            9
+          ],
+          "commander": {
+            "name": "战区前指",
+            "quality": 0.62
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 72
+        },
+        {
+          "type": "light_inf",
+          "qty": 5,
+          "at": [
+            6,
+            7
+          ],
+          "training": 45,
+          "experience": 42,
+          "morale": 72
+        },
+        {
+          "type": "rifle",
+          "qty": 4,
+          "at": [
+            6,
+            11
+          ],
+          "training": 42,
+          "experience": 40,
+          "morale": 70
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            5,
+            10
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            4,
+            8
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            4,
+            9
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            2,
+            10
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            1,
+            9
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "blue",
+      "target": "5,9",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "red",
+      "target": null,
+      "amount": 0,
+      "turns": 14
+    }
+  ]
+}

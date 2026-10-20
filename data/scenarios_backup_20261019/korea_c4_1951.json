@@ -1,0 +1,249 @@
+{
+  "id": "korea_c4_1951",
+  "name": "抗美援朝第四次战役 1951",
+  "era": "抗美援朝战争",
+  "scale": "战役级",
+  "description": "1951年1月至2月，蓝方发起全线反扑，红方在横城方向实施反击并在运动防御中逐次抵抗，空间换时间的经典样式。",
+  "environment": {
+    "width": 26,
+    "height": 20,
+    "cell_km": 5,
+    "center_lonlat": [
+      127.5,
+      37.5
+    ],
+    "height_seed": 5104
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": true,
+    "strict_supply": true,
+    "night": false
+  },
+  "clock": {
+    "start_hour": 6,
+    "season": "冬"
+  },
+  "weather": {
+    "initial": "snow",
+    "mode": "stochastic"
+  },
+  "max_turns": 16,
+  "sides": {
+    "red": {
+      "name": "志愿军 · 横城反击与阻击",
+      "points_budget": 170,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            2,
+            10
+          ],
+          "commander": {
+            "name": "志愿军前指",
+            "quality": 0.78
+          },
+          "training": 62,
+          "experience": 70,
+          "morale": 85
+        },
+        {
+          "type": "light_inf",
+          "qty": 6,
+          "at": [
+            6,
+            8
+          ],
+          "training": 60,
+          "experience": 68,
+          "morale": 88
+        },
+        {
+          "type": "light_inf",
+          "qty": 4,
+          "at": [
+            6,
+            12
+          ],
+          "training": 55,
+          "experience": 62,
+          "morale": 82
+        },
+        {
+          "type": "rifle",
+          "qty": 3,
+          "at": [
+            8,
+            10
+          ],
+          "training": 55,
+          "experience": 58,
+          "morale": 80
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            4,
+            9
+          ],
+          "training": 50,
+          "experience": 45
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            5,
+            10
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            3,
+            11
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            1,
+            10
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "联合国军 · 反扑集团",
+      "points_budget": 325,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            23,
+            10
+          ],
+          "commander": {
+            "name": "联合国军指挥所",
+            "quality": 0.68
+          },
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "mec_inf",
+          "qty": 4,
+          "at": [
+            18,
+            8
+          ],
+          "fort": 2,
+          "training": 78,
+          "experience": 72,
+          "morale": 70
+        },
+        {
+          "type": "mec_inf",
+          "qty": 2,
+          "at": [
+            18,
+            12
+          ],
+          "fort": 1,
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "tank",
+          "qty": 2,
+          "at": [
+            20,
+            10
+          ],
+          "training": 78,
+          "experience": 72
+        },
+        {
+          "type": "gun",
+          "qty": 2,
+          "at": [
+            21,
+            12
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 2,
+          "at": [
+            23,
+            10
+          ],
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            21,
+            8
+          ]
+        },
+        {
+          "type": "radar",
+          "qty": 1,
+          "at": [
+            22,
+            14
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            24,
+            10
+          ]
+        },
+        {
+          "type": "fighter",
+          "qty": 1,
+          "at": [
+            24,
+            16
+          ]
+        },
+        {
+          "type": "recon_air",
+          "qty": 1,
+          "at": [
+            24,
+            3
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "red",
+      "target": "18,10",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "blue",
+      "target": null,
+      "amount": 0,
+      "turns": 16
+    }
+  ]
+}

@@ -1,0 +1,295 @@
+{
+  "id": "mukden_1931",
+  "name": "九一八事变 1931",
+  "era": "抗日战争",
+  "scale": "战役级",
+  "description": "1931年9月18日夜间，沈阳北大营。蓝方自爆铁路后突袭北大营，红方驻地部队在「不抵抗」命令下仓促应对。剧本以夜战条件还原当晚交火。",
+  "environment": {
+    "width": 22,
+    "height": 18,
+    "cell_km": 2.5,
+    "center_lonlat": [
+      123.4,
+      41.8
+    ],
+    "height_seed": 9181
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": false,
+    "strict_supply": false,
+    "night": true
+  },
+  "clock": {
+    "start_hour": 22,
+    "season": "秋"
+  },
+  "weather": {
+    "initial": "clear",
+    "mode": "stochastic"
+  },
+  "max_turns": 12,
+  "sides": {
+    "red": {
+      "name": "北大营驻军",
+      "points_budget": 155,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            14,
+            10
+          ],
+          "commander": {
+            "name": "赵镇藩（第7旅参谋长·当夜主事）",
+            "quality": 0.62
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 75
+        },
+        {
+          "type": "light_inf",
+          "qty": 1,
+          "at": [
+            13,
+            10
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "light_inf",
+          "qty": 1,
+          "at": [
+            14,
+            11
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "light_inf",
+          "qty": 3,
+          "at": [
+            13,
+            9
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            14,
+            11
+          ],
+          "fort": 2,
+          "training": 42,
+          "experience": 40,
+          "morale": 75
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            15,
+            10
+          ],
+          "fort": 2,
+          "training": 42,
+          "experience": 40,
+          "morale": 75
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            15,
+            10
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            13,
+            11
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            14,
+            10
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            13,
+            11
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            11,
+            10
+          ]
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            13,
+            9
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "日军独立守备队",
+      "points_budget": 145,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            13,
+            5
+          ],
+          "commander": {
+            "name": "本庄繁（关东军司令官）",
+            "quality": 0.65
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 72
+        },
+        {
+          "type": "light_inf",
+          "qty": 1,
+          "at": [
+            13,
+            7
+          ],
+          "training": 45,
+          "experience": 42,
+          "morale": 72
+        },
+        {
+          "type": "light_inf",
+          "qty": 1,
+          "at": [
+            14,
+            8
+          ],
+          "training": 45,
+          "experience": 42,
+          "morale": 72
+        },
+        {
+          "type": "light_inf",
+          "qty": 3,
+          "at": [
+            12,
+            7
+          ],
+          "training": 45,
+          "experience": 42,
+          "morale": 72
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            14,
+            9
+          ],
+          "training": 42,
+          "experience": 40,
+          "morale": 70
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            13,
+            8
+          ],
+          "training": 42,
+          "experience": 40,
+          "morale": 70
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            13,
+            6
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            14,
+            7
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            12,
+            6
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            14,
+            6
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            15,
+            6
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "blue",
+      "target": "5,9",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "red",
+      "target": null,
+      "amount": 0,
+      "turns": 12
+    }
+  ]
+}

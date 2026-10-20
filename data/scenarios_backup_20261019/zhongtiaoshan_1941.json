@@ -1,0 +1,226 @@
+{
+  "id": "zhongtiaoshan_1941",
+  "name": "中条山战役 1941",
+  "era": "抗日战争",
+  "scale": "战役级",
+  "description": "1941年5月，晋南中条山根据地的山地防御。红方补给困难、山地分散设防，蓝方以穿插合围与空中侦察协助的钳形攻势突入。",
+  "environment": {
+    "width": 24,
+    "height": 20,
+    "cell_km": 2.5,
+    "center_lonlat": [
+      111.5,
+      35.3
+    ],
+    "height_seed": 4105
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": true,
+    "strict_supply": false,
+    "night": false
+  },
+  "clock": {
+    "start_hour": 6,
+    "season": "春"
+  },
+  "weather": {
+    "initial": "clear",
+    "mode": "stochastic"
+  },
+  "max_turns": 12,
+  "sides": {
+    "red": {
+      "name": "第一战区 · 中条山守军",
+      "points_budget": 155,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            2,
+            10
+          ],
+          "commander": {
+            "name": "守军指挥所",
+            "quality": 0.6
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 75
+        },
+        {
+          "type": "light_inf",
+          "qty": 5,
+          "at": [
+            7,
+            8
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "rifle",
+          "qty": 4,
+          "at": [
+            7,
+            12
+          ],
+          "fort": 2,
+          "training": 42,
+          "experience": 40,
+          "morale": 75
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            4,
+            11
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            3,
+            9
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            5,
+            10
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            2,
+            11
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            1,
+            10
+          ]
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            4,
+            7
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "日军 · 合围集群",
+      "points_budget": 145,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            2,
+            10
+          ],
+          "commander": {
+            "name": "战区前指",
+            "quality": 0.62
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 72
+        },
+        {
+          "type": "light_inf",
+          "qty": 5,
+          "at": [
+            6,
+            8
+          ],
+          "training": 45,
+          "experience": 42,
+          "morale": 72
+        },
+        {
+          "type": "rifle",
+          "qty": 4,
+          "at": [
+            6,
+            12
+          ],
+          "training": 42,
+          "experience": 40,
+          "morale": 70
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            5,
+            11
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            4,
+            9
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            4,
+            10
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            2,
+            11
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            1,
+            10
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "blue",
+      "target": "5,10",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "red",
+      "target": null,
+      "amount": 0,
+      "turns": 12
+    }
+  ]
+}

@@ -1,0 +1,268 @@
+{
+  "id": "hanjiang_1951",
+  "name": "汉江阻击战 1951",
+  "era": "抗美援朝战争",
+  "scale": "战役级",
+  "description": "1951年1月至3月，汉江南岸的背水防御。红方在严寒中依托江河屏障逐河逐岭抵抗，蓝方以火力优势昼夜压迫。",
+  "environment": {
+    "width": 24,
+    "height": 18,
+    "cell_km": 5,
+    "center_lonlat": [
+      126.8,
+      37.6
+    ],
+    "height_seed": 5107
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": true,
+    "strict_supply": true,
+    "night": true,
+    "night_from": 18,
+    "night_to": 6
+  },
+  "clock": {
+    "start_hour": 7,
+    "season": "冬"
+  },
+  "weather": {
+    "initial": "snow",
+    "mode": "stochastic",
+    "schedule": [
+      {
+        "from": 1,
+        "to": 6,
+        "weather": "snow"
+      },
+      {
+        "from": 7,
+        "to": 9,
+        "weather": "overcast"
+      },
+      {
+        "from": 10,
+        "to": 14,
+        "weather": "clear"
+      }
+    ]
+  },
+  "max_turns": 14,
+  "sides": {
+    "red": {
+      "name": "志愿军 · 江南阻击集团",
+      "points_budget": 325,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            12,
+            14
+          ],
+          "commander": {
+            "name": "曾泽生（第50军军长）",
+            "quality": 0.8
+          },
+          "training": 62,
+          "experience": 70,
+          "morale": 85
+        },
+        {
+          "type": "light_inf",
+          "qty": 6,
+          "at": [
+            10,
+            14
+          ],
+          "training": 60,
+          "experience": 68,
+          "morale": 88
+        },
+        {
+          "type": "light_inf",
+          "qty": 4,
+          "at": [
+            14,
+            15
+          ],
+          "training": 55,
+          "experience": 62,
+          "morale": 82
+        },
+        {
+          "type": "rifle",
+          "qty": 3,
+          "at": [
+            12,
+            13
+          ],
+          "training": 55,
+          "experience": 58,
+          "morale": 80
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            10,
+            13
+          ],
+          "training": 50,
+          "experience": 45
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            12,
+            12
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            10,
+            12
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            9,
+            13
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "联合国军 · 渡江反扑",
+      "points_budget": 170,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            22,
+            9
+          ],
+          "commander": {
+            "name": "李奇微（美第8集团军司令官）",
+            "quality": 0.75
+          },
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "mec_inf",
+          "qty": 4,
+          "at": [
+            20,
+            10
+          ],
+          "fort": 2,
+          "training": 78,
+          "experience": 72,
+          "morale": 70
+        },
+        {
+          "type": "mec_inf",
+          "qty": 2,
+          "at": [
+            17,
+            11
+          ],
+          "fort": 1,
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "tank",
+          "qty": 2,
+          "at": [
+            21,
+            11
+          ],
+          "training": 78,
+          "experience": 72
+        },
+        {
+          "type": "gun",
+          "qty": 2,
+          "at": [
+            21,
+            12
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 2,
+          "at": [
+            20,
+            13
+          ],
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            20,
+            9
+          ]
+        },
+        {
+          "type": "radar",
+          "qty": 1,
+          "at": [
+            21,
+            10
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            22,
+            9
+          ]
+        },
+        {
+          "type": "fighter",
+          "qty": 1,
+          "at": [
+            22,
+            14
+          ]
+        },
+        {
+          "type": "recon_air",
+          "qty": 1,
+          "at": [
+            22,
+            3
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "blue",
+      "target": "5,9",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "red",
+      "target": null,
+      "amount": 0,
+      "turns": 14
+    }
+  ]
+}

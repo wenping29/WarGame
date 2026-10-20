@@ -1,0 +1,295 @@
+{
+  "id": "lugouqiao_1937",
+  "name": "七七事变 1937",
+  "era": "抗日战争",
+  "scale": "战役级",
+  "description": "1937年7月7日夜，北平西南卢沟桥。蓝方以演习失踪为借口进逼宛平城，红方第29军据桥死守，全面抗战由此爆发。",
+  "environment": {
+    "width": 22,
+    "height": 18,
+    "cell_km": 2.5,
+    "center_lonlat": [
+      116.1,
+      39.85
+    ],
+    "height_seed": 7707
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": false,
+    "strict_supply": false,
+    "night": true
+  },
+  "clock": {
+    "start_hour": 21,
+    "season": "夏"
+  },
+  "weather": {
+    "initial": "clear",
+    "mode": "stochastic"
+  },
+  "max_turns": 12,
+  "sides": {
+    "red": {
+      "name": "第29军 · 卢沟桥守军",
+      "points_budget": 155,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            13,
+            9
+          ],
+          "commander": {
+            "name": "冯治安（第37师·卢沟桥当面）",
+            "quality": 0.72
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 75
+        },
+        {
+          "type": "light_inf",
+          "qty": 1,
+          "at": [
+            13,
+            9
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "light_inf",
+          "qty": 1,
+          "at": [
+            12,
+            10
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "light_inf",
+          "qty": 3,
+          "at": [
+            14,
+            12
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            12,
+            9
+          ],
+          "fort": 2,
+          "training": 42,
+          "experience": 40,
+          "morale": 75
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            13,
+            10
+          ],
+          "fort": 2,
+          "training": 42,
+          "experience": 40,
+          "morale": 75
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            12,
+            11
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            11,
+            9
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            11,
+            10
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            11,
+            11
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            1,
+            9
+          ]
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            12,
+            8
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "日军 · 丰台驻屯集群",
+      "points_budget": 145,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            18,
+            9
+          ],
+          "commander": {
+            "name": "河边正三（驻屯步兵旅团长）",
+            "quality": 0.68
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 72
+        },
+        {
+          "type": "light_inf",
+          "qty": 1,
+          "at": [
+            17,
+            8
+          ],
+          "training": 45,
+          "experience": 42,
+          "morale": 72
+        },
+        {
+          "type": "light_inf",
+          "qty": 1,
+          "at": [
+            17,
+            10
+          ],
+          "training": 45,
+          "experience": 42,
+          "morale": 72
+        },
+        {
+          "type": "light_inf",
+          "qty": 3,
+          "at": [
+            18,
+            9
+          ],
+          "training": 45,
+          "experience": 42,
+          "morale": 72
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            18,
+            8
+          ],
+          "training": 42,
+          "experience": 40,
+          "morale": 70
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            18,
+            10
+          ],
+          "training": 42,
+          "experience": 40,
+          "morale": 70
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            17,
+            9
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            19,
+            9
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            16,
+            9
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            19,
+            10
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            20,
+            9
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "blue",
+      "target": "5,9",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "red",
+      "target": null,
+      "amount": 0,
+      "turns": 12
+    }
+  ]
+}

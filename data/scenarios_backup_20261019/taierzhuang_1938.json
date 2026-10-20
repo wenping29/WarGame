@@ -1,0 +1,226 @@
+{
+  "id": "taierzhuang_1938",
+  "name": "台儿庄战役 1938",
+  "era": "抗日战争",
+  "scale": "战役级",
+  "description": "1938年3月至4月，鲁南运河畔的城镇攻防。红方以内侧防御配合外线反击夹击突进之敌，蓝方孤军深入强攻砖城。",
+  "environment": {
+    "width": 22,
+    "height": 18,
+    "cell_km": 2.5,
+    "center_lonlat": [
+      117.7,
+      34.6
+    ],
+    "height_seed": 3804
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": true,
+    "strict_supply": false,
+    "night": false
+  },
+  "clock": {
+    "start_hour": 6,
+    "season": "春"
+  },
+  "weather": {
+    "initial": "clear",
+    "mode": "stochastic"
+  },
+  "max_turns": 12,
+  "sides": {
+    "red": {
+      "name": "第5战区 · 内线反击集群",
+      "points_budget": 155,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            2,
+            9
+          ],
+          "commander": {
+            "name": "守军指挥所",
+            "quality": 0.6
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 75
+        },
+        {
+          "type": "light_inf",
+          "qty": 5,
+          "at": [
+            6,
+            7
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "rifle",
+          "qty": 4,
+          "at": [
+            6,
+            11
+          ],
+          "fort": 2,
+          "training": 42,
+          "experience": 40,
+          "morale": 75
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            4,
+            10
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            3,
+            8
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            4,
+            9
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            2,
+            10
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            1,
+            9
+          ]
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            4,
+            6
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "日军 · 突进支队",
+      "points_budget": 145,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            2,
+            9
+          ],
+          "commander": {
+            "name": "战区前指",
+            "quality": 0.62
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 72
+        },
+        {
+          "type": "light_inf",
+          "qty": 5,
+          "at": [
+            5,
+            7
+          ],
+          "training": 45,
+          "experience": 42,
+          "morale": 72
+        },
+        {
+          "type": "rifle",
+          "qty": 4,
+          "at": [
+            5,
+            11
+          ],
+          "training": 42,
+          "experience": 40,
+          "morale": 70
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            4,
+            10
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            3,
+            8
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            4,
+            9
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            2,
+            10
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            1,
+            9
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "blue",
+      "target": "5,9",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "red",
+      "target": null,
+      "amount": 0,
+      "turns": 12
+    }
+  ]
+}

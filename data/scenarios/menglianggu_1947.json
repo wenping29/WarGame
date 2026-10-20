@@ -1,0 +1,265 @@
+{
+  "id": "menglianggu_1947",
+  "name": "孟良崮战役 1947",
+  "era": "解放战争",
+  "scale": "战役级",
+  "description": "1947年5月，山东沂蒙山区「百万军中取上将首级」。红方以险峻山地合围蓝方精锐整编师于岩石山地，蓝方就地转入山地环形防御待援。",
+  "environment": {
+    "width": 22,
+    "height": 18,
+    "cell_km": 2.5,
+    "center_lonlat": [
+      118.3,
+      35.6
+    ],
+    "height_seed": 4816
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": true,
+    "strict_supply": false,
+    "night": false
+  },
+  "clock": {
+    "start_hour": 5,
+    "season": "春"
+  },
+  "weather": {
+    "initial": "clear",
+    "mode": "stochastic"
+  },
+  "max_turns": 12,
+  "sides": {
+    "red": {
+      "name": "华东野战军 · 围攻集群",
+      "points_budget": 215,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            2,
+            9
+          ],
+          "commander": {
+            "name": "陈毅·粟裕（华野司令员兼政委·负责战役指挥）",
+            "quality": 0.88
+          },
+          "training": 60,
+          "experience": 62,
+          "morale": 85
+        },
+        {
+          "type": "rifle",
+          "qty": 5,
+          "at": [
+            5,
+            7
+          ],
+          "training": 58,
+          "experience": 60,
+          "morale": 85
+        },
+        {
+          "type": "light_inf",
+          "qty": 4,
+          "at": [
+            5,
+            11
+          ],
+          "training": 55,
+          "experience": 58,
+          "morale": 82
+        },
+        {
+          "type": "rifle_auto",
+          "qty": 2,
+          "at": [
+            7,
+            9
+          ],
+          "training": 52,
+          "experience": 50
+        },
+        {
+          "type": "arty",
+          "qty": 2,
+          "at": [
+            4,
+            8
+          ],
+          "training": 55,
+          "experience": 48
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            4,
+            10
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            4,
+            9
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            3,
+            10
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            1,
+            9
+          ]
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            4,
+            6
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "整编第七十四师 · 山地固守",
+      "points_budget": 255,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            20,
+            9
+          ],
+          "commander": {
+            "name": "张灵甫（整编第74师师长）",
+            "quality": 0.72
+          },
+          "training": 58,
+          "experience": 55
+        },
+        {
+          "type": "rifle",
+          "qty": 4,
+          "at": [
+            15,
+            8
+          ],
+          "fort": 2,
+          "training": 55,
+          "experience": 50,
+          "morale": 55
+        },
+        {
+          "type": "rifle",
+          "qty": 3,
+          "at": [
+            15,
+            11
+          ],
+          "fort": 1,
+          "training": 50,
+          "experience": 45,
+          "morale": 50
+        },
+        {
+          "type": "rifle_auto",
+          "qty": 2,
+          "at": [
+            17,
+            9
+          ],
+          "training": 55,
+          "experience": 50
+        },
+        {
+          "type": "tank",
+          "qty": 1,
+          "at": [
+            18,
+            8
+          ]
+        },
+        {
+          "type": "gun",
+          "qty": 2,
+          "at": [
+            18,
+            10
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 2,
+          "at": [
+            19,
+            9
+          ],
+          "training": 55,
+          "experience": 50
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            18,
+            7
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            16,
+            9
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            20,
+            9
+          ]
+        },
+        {
+          "type": "fighter",
+          "qty": 1,
+          "at": [
+            20,
+            15
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "red",
+      "target": "14,9",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "blue",
+      "target": null,
+      "amount": 0,
+      "turns": 12
+    }
+  ]
+}
