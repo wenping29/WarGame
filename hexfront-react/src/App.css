@@ -938,10 +938,36 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .user-chip em{font-style:normal; color:var(--accent); font-size:11px}
 
 /* ==================== 登录页 ==================== */
+/* 可用高度内垂直居中（.page 自带 height:100% + overflow:auto，窄屏可滚动） */
+.login-wrap{display:flex; align-items:center; justify-content:center}
 .login-card{
-  width:320px; background:var(--panel); border:1px solid var(--line);
-  border-radius:8px; padding:20px 22px; display:flex; flex-direction:column;
+  width:360px; background:var(--panel); border:1px solid var(--line);
+  border-radius:10px; padding:28px 30px 22px; display:flex; flex-direction:column;
+  box-shadow:0 8px 32px rgba(0,0,0,.35); border-top:2px solid var(--accent);
 }
+.login-brand{display:flex; flex-direction:column; align-items:center; gap:4px; margin-bottom:18px}
+.login-logo{
+  width:52px; height:52px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+  font-size:28px; color:var(--accent);
+  background:rgba(127,176,105,.12); border:1px solid rgba(127,176,105,.35);
+  margin-bottom:4px;
+}
+.login-brand h1{margin:0; font-size:20px; letter-spacing:4px; font-weight:700}
+.login-brand span{font-size:11px; letter-spacing:1px}
+/* 登录 / 注册分段切换 */
+.login-tabs{
+  display:grid; grid-template-columns:1fr 1fr; gap:0; margin-bottom:16px;
+  border:1px solid var(--line); border-radius:6px; overflow:hidden;
+}
+.login-tabs button{
+  padding:8px 0; background:var(--panel2); border:0; cursor:pointer;
+  font-size:13px; color:var(--dim); letter-spacing:2px; transition:background .15s, color .15s;
+}
+.login-tabs button + button{border-left:1px solid var(--line)}
+.login-tabs button:hover{color:var(--fg)}
+.login-tabs button.on{background:rgba(127,176,105,.14); color:var(--accent); font-weight:600}
+.login-submit{width:100%; margin-top:12px; padding:9px 0; font-size:14px; letter-spacing:2px}
+.login-note{font-size:12px; margin:12px 0 0; text-align:center}
 
 /* ==================== 系统管理页 ==================== */
 .adm-page{max-width:1500px; margin:0 auto; width:100%; display:flex; flex-direction:column}

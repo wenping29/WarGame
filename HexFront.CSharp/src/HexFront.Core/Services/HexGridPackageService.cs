@@ -27,31 +27,6 @@ public static class HexGridPackageService
         WriteIndented = true,
     };
 
-    // ==================== 文档构造 ====================
-
-    public static HexGridDoc CreateDoc(string name, int rows, int cols, double flatToFlat,
-        double west, double south, string? defaultTerrain,
-        List<string>? holes, Dictionary<string, string>? terrains, string source)
-    {
-        var now = DateTime.UtcNow.ToString("o");
-        return new HexGridDoc
-        {
-            Id = "hg_" + Guid.NewGuid().ToString("N")[..10],
-            Name = string.IsNullOrWhiteSpace(name) ? "网格包" : name.Trim(),
-            Rows = rows,
-            Cols = cols,
-            FlatToFlat = flatToFlat,
-            West = west,
-            South = south,
-            DefaultTerrain = string.IsNullOrWhiteSpace(defaultTerrain) ? "clear" : defaultTerrain.Trim(),
-            Holes = holes ?? new List<string>(),
-            Terrains = terrains ?? new Dictionary<string, string>(),
-            CreatedAt = now,
-            UpdatedAt = now,
-            Source = source,
-        };
-    }
-
     // ==================== zip 存取 ====================
 
     public static void Save(string dir, HexGridDoc doc)

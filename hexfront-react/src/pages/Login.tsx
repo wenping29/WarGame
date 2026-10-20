@@ -34,9 +34,23 @@ export default function Login() {
   }
 
   return (
-    <div className="page" style={{ display: 'flex', justifyContent: 'center', paddingTop: 60 }}>
+    <div className="page login-wrap">
       <form className="login-card" onSubmit={submit}>
-        <h2 style={{ marginTop: 0, textAlign: 'center' }}>{mode === 'login' ? '登录' : '注册'}</h2>
+        <div className="login-brand">
+          <div className="login-logo">⚔</div>
+          <h1>兵棋对抗</h1>
+          <span className="muted">HEXFRONT · 兵棋推演系统</span>
+        </div>
+
+        <div className="login-tabs">
+          <button type="button" className={mode === 'login' ? 'on' : ''} onClick={() => { setMode('login'); setErr('') }}>
+            登 录
+          </button>
+          <button type="button" className={mode === 'register' ? 'on' : ''} onClick={() => { setMode('register'); setErr('') }}>
+            注 册
+          </button>
+        </div>
+
         <label className="scm-f">
           <span>用户名</span>
           <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete="username" />
@@ -56,22 +70,14 @@ export default function Login() {
             <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
           </label>
         )}
+
         {err && <div className="scm-errors">{err}</div>}
-        <button className="btn btn-primary" style={{ width: '100%', marginTop: 10 }} disabled={busy || !username || !password}>
+
+        <button className="btn btn-primary login-submit" disabled={busy || !username || !password}>
           {busy ? '请稍候…' : mode === 'login' ? '登录' : '注册并登录'}
         </button>
-        <button
-          type="button"
-          className="btn"
-          style={{ width: '100%', marginTop: 8 }}
-          onClick={() => {
-            setMode(mode === 'login' ? 'register' : 'login')
-            setErr('')
-          }}
-        >
-          {mode === 'login' ? '没有账号？去注册' : '已有账号？去登录'}
-        </button>
-        <p className="muted" style={{ fontSize: 12, marginBottom: 0, textAlign: 'center' }}>
+
+        <p className="muted login-note">
           注册默认为观战角色，席位与权限由管理员分配
         </p>
       </form>

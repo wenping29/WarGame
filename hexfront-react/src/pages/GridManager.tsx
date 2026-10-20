@@ -124,6 +124,13 @@ export default function GridManager() {
 
   // 下载：把服务器网格包取回并转成本地网格文档（保留挖格与涂装），标记 srvId 供合并列表判重
   const loadSrvToLocal = async (m: HexGridMeta) => {
+    // 已有同源副本：直接查看，不再重复下载
+    const exist = grids.find((g) => g.srvId === m.id)
+    if (exist) {
+      viewDoc(exist)
+      toast(`「${m.name}」已在本地（${exist.id}），直接查看`)
+      return
+    }
     try {
       const r = await api.hexgridGet(m.id)
       const [w, s] = r.bbox
@@ -199,6 +206,21 @@ export default function GridManager() {
 
   const viewed = useMemo(() => grids.find((g) => g.id === viewId) ?? null, [grids, viewId])
 
+  /* 合并卡片列表：服务器包一张卡（未下载/已下载）；
+     已下载的本地副本不再单独出卡（由服务器卡代表），源包已删的孤儿副本回退为本地卡 */
+  type Card =
+    | { kind: 'srv'; m: HexGridMeta; dl: GridDoc | undefined }
+    | { kind: 'local'; g: GridDoc }
+  const cards: Card[] = useMemo(() => {
+    const srvIds = new Set(srvList.map((m) => m.id))
+    const out: Card[] = srvList.map((m) => ({ kind: 'srv', m, dl: grids.find((g) => g.srvId === m.id) }))
+    for (const g of grids) {
+      if (!g.srvId || !srvIds.has(g.srvId)) out.push({ kind: 'local', g })
+    }
+    return out
+  }, [grids, srvList])
+  const localOnlyCount = cards.filter((c) => c.kind === 'local').length
+
   const overlay: HexOverlay | null = useMemo(() => {
     if (!viewed) return null
     const b = viewed.bbox ?? deriveBBox(107, 33, viewed.rows, viewed.cols, viewed.flatToFlat)
@@ -214,29 +236,32 @@ export default function GridManager() {
       <div className="gm-col">
         <div className="panel gm-list-panel">
           <div className="panel-header">
-            <h3>网格列表（{grids.length} 本地 · {srvList.length} 服务器）</h3>
+            <h3>网格列表（{srvList.length} 服务器包 · {localOnlyCount} 本地）</h3>
             <button className="btn btn-sm" title="刷新服务器列表" onClick={refreshSrv}>↻</button>
           </div>
           <div className="gm-list">
-            {grids.map((g) => (
-              <div key={g.id} className={`gm-item${g.id === viewId ? ' on' : ''}`} title="点击在地图上查看" onClick={() => viewDoc(g)}>
-                <div className="gm-item-main">
-                  <b>{g.name}{g.srvId && <span className="tag on" style={{ marginLeft: 6 }}>服务器</span>}</b>
-                  <span className="muted small">{g.rows} 行 × {g.cols} 列 · 对边距 {g.flatToFlat}</span>
-                </div>
-                <div className="gm-item-ops">
-                  {confirmDel === g.id ? (
-                    <button className="btn btn-sm btn-red" onClick={(e) => { e.stopPropagation(); deleteGrid(g.id) }}>确认</button>
-                  ) : (
-                    <button className="btn btn-sm" title="删除本地网格" onClick={(e) => { e.stopPropagation(); setConfirmDel(g.id); setTimeout(() => setConfirmDel((c) => (c === g.id ? null : c)), 3000) }}>删</button>
-                  )}
-                </div>
-              </div>
-            ))}
-            {srvList.map((m) => {
-              const dl = grids.find((g) => g.srvId === m.id)
+            {cards.map((c) => {
+              if (c.kind === 'local') {
+                const g = c.g
+                return (
+                  <div key={g.id} className={`gm-item${g.id === viewId ? ' on' : ''}`} title="点击在地图上查看" onClick={() => viewDoc(g)}>
+                    <div className="gm-item-main">
+                      <b>{g.name}{g.srvId && <span className="tag" style={{ marginLeft: 6 }} title="来源服务器包已删除，本地副本保留">本地副本</span>}</b>
+                      <span className="muted small">{g.rows} 行 × {g.cols} 列 · 对边距 {g.flatToFlat}</span>
+                    </div>
+                    <div className="gm-item-ops">
+                      {confirmDel === g.id ? (
+                        <button className="btn btn-sm btn-red" onClick={(e) => { e.stopPropagation(); deleteGrid(g.id) }}>确认</button>
+                      ) : (
+                        <button className="btn btn-sm" title="删除本地网格" onClick={(e) => { e.stopPropagation(); setConfirmDel(g.id); setTimeout(() => setConfirmDel((v) => (v === g.id ? null : v)), 3000) }}>删</button>
+                      )}
+                    </div>
+                  </div>
+                )
+              }
+              const { m, dl } = c
               return (
-                <div key={'srv-' + m.id} className="gm-item" style={{ cursor: 'pointer' }}
+                <div key={'srv-' + m.id} className={`gm-item${dl && dl.id === viewId ? ' on' : ''}`} style={{ cursor: 'pointer' }}
                   title={dl ? '点击在地图上查看' : '未下载：请先下载后查看'}
                   onClick={() => (dl ? viewDoc(dl) : toast('请先下载后查看', 'warn'))}>
                   <div className="gm-item-main">
@@ -257,7 +282,7 @@ export default function GridManager() {
                       <button className="btn btn-sm btn-red" title="确认删除服务器包" onClick={(e) => { e.stopPropagation(); void deleteSrv(m) }}>确认</button>
                     ) : (
                       <button className="btn btn-sm" title="删除服务器包（不影响已下载的本地副本）"
-                        onClick={(e) => { e.stopPropagation(); setSrvConfirmDel(m.id); setTimeout(() => setSrvConfirmDel((c) => (c === m.id ? null : c)), 3000) }}>删</button>
+                        onClick={(e) => { e.stopPropagation(); setSrvConfirmDel(m.id); setTimeout(() => setSrvConfirmDel((v) => (v === m.id ? null : v)), 3000) }}>删</button>
                     )}
                   </div>
                 </div>

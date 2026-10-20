@@ -415,10 +415,6 @@ export const api = {
   hexgrids: () => get<{ grids: HexGridMeta[]; count: number }>('/hexgrids'),
   hexgridGet: (id: string) => get<{ grid: HexGridDoc; bbox: [number, number, number, number] }>(
     '/hexgrids/' + encodeURIComponent(id)),
-  hexgridCreate: (body: {
-    name?: string; rows: number; cols: number; flat_to_flat: number;
-    west: number; south: number; default_terrain?: string; source?: string;
-  }) => post<{ grid: HexGridDoc; bbox: [number, number, number, number]; error?: string }>('/hexgrids', body),
   hexgridDelete: (id: string) =>
     del<{ id: string; deleted: boolean; error?: string; used_by?: string[] }>(
       '/hexgrids/' + encodeURIComponent(id)),

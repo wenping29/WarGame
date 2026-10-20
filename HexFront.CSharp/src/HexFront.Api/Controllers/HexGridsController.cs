@@ -18,8 +18,6 @@ namespace HexFront.Api.Controllers;
 [Route("api/hexgrids")]
 public class HexGridsController : ControllerBase
 {
-    private static readonly string[] TerrainIds = LibraryService.STANDARD_TERRAIN.Keys.ToArray();
-
     private readonly RoomService _rooms;
     private readonly ILogger<HexGridsController> _logger;
     private readonly AppDbService _db;
@@ -94,59 +92,6 @@ public class HexGridsController : ControllerBase
         }
     }
 
-    // ==================== POST /api/hexgrids — 生成并入库 ====================
-
-    [HttpPost]
-    public IActionResult Create([FromBody] Dictionary<string, JsonElement> body)
-    {
-        var rows = Int(body, "rows") ?? -1;
-        var cols = Int(body, "cols") ?? -1;
-        var ftf = Dbl(body, "flat_to_flat");
-        var west = Dbl(body, "west");
-        var south = Dbl(body, "south");
-
-        if (rows is < 1 or > 200) return BadRequest(new { error = "rows 需在 1–200 之间" });
-        if (cols is < 1 or > 200) return BadRequest(new { error = "cols 需在 1–200 之间" });
-        if (ftf < 10 || ftf > 1_000_000) return BadRequest(new { error = "flat_to_flat 需在 10–1000000 米之间" });
-        if (!IsFinite(west) || !IsFinite(south)) return BadRequest(new { error = "west/south 锚点无效" });
-
-        var terrain = Str(body, "default_terrain");
-        if (!string.IsNullOrEmpty(terrain) && !TerrainIds.Contains(terrain))
-            return BadRequest(new { error = $"未知地形 {terrain}" });
-
-        // 可选挖除/涂装（剧本管理页首版只传几何，这两个字段留给六角格管理页扩展）
-        var holes = new List<string>();
-        if (body.TryGetValue("holes", out var holesEl) && holesEl.ValueKind == JsonValueKind.Array)
-            foreach (var h in holesEl.EnumerateArray())
-                if (h.ValueKind == JsonValueKind.String) holes.Add(h.GetString()!);
-        var terrains = new Dictionary<string, string>();
-        if (body.TryGetValue("terrains", out var tEl) && tEl.ValueKind == JsonValueKind.Object)
-            foreach (var p in tEl.EnumerateObject())
-                if (p.Value.ValueKind == JsonValueKind.String) terrains[p.Name] = p.Value.GetString()!;
-
-        var doc = HexGridPackageService.CreateDoc(Str(body, "name") ?? "", rows, cols, ftf, west, south,
-            terrain, holes, terrains, Str(body, "source") is { Length: > 0 } s ? s : "api");
-        try
-        {
-            HexGridPackageService.Save(Dir, doc);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "hexgrid package save failed");
-            return StatusCode(500, new { error = "网格包保存失败: " + ex.Message });
-        }
-
-        // 地图包目录表同步登记（id ↔ 剧本 hexgrid / scenarios.map_id）
-        _db.UpsertMapPackage(doc.Id, Path.Combine(Dir, doc.Id + ".zip"), doc.Rows, doc.Cols, doc.FlatToFlat);
-
-        _logger.LogInformation("hexgrid {Id} created ({Rows}x{Cols} @ {Ftf}m)", doc.Id, rows, cols, ftf);
-        return DocOk(new Dictionary<string, object?>
-        {
-            ["grid"] = doc,
-            ["bbox"] = HexGridPackageService.BboxOf(doc),
-        });
-    }
-
     // ==================== DELETE /api/hexgrids/{id} — 删包（被剧本引用时拒绝） ====================
 
     [HttpDelete("{id}")]
@@ -203,15 +148,4 @@ public class HexGridsController : ControllerBase
         }
         return map.ToDictionary(kv => kv.Key, kv => kv.Value.ToArray());
     }
-
-    private static string? Str(Dictionary<string, JsonElement> b, string k) =>
-        b.TryGetValue(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-
-    private static int? Int(Dictionary<string, JsonElement> b, string k) =>
-        b.TryGetValue(k, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : null;
-
-    private static double Dbl(Dictionary<string, JsonElement> b, string k) =>
-        b.TryGetValue(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : double.NaN;
-
-    private static bool IsFinite(double d) => !double.IsNaN(d) && !double.IsInfinity(d);
 }

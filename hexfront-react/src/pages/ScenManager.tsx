@@ -6,9 +6,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, netError, type FeedbackEntry, type GisJob, type GisPlan, type HexGridMeta, type ScenarioInfo } from '../services/api'
+import { api, netError, type FeedbackEntry, type HexGridMeta, type ScenarioInfo } from '../services/api'
 import { useMeta } from '../room/useUnitFull'
-import { TERRAINS } from '../components/GeoMapView'
+import HexGenPanel, { defaultGenForm, type GisGenForm } from '../components/HexGenPanel'
 import { toast } from '../components/Toast'
 
 const ERAS = ['', '抗日战争', '解放战争', '抗美援朝', '第二次世界大战', '其他']
@@ -140,38 +140,12 @@ export default function ScenManager() {
 
   /* ---------- 六角格网络包（战场环境内创建，剧本只存 hexgrid id） ---------- */
   const [hgList, setHgList] = useState<HexGridMeta[]>([])
-  const [hgBusy, setHgBusy] = useState(false)
   const [hgPick, setHgPick] = useState('')
-  const [hgForm, setHgForm] = useState({ name: '', rows: '10', cols: '14', ftf: '2500', west: '107', south: '33', terrain: 'clear' })
 
   const refreshHexgrids = useCallback(() => {
     api.hexgrids().then(r => setHgList(r.grids || [])).catch(() => {})
   }, [])
   useEffect(refreshHexgrids, [refreshHexgrids])
-
-  // 生成六角格包（zip 落服务器 data/hexgrids/）并把 id 绑进剧本，保存时落盘
-  const hgCreate = async () => {
-    const f = hgForm
-    const rows = Math.round(+f.rows), cols = Math.round(+f.cols), ftf = +f.ftf
-    const west = +f.west, south = +f.south
-    if (!(rows >= 1 && rows <= 200) || !(cols >= 1 && cols <= 200)) return toast('行列需在 1–200 之间', 'err')
-    if (!(ftf >= 10 && ftf <= 1000000)) return toast('对边距需在 10–1000000 米之间', 'err')
-    if (!Number.isFinite(west) || !Number.isFinite(south)) return toast('锚点经纬度无效', 'err')
-    setHgBusy(true)
-    try {
-      const r = await api.hexgridCreate({
-        name: f.name.trim() || undefined, rows, cols, flat_to_flat: ftf, west, south,
-        default_terrain: f.terrain || undefined, source: 'scenmgr',
-      })
-      toast(`已生成六角格包 ${r.grid.id}（${rows} 行 × ${cols} 列）`, 'ok')
-      refreshHexgrids()
-      bindAndSave(r.grid.id)
-    } catch (e) {
-      toast('生成失败：' + netError(e), 'err')
-    } finally {
-      setHgBusy(false)
-    }
-  }
 
   const hgBind = (id: string) => {
     if (!id) return
@@ -196,85 +170,24 @@ export default function ScenManager() {
     void doSave(d)
   }
 
-  /* ---------- 按范围现场生成（GIS）：包自动存服务器 → 返回地图 id → 绑定并保存剧本 ---------- */
+  /* ---------- 按范围现场生成：公共组件 HexGenPanel（与创建副本同款），完成自动绑定并保存剧本 ---------- */
   const [gisOpen, setGisOpen] = useState(false)
-  const [gisForm, setGisForm] = useState({ w: '', s: '', e: '', n: '', km: '' })
-  const [gisPlan, setGisPlan] = useState<GisPlan | null>(null)
-  const [gisJob, setGisJob] = useState<GisJob | null>(null)
-  const [gisBusy, setGisBusy] = useState(false)
-  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current) }, [])
-
-  const gisBbox = (): [number, number, number, number] | null => {
-    const w = +gisForm.w, s = +gisForm.s, e = +gisForm.e, n = +gisForm.n
-    if (![w, s, e, n].every(Number.isFinite)) return null
-    return e > w && n > s ? [w, s, e, n] : null
-  }
-
-  const gisPlanFetch = async () => {
-    const b = gisBbox()
-    if (!b) return toast('请填写有效范围（西<东、南<北）', 'err')
-    try {
-      setGisPlan(await api.gisPlan(b, gisForm.km === '' ? undefined : +gisForm.km))
-    } catch (err) {
-      toast('范围规划失败：' + netError(err), 'err')
-    }
-  }
-
-  const gisStart = async () => {
-    const b = gisBbox()
-    if (!b) return toast('请填写有效范围（西<东、南<北）', 'err')
-    const km = +gisForm.km
-    if (!(km >= 0.5 && km <= 30)) return toast('对边距需在 0.5–30 km 之间', 'err')
-    setGisBusy(true)
-    setGisJob(null)
-    try {
-      const base = String(docRef.current?.name || selRef.current || 'scenario').slice(0, 40)
-      const j0 = await api.gisStartJob({
-        bbox: b, cell_km: km, name: `${base}_${Math.floor(Date.now() / 1000)}`,
-        dem: 'auto', landuse: 'auto', roads: true, water: true, network: true, features: true,
-      })
-      setGisJob(j0)
-      toast('生成作业已启动：' + j0.id)
-      const poll = async () => {
-        let stop = false
-        try {
-          const j = await api.gisJob(j0.id)
-          setGisJob(j)
-          if (j.status === 'done' || j.status === 'failed') {
-            stop = true
-            setGisBusy(false)
-            if (j.status === 'done' && j.hexgrid_id) {
-              bindAndSave(j.hexgrid_id)
-              refreshHexgrids()
-              toast(`六角格网包已存至服务器：${j.hexgrid_id}（${j.meta?.width ?? '?'}×${j.meta?.height ?? '?'} 格），剧本已绑定并保存`, 'ok')
-            } else if (j.status === 'done') {
-              toast('生成完成，但发布为服务器网络包失败，详见作业日志', 'err')
-            } else {
-              toast('生成失败：' + (j.error || '见日志'), 'err')
-            }
-          }
-        } catch { /* 瞬时网络错误，继续轮询 */ }
-        if (!stop) pollRef.current = setTimeout(poll, 1500)
-      }
-      pollRef.current = setTimeout(poll, 1500)
-    } catch (err) {
-      setGisBusy(false)
-      toast('生成启动失败：' + netError(err), 'err')
-    }
-  }
+  const [gisForm, setGisForm] = useState<GisGenForm>(defaultGenForm)
 
   // 展开时用剧本环境中心/格距预填，减少手输
   const toggleGis = () => {
-    if (!gisOpen && gisForm.w === '') {
+    if (!gisOpen && gisForm.bbox.w === '') {
       const env = (docRef.current?.environment || {}) as Record<string, any>
       const lon = +env.center_lonlat?.[0], lat = +env.center_lonlat?.[1]
       if (Number.isFinite(lon) && Number.isFinite(lat)) {
-        setGisForm({
-          w: (lon - 0.25).toFixed(3), s: (lat - 0.2).toFixed(3),
-          e: (lon + 0.25).toFixed(3), n: (lat + 0.2).toFixed(3),
-          km: env.cell_km != null ? String(env.cell_km) : '',
-        })
+        setGisForm(f => ({
+          ...f,
+          bbox: {
+            w: (lon - 0.25).toFixed(3), s: (lat - 0.2).toFixed(3),
+            e: (lon + 0.25).toFixed(3), n: (lat + 0.2).toFixed(3),
+          },
+          cell_km: env.cell_km != null ? String(env.cell_km) : '',
+        }))
       }
     }
     setGisOpen(!gisOpen)
@@ -602,7 +515,7 @@ export default function ScenManager() {
                       <>
                         <code className="mono">{String(doc.hexgrid)}</code>
                         <span className="muted small">{hgList.find(g => g.id === doc.hexgrid)?.name || ''}</span>
-                        <button className="btn btn-sm danger" disabled={hgBusy}
+                        <button className="btn btn-sm danger"
                           onClick={() => upd(d => { delete d.hexgrid })}>解除绑定</button>
                       </>
                     ) : (
@@ -620,7 +533,7 @@ export default function ScenManager() {
                           </option>
                         ))}
                       </select>
-                      <button className="btn btn-sm" disabled={!hgPick || hgBusy} onClick={() => { hgBind(hgPick); setHgPick('') }}>
+                      <button className="btn btn-sm" disabled={!hgPick} onClick={() => { hgBind(hgPick); setHgPick('') }}>
                         绑定所选
                       </button>
                     </div>
@@ -628,93 +541,26 @@ export default function ScenManager() {
 
                   <div style={{ marginTop: 10 }}>
                     <div className="row" style={{ alignItems: 'center' }}>
-                      <button className="btn btn-sm" disabled={gisBusy} onClick={toggleGis}>
+                      <button className="btn btn-sm" onClick={toggleGis}>
                         {gisOpen ? '收起现场生成' : '🌐 按范围现场生成（含地形数据）'}
                       </button>
                       <span className="muted small">生成后自动存为服务器网络包（zip），并把地图 id 绑定、保存到剧本</span>
                     </div>
                     {gisOpen && (
-                      <div style={{ marginTop: 8 }}>
-                        <div className="scm-grid">
-                          <label className="scm-f"><span>西经</span>
-                            <input type="number" step="0.0001" value={gisForm.w}
-                              onChange={e => setGisForm({ ...gisForm, w: e.target.value })} /></label>
-                          <label className="scm-f"><span>南纬</span>
-                            <input type="number" step="0.0001" value={gisForm.s}
-                              onChange={e => setGisForm({ ...gisForm, s: e.target.value })} /></label>
-                          <label className="scm-f"><span>东经</span>
-                            <input type="number" step="0.0001" value={gisForm.e}
-                              onChange={e => setGisForm({ ...gisForm, e: e.target.value })} /></label>
-                          <label className="scm-f"><span>北纬</span>
-                            <input type="number" step="0.0001" value={gisForm.n}
-                              onChange={e => setGisForm({ ...gisForm, n: e.target.value })} /></label>
-                          <label className="scm-f"><span>对边距（实地 km）</span>
-                            <input type="number" step="0.1" min="0.5" max="30" value={gisForm.km}
-                              onChange={e => setGisForm({ ...gisForm, km: e.target.value })} /></label>
-                          <label className="scm-f"><span>格距建议</span>
-                            <button className="btn btn-sm" onClick={gisPlanFetch}>查询推荐格距</button></label>
-                        </div>
-                        {gisPlan && (
-                          <p className="muted small" style={{ margin: '4px 0' }}>
-                            推荐对边距 <b>{gisPlan.recommended.cell_km} km</b>
-                            {gisPlan.recommended.reasons?.length ? `（${gisPlan.recommended.reasons.join('；')}）` : ''}
-                          </p>
-                        )}
-                        <button className="btn btn-sm primary" disabled={gisBusy} onClick={gisStart}>
-                          {gisBusy ? '生成中…' : '⚙ 开始生成并绑定'}
-                        </button>
-                        {gisJob && (
-                          <pre className="mono small" style={{ marginTop: 6, maxHeight: 130, overflow: 'auto',
-                            background: 'rgba(0,0,0,.28)', padding: '6px 8px', borderRadius: 6 }}>
-                            {gisJob.status === 'done' || gisJob.status === 'failed'
-                              ? (gisJob.error || (gisJob.hexgrid_id
-                                  ? `完成：地图 id ${gisJob.hexgrid_id}`
-                                  : '完成（未发布为网络包，见作业日志）'))
-                              : `[${gisJob.status}] ` + ((gisJob.log || []).slice(-3).join('\n') || '排队中…')}
-                          </pre>
-                        )}
-                      </div>
+                      <HexGenPanel
+                        form={gisForm}
+                        onChange={p => setGisForm(f => ({ ...f, ...p }))}
+                        compact
+                        hideName
+                        defaultName={`${String(docRef.current?.name || selRef.current || 'scenario').slice(0, 40)}_${Math.floor(Date.now() / 1000)}`}
+                        onPublished={(id, j) => {
+                          bindAndSave(id)
+                          refreshHexgrids()
+                          toast(`六角格网包已存至服务器：${id}（${j.meta?.width ?? '?'}×${j.meta?.height ?? '?'} 格），剧本已绑定并保存`, 'ok')
+                        }}
+                      />
                     )}
                   </div>
-
-                  <details style={{ marginTop: 10 }}>
-                    <summary className="muted small">手动指定几何参数生成（仅几何网格，不含地形数据）</summary>
-                    <div className="scm-grid">
-                    <label className="scm-f"><span>网格名称</span>
-                      <input value={hgForm.name} placeholder="留空自动命名"
-                        onChange={e => setHgForm({ ...hgForm, name: e.target.value })} />
-                    </label>
-                    <label className="scm-f"><span>行数</span>
-                      <input type="number" min={1} max={200} value={hgForm.rows}
-                        onChange={e => setHgForm({ ...hgForm, rows: e.target.value })} />
-                    </label>
-                    <label className="scm-f"><span>列数</span>
-                      <input type="number" min={1} max={200} value={hgForm.cols}
-                        onChange={e => setHgForm({ ...hgForm, cols: e.target.value })} />
-                    </label>
-                    <label className="scm-f"><span>对边距（米）</span>
-                      <input type="number" min={10} value={hgForm.ftf}
-                        onChange={e => setHgForm({ ...hgForm, ftf: e.target.value })} />
-                    </label>
-                    <label className="scm-f"><span>锚点西经</span>
-                      <input type="number" step="0.0001" value={hgForm.west}
-                        onChange={e => setHgForm({ ...hgForm, west: e.target.value })} />
-                    </label>
-                    <label className="scm-f"><span>锚点南纬</span>
-                      <input type="number" step="0.0001" value={hgForm.south}
-                        onChange={e => setHgForm({ ...hgForm, south: e.target.value })} />
-                    </label>
-                    <label className="scm-f"><span>默认地形</span>
-                      <select value={hgForm.terrain}
-                        onChange={e => setHgForm({ ...hgForm, terrain: e.target.value })}>
-                        {TERRAINS.map(([k, n]) => <option key={k} value={k}>{n}</option>)}
-                      </select>
-                    </label>
-                  </div>
-                    <button className="btn btn-sm primary" disabled={hgBusy} onClick={hgCreate}>
-                      {hgBusy ? '生成中…' : '⚙ 生成六角格包并绑定'}
-                    </button>
-                  </details>
                 </div>
               </details>
 
