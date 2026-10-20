@@ -56,6 +56,24 @@ export default function Home() {
     }
   }
 
+  // 删除已存副本：二次确认（不可恢复）；活跃房间占用时后端拒删（409）
+  const removeSave = async (s: SaveInfo) => {
+    const label = s.name ? `${s.name}（${s.instance}）` : s.instance
+    if (!window.confirm(`删除副本 ${label}？将同时删除其存档目录与全部历史数据，不可恢复。`)) return
+    try {
+      const res = await api.deleteSave(s.instance)
+      if (res.deleted) {
+        toast('已删除副本 ' + s.instance)
+        const meta = await loadMeta()
+        setSaves(meta.saves || [])
+      } else {
+        toast(res.error || '删除失败', 'err')
+      }
+    } catch (e) {
+      toast('删除失败：' + e, 'err')
+    }
+  }
+
   return (
     <div className="page home-page">
       <div className="home-hero">
@@ -110,6 +128,9 @@ export default function Home() {
                   <div className="foot">
                     <button className="btn btn-sm btn-primary" onClick={() => loadSave(save)}>
                       载入并导调
+                    </button>
+                    <button className="btn btn-sm btn-red" onClick={() => removeSave(save)}>
+                      删除
                     </button>
                   </div>
                 </div>

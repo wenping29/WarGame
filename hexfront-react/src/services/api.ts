@@ -325,6 +325,9 @@ export const api = {
       room?: RoomInfo
       error?: string
     }>('/saves/load', { instance }),
+  deleteSave: (instance: string) =>
+    del<{ instance: string; deleted: boolean; db_rows?: number; error?: string }>(
+      '/saves/' + encodeURIComponent(instance)),
   gisCapabilities: () => get<GisCapabilities>('/gis/capabilities'),
   gisPlan: (bbox: [number, number, number, number], cellKm?: number) =>
     get<GisPlan>('/gis/plan?w=' + bbox[0] + '&s=' + bbox[1] + '&e=' + bbox[2] + '&n=' + bbox[3] +

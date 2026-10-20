@@ -12,6 +12,10 @@ async function jpost(path, body) {
   // 服务端 400/404 也返回 JSON，交由调用方判断 error/errors
   return r.json();
 }
+async function jdel(path) {
+  const r = await fetch(path, { method: 'DELETE', headers: { 'accept': 'application/json' } });
+  return r.json();
+}
 
 export const api = {
   scenarios: () => jget('/api/scenarios'),
@@ -21,6 +25,7 @@ export const api = {
   validate: (scenario, overrides) => jpost('/api/validate', { scenario, overrides }),
   createInstance: (body) => jpost('/api/instances', body),
   loadSave: (instance) => jpost('/api/saves/load', { instance }),
+  deleteSave: (instance) => jdel('/api/saves/' + encodeURIComponent(instance)),
   gisCapabilities: (refresh) => jget('/api/gis/capabilities' + (refresh ? '?refresh=1' : '')),
   gisPlan: (bbox, cellKm) => jget('/api/gis/plan?w=' + bbox[0] + '&s=' + bbox[1] +
     '&e=' + bbox[2] + '&n=' + bbox[3] + (cellKm ? '&cell_km=' + cellKm : '')),

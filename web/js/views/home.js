@@ -11,7 +11,11 @@ export async function renderHome(root) {
   const tile = (title, hint, onclick) => el('button', { class: 'home-tile', onclick }, [
     el('b', {}, title), el('span', { class: 'hint' }, hint),
   ]);
-  const toggleSaves = () => { if (list.firstChild) clear(list); else list.replaceChildren(saveList(saves)); };
+  const showSaves = async () => {
+    const m = await getMeta();
+    list.replaceChildren(saveList(m.saves || [], showSaves));
+  };
+  const toggleSaves = () => { if (list.firstChild) clear(list); else showSaves(); };
 
   root.appendChild(el('div', { class: 'page home-page' }, [
     el('div', { class: 'home' }, [

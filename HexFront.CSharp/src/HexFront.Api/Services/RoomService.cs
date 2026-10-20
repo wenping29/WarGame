@@ -142,6 +142,33 @@ public sealed class RoomService
     public List<Dictionary<string, object?>> ListRooms() =>
         _rooms.Keys.Select(k => PublicInfo(k)).Where(x => x != null).Select(x => x!).ToList();
 
+    /// <summary>查找持有某实例的房间码（无则 null）。副本删除前判断占用用。</summary>
+    public string? FindRoomByInstance(string instance)
+    {
+        foreach (var (code, room) in _rooms)
+        {
+            lock (room.GameLock)
+            {
+                if (string.Equals(room.Game.InstanceId, instance, StringComparison.Ordinal)) return code;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>移除一个没有任何在线连接的空闲房间（副本删除清场用）。
+    /// 仍有人在线返回 false；房间不存在返回 true（视为已清场）。</summary>
+    public bool RemoveIfIdle(string code)
+    {
+        if (!_rooms.TryGetValue(code, out var room)) return true;
+        lock (room.GameLock)
+        {
+            foreach (var slot in room.Slots.Values)
+                if (slot.IsOpen) return false;
+        }
+        _rooms.TryRemove(code, out _);
+        return true;
+    }
+
     public List<Dictionary<string, object?>>? Frames(string code)
     {
         if (!TryFindRoom(code, out var room)) return null;

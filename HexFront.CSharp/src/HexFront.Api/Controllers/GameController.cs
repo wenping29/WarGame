@@ -250,6 +250,56 @@ public class GameController : ControllerBase
         });
     }
 
+    // ==================== DELETE /api/saves/{instance} ====================
+
+    /// <summary>删除已存副本：磁盘存档目录 + saves/save_docs 表联动清理；
+    /// 副本被房间占用时：空闲房间（无人在线）随删除一并清场，有人在线则拒绝（409）。</summary>
+    [HttpDelete("saves/{instance}")]
+    public IActionResult DeleteSave(string instance)
+    {
+        if (string.IsNullOrEmpty(instance))
+            return BadRequestDict("缺少 instance", null);
+
+        var code = _rooms.FindRoomByInstance(instance);
+        if (code != null)
+        {
+            if (!_rooms.RemoveIfIdle(code))
+                return StatusCode(409, new Dictionary<string, object?>
+                {
+                    ["error"] = $"副本正被活跃房间 {code} 使用，请让所有终端退出后再删除",
+                });
+            _logger.LogInformation("idle room {Code} evicted on delete of {Instance}", code, instance);
+        }
+
+        try
+        {
+            StoreService.DeleteSave(instance, _rooms.SaveDirectory);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequestDict(ex.Message, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "delete save {Instance} failed", instance);
+            return StatusCode(500, new Dictionary<string, object?>
+            {
+                ["error"] = "删除存档目录失败（目录可能被占用）",
+            });
+        }
+
+        var rows = _db.DeleteSaveRows(instance);
+        _ops.Log(instance, "save_deleted", "director", null,
+            new Dictionary<string, object?> { ["db_rows"] = rows });
+
+        return Ok(new Dictionary<string, object?>
+        {
+            ["instance"] = instance,
+            ["deleted"] = true,
+            ["db_rows"] = rows,
+        });
+    }
+
     // ==================== Scenario listing / validation ====================
 
     private List<Dictionary<string, object?>> ListScenarioSummaries()

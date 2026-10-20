@@ -49,7 +49,8 @@ export async function renderLobby(root) {
     (meta.scenarios || []).map((s) => scenarioCard(s, meta)))));
 
   // 存档
-  page.appendChild(section('已存副本 (' + (meta.saves || []).length + ')', saveList(meta.saves || [])));
+  page.appendChild(section('已存副本 (' + (meta.saves || []).length + ')',
+    saveList(meta.saves || [], () => renderLobby(root))));
 
   root.appendChild(page);
 }
@@ -93,7 +94,7 @@ function roomList(rooms, codeInput) {
   ]));
 }
 
-export function saveList(saves) {
+export function saveList(saves, onChanged) {
   if (!saves.length) return el('div', { class: 'muted small' }, '暂无存档');
   return el('div', { class: 'room-list' }, el('table', {}, [
     el('tr', {}, [el('th', {}, '副本'), el('th', {}, '名称'), el('th', {}, '剧本'), el('th', {}, '最后回合'), el('th', {}, '操作')]),
@@ -102,16 +103,35 @@ export function saveList(saves) {
       el('td', {}, s.name || ''),
       el('td', {}, s.scenario_name || s.scenario || ''),
       el('td', {}, String(s.last_turn ?? s.turns_recorded ?? '?')),
-      el('td', {}, el('button', {
-        class: 'btn btn-sm btn-primary',
-        onclick: async () => {
-          const res = await api.loadSave(s.instance);
-          if (res.code) { toast('已载入房间 ' + res.code); router.go(router.link(res.code, 'director')); }
-          else toast(res.error || '载入失败', 'err');
-        },
-      }, '载入并导调')),
+      el('td', {}, el('div', { class: 'row', style: 'gap:4px' }, [
+        el('button', {
+          class: 'btn btn-sm btn-primary',
+          onclick: async () => {
+            const res = await api.loadSave(s.instance);
+            if (res.code) { toast('已载入房间 ' + res.code); router.go(router.link(res.code, 'director')); }
+            else toast(res.error || '载入失败', 'err');
+          },
+        }, '载入并导调'),
+        el('button', {
+          class: 'btn btn-sm btn-red',
+          onclick: () => deleteSave(s, onChanged),
+        }, '删除'),
+      ])),
     ])),
   ]));
+}
+
+// 删除已存副本：二次确认（不可恢复，删磁盘目录 + 库中目录/内容行）；活跃房间占用时后端拒删
+async function deleteSave(s, onChanged) {
+  const label = (s.name ? s.name + '（' + s.instance + '）' : s.instance);
+  if (!window.confirm('删除副本 ' + label + '？将同时删除其存档目录与全部历史数据，不可恢复。')) return;
+  const res = await api.deleteSave(s.instance);
+  if (res.deleted) {
+    toast('已删除副本 ' + s.instance);
+    if (onChanged) onChanged();
+  } else {
+    toast(res.error || '删除失败', 'err');
+  }
 }
 
 async function startScenario(s) {

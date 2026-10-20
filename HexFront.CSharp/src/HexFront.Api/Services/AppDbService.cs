@@ -636,6 +636,12 @@ public sealed class AppDbService : IDisposable
     public List<Dictionary<string, object?>> ListSaves(int limit = 200) =>
         QueryList("SELECT * FROM saves ORDER BY updated_at DESC LIMIT $lim", ("$lim", limit));
 
+    /// <summary>删除副本的目录行与内容行（saves + save_docs），返回受影响行数。
+    /// ops / instances 表作为审计历史保留，不随副本删除。</summary>
+    public int DeleteSaveRows(string instance) =>
+        ExecCmd("DELETE FROM saves WHERE instance=$i", ("$i", instance)) +
+        ExecCmd("DELETE FROM save_docs WHERE instance=$i", ("$i", instance));
+
     // ==================== 推演存档完整内容 ====================
 
     /// <summary>扫描 data/saves，把每个实例的全部文件（meta/init/snapshot_tN/turns）入库到 save_docs，
