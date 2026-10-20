@@ -32,6 +32,8 @@ interface GridDoc {
   terrains: Record<string, string>
   /** 溯源：网格覆盖的经纬度范围 */
   bbox?: BBox
+  /** 来源服务器网格包 id（从服务器下载到本地后标记，用于合并列表判重） */
+  srvId?: string
   /** GIS 生成数据包名（/api/gis/jobs 产物，存于 data/gis/） */
   gisPkg?: string
   /** GIS 生成的全套格数据（保存修改后自动计算） */
