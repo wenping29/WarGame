@@ -38,17 +38,30 @@ public sealed class ScenAdminController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> Detail(string id)
     {
-        var path = FindScenarioPath(id);
-        if (path == null) return Error("剧本不存在", 404);
+        // 真源：scenario_docs 全文库；未入库时回退磁盘文件
+        var hit = _db.FindScenarioDoc(id);
+        string text;
+        string fileName;
+        if (hit != null)
+        {
+            text = hit.Value.Json;
+            fileName = string.IsNullOrEmpty(hit.Value.File) ? hit.Value.Id + ".json" : Path.GetFileName(hit.Value.File);
+        }
+        else
+        {
+            var path = FindScenarioPath(id);
+            if (path == null) return Error("剧本不存在", 404);
+            text = await System.IO.File.ReadAllTextAsync(path);
+            fileName = Path.GetFileName(path);
+        }
 
         try
         {
-            var text = await System.IO.File.ReadAllTextAsync(path);
             var doc = JsonNode.Parse(text);
             if (doc is null) return Error("剧本 JSON 为空", 400);
             return new JsonResult(new JsonObject
             {
-                ["file"] = Path.GetFileName(path),
+                ["file"] = fileName,
                 ["doc"] = doc,
             });
         }
@@ -65,12 +78,18 @@ public sealed class ScenAdminController : ControllerBase
 
     // ==================== PUT /api/scenadmin/{id}?validateOnly=1 — 校验/保存 ====================
 
-    /// <summary>保存编辑后的剧本全文；validateOnly=1 只校验不落盘。保存前自动备份原文件。</summary>
+    /// <summary>保存编辑后的剧本全文；validateOnly=1 只校验不落盘。
+    /// 真源为 scenario_docs（保存前旧版本备份进 scenario_backups 表），磁盘文件尽力镜像。</summary>
     [HttpPut("{id}")]
     public async Task<IActionResult> Save(string id, bool validateOnly = false)
     {
-        var path = FindScenarioPath(id);
-        if (path == null) return Error("剧本不存在", 404);
+        var existing = _db.FindScenarioDoc(id);
+        string? diskPath = null;
+        if (existing == null)
+        {
+            diskPath = FindScenarioPath(id);
+            if (diskPath == null) return Error("剧本不存在", 404);
+        }
 
         JsonNode? doc;
         try { doc = await JsonSerializer.DeserializeAsync<JsonNode>(Request.Body); }
@@ -88,22 +107,53 @@ public sealed class ScenAdminController : ControllerBase
 
         try
         {
-            var backup = BackupOriginal(path);
-            await System.IO.File.WriteAllTextAsync(path, text + "\n");
-            result["file"] = Path.GetFileName(path);
-            result["backup"] = backup is null ? null : Path.GetFileName(backup);
-            // 应用库：剧本目录同步（保存后刷新 catalog）+ 全文内容入库
-            _db.SyncScenarios(_rooms.ScenarioDirectory);
-            try { _db.SyncScenarioDoc(path); }
-            catch (Exception ex) { _logger.LogWarning(ex, "剧本内容入库失败 {Id}", id); }
+            // 解析 id：JSON 内 id 优先，回退现有文档 id / 请求 id
+            var resolvedId = existing?.Id ?? id;
+            try
+            {
+                using var jd = JsonDocument.Parse(text);
+                if (jd.RootElement.TryGetProperty("id", out var iv) && iv.ValueKind == JsonValueKind.String)
+                    resolvedId = iv.GetString()!;
+            }
+            catch { /* id 解析失败用回退值 */ }
+
+            var fileName = existing != null && !string.IsNullOrEmpty(existing.Value.File)
+                ? Path.GetFileName(existing.Value.File)
+                : resolvedId + ".json";
+            var filePath = Path.Combine(_rooms.ScenarioDirectory, fileName);
+
+            // 版本备份：覆盖前的旧版本（库内或磁盘）存 scenario_backups 表
+            var prevJson = existing?.Json;
+            if (prevJson == null && diskPath != null)
+                prevJson = await System.IO.File.ReadAllTextAsync(diskPath);
+            long backupId = 0;
+            if (prevJson != null) backupId = _db.AddScenarioBackup(resolvedId, prevJson);
+
+            // SQLite 真源：全文 + catalog
+            _db.UpsertScenarioDoc(resolvedId, text, filePath);
+            _db.UpsertScenarioCatalog(resolvedId, text, filePath);
+
+            // 磁盘镜像（尽力而为，失败不影响真源；目录缺失时一并补建）
+            try
+            {
+                Directory.CreateDirectory(_rooms.ScenarioDirectory);
+                await System.IO.File.WriteAllTextAsync(filePath, text + "\n");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "剧本磁盘镜像写入失败 {Id}", id);
+            }
+
+            result["file"] = fileName;
+            result["backup"] = backupId > 0 ? backupId.ToString() : null;
             result["saved_at"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            _logger.LogInformation("scenario {Id} saved (backup: {Backup})", id, backup);
+            _logger.LogInformation("scenario {Id} saved (backup #{Backup})", id, backupId);
             return new JsonResult(result);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "save scenario {Id}", id);
-            return Error("写入剧本文件失败：" + ex.Message, 500);
+            return Error("保存剧本失败：" + ex.Message, 500);
         }
     }
 
@@ -117,25 +167,6 @@ public sealed class ScenAdminController : ControllerBase
         catch (Exception ex)
         {
             return new List<string> { "剧本解析失败：" + ex.Message };
-        }
-    }
-
-    /// <summary>保存前把原文件复制到 data/scenario_backups/，返回备份路径（失败不阻断保存）。</summary>
-    private string? BackupOriginal(string path)
-    {
-        try
-        {
-            var dir = Path.Combine(_rooms.DataDirectory, "scenario_backups");
-            Directory.CreateDirectory(dir);
-            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            var dest = Path.Combine(dir, $"{Path.GetFileNameWithoutExtension(path)}.{stamp}{Path.GetExtension(path)}");
-            System.IO.File.Copy(path, dest, overwrite: true);
-            return dest;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "backup scenario before save failed");
-            return null;
         }
     }
 

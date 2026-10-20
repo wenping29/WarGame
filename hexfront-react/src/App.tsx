@@ -4,6 +4,7 @@ import Lobby from './pages/Lobby'
 import ScenManager from './pages/ScenManager'
 import Wizard from './pages/Wizard'
 import GridManager from './pages/GridManager'
+import SaveManager from './pages/SaveManager'
 import RoomPage from './pages/RoomPage'
 import Admin from './pages/Admin'
 import Login from './pages/Login'
@@ -37,6 +38,7 @@ function App() {
             <Route path="/lobby" element={<Lobby />} />
             <Route path="/scenarios" element={<ScenManager />} />
             <Route path="/new" element={<Wizard />} />
+            <Route path="/saves" element={<SaveManager />} />
             <Route path="/grid" element={<GridManager />} />
             <Route path="/room/:code/:role" element={<RoomPage />} />
             <Route path="/admin" element={<Admin />} />

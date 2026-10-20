@@ -745,8 +745,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .err-list li{padding:2px 0; border-bottom:1px dashed #5a3330;}
 .warn{color:var(--warn);}
 
-.oob-table{width:100%; border-collapse:collapse; font-size:12px;}
-.oob-table th,.oob-table td{border-bottom:1px solid var(--line); padding:4px; text-align:left;}
+.oob-table{width:100%; border-collapse:collapse; font-size:12px;}.oob-table th,.oob-table td{border-bottom:1px solid var(--line); padding:4px; text-align:left;}
 .oob-table input,.oob-table select{padding:3px 5px; font-size:12px; width:100%;}
 .oob-table .num{width:64px;}
 
@@ -935,3 +934,17 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .adm-menu-ops{display:flex; gap:8px}
 .adm-log-bar{display:flex; align-items:center; gap:6px; margin-bottom:10px}
 .adm-log-scroll{max-height:520px; overflow:auto}
+
+/* ==================== 副本管理页（/saves） ==================== */
+.sv-head{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:14px; flex-wrap:wrap}
+.sv-tools{display:flex; gap:8px; align-items:center}
+.sv-search{min-width:240px; padding:7px 10px; border:1px solid var(--line); border-radius:6px; background:var(--panel2); color:var(--fg); font-size:13px}
+.sv-search:focus{outline:none; border-color:var(--accent)}
+.sv-table td{padding:8px}
+.sv-actions{display:flex; gap:6px; flex-wrap:wrap}
+.sv-docs{display:flex; flex-direction:column; gap:8px; padding:4px 0}
+.sv-doc-list{display:flex; gap:6px; flex-wrap:wrap}
+.sv-doc-item{display:flex; flex-direction:column; gap:2px; align-items:flex-start; padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:var(--panel2); color:var(--fg); font-size:12px; cursor:pointer}
+.sv-doc-item:hover{border-color:var(--accent)}
+.sv-doc-item.on{border-color:var(--accent); background:rgba(120,160,255,.08)}
+.sv-doc-view{max-height:360px; overflow:auto; margin:0; padding:10px; border:1px solid var(--line); border-radius:6px; background:rgba(0,0,0,.25); font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-all}

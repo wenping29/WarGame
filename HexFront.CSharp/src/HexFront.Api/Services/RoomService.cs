@@ -664,59 +664,49 @@ public sealed class RoomService
         }
     }
 
-    /// <summary>结算落盘：指令记录每回合必写，全量快照每 K 回合或终局一次。写盘失败只告警，不打断已算完的回合。</summary>
+    /// <summary>结算持久化：指令记录每回合必写，全量快照每 K 回合或终局一次。真源为 save_docs；写库失败只告警，不打断已算完的回合。</summary>
     private void PersistTurn(
         Room room, string byRole, uint rngAtResolve,
         Dictionary<string, List<Command>> orders, TurnResolver.TurnReport report)
     {
         var resolvedTurn = room.Game.Turn - 1;
-        StoreService.SaveMetadata? snapMeta = null;
         try
         {
-            StoreService.AppendTurn(room.Game.InstanceId, new StoreService.TurnRecord
-            {
-                Turn = resolvedTurn,
-                At = DateTime.UtcNow,
-                ResolvedBy = byRole,
-                RngAtResolve = rngAtResolve,
-                Red = orders["red"],
-                Blue = orders["blue"],
-                Rejected = report.Rejected.Select(StoreService.RejectedOrder.From).ToList(),
-                FpBefore = report.FingerprintBefore,
-                FpAfter = report.FingerprintAfter,
-            }, _saveDir);
+            // 回合指令：turns 文档读-改-写（剔除 ≥ 新回合的旧记录，分岐重算不留脏尾部）
+            var turnsJsonl = StoreService.AppendTurnJsonl(
+                _db.GetSaveDoc(room.Game.InstanceId, "turns"),
+                new StoreService.TurnRecord
+                {
+                    Turn = resolvedTurn,
+                    At = DateTime.UtcNow,
+                    ResolvedBy = byRole,
+                    RngAtResolve = rngAtResolve,
+                    Red = orders["red"],
+                    Blue = orders["blue"],
+                    Rejected = report.Rejected.Select(StoreService.RejectedOrder.From).ToList(),
+                    FpBefore = report.FingerprintBefore,
+                    FpAfter = report.FingerprintAfter,
+                });
+            _db.StoreSaveDoc(room.Game.InstanceId, "turns", null, turnsJsonl, DateTime.UtcNow.ToString("o"));
 
+            // 全量快照：snapshot + 首次 init + meta 刷新 + saves 目录 upsert
             if (StoreService.ShouldSnapshot(resolvedTurn, room.Game.Over))
-                snapMeta = StoreService.WriteSnapshot(room.Game, _saveDir, room.InstanceName);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "回合 {Turn} 落盘失败（副本 {Instance}）", resolvedTurn, room.Game.InstanceId);
-        }
-
-        if (snapMeta != null)
-        {
-            // 应用库：自动快照副本目录 upsert
-            _db.UpsertSave(new StoreSaveMeta(snapMeta.Instance, snapMeta.Name, snapMeta.Scenario,
-                snapMeta.Seed, snapMeta.LastTurn, snapMeta.MaxTurns,
-                snapMeta.CreatedAt.ToString("o"), snapMeta.UpdatedAt.ToString("o"), "snapshot"));
-        }
-
-        // 应用库：把本回合落盘的内容（turns.jsonl + 新快照 + meta）同步进 save_docs，
-        // 使 SQLite 成为统一真源；失败只告警，不阻断已结算的回合。
-        try
-        {
-            _db.StoreSaveFile(_saveDir, room.Game.InstanceId, "turns", null, "turns.jsonl", DateTime.UtcNow);
-            if (snapMeta != null)
             {
-                _db.StoreSaveFile(_saveDir, room.Game.InstanceId, "snapshot", resolvedTurn,
-                    $"snapshot_t{resolvedTurn}.json", snapMeta.UpdatedAt);
-                _db.StoreSaveFile(_saveDir, room.Game.InstanceId, "meta", null, "meta.json", snapMeta.UpdatedAt);
+                var prevMeta = StoreService.ParseMetaJson(_db.GetSaveDoc(room.Game.InstanceId, "meta"));
+                var (meta, snapJson, initJson, metaJson) =
+                    StoreService.BuildSnapshotDocs(room.Game, prevMeta, room.InstanceName);
+                _db.StoreSaveDoc(room.Game.InstanceId, "snapshot", resolvedTurn, snapJson, meta.UpdatedAt.ToString("o"));
+                if (initJson != null)
+                    _db.StoreSaveDoc(room.Game.InstanceId, "init", 0, initJson, meta.UpdatedAt.ToString("o"));
+                _db.StoreSaveDoc(room.Game.InstanceId, "meta", null, metaJson, meta.UpdatedAt.ToString("o"));
+                _db.UpsertSave(new StoreSaveMeta(meta.Instance, meta.Name, meta.Scenario,
+                    meta.Seed, meta.LastTurn, meta.MaxTurns,
+                    meta.CreatedAt.ToString("o"), meta.UpdatedAt.ToString("o"), "snapshot"));
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "副本内容同步入库失败（副本 {Instance}）", room.Game.InstanceId);
+            _logger.LogWarning(ex, "回合 {Turn} 持久化失败（副本 {Instance}）", resolvedTurn, room.Game.InstanceId);
         }
 
         // SQLite 操作流水：回合结算阶段（双方最终指令 + 随机源 + 指纹，供复盘/审计）
@@ -739,29 +729,25 @@ public sealed class RoomService
             StoreService.SaveMetadata meta;
             lock (room.GameLock)
             {
-                // 手动存档 = 给同一副本再落一张全量快照，实例 id 不变，可反复覆盖
-                meta = StoreService.WriteSnapshot(room.Game, _saveDir,
-                    name ?? room.InstanceName, desc);
+                // 手动存档 = 给同一副本再落一张全量快照（save_docs 真源），实例 id 不变，可反复覆盖
+                var prevMeta = StoreService.ParseMetaJson(_db.GetSaveDoc(room.Game.InstanceId, "meta"));
+                var (m, snapJson, initJson, metaJson) =
+                    StoreService.BuildSnapshotDocs(room.Game, prevMeta, name ?? room.InstanceName, desc);
+                _db.StoreSaveDoc(room.Game.InstanceId, "snapshot", m.SnapshotTurn, snapJson, m.UpdatedAt.ToString("o"));
+                if (initJson != null)
+                    _db.StoreSaveDoc(room.Game.InstanceId, "init", 0, initJson, m.UpdatedAt.ToString("o"));
+                _db.StoreSaveDoc(room.Game.InstanceId, "meta", null, metaJson, m.UpdatedAt.ToString("o"));
+                meta = m;
             }
             _ops.Log(room.Game.InstanceId, OpsLogService.StageSave, conn.Role, meta.LastTurn,
                 new Dictionary<string, object?>
                 {
                     ["instance"] = meta.Instance, ["name"] = meta.Name, ["turn"] = meta.LastTurn,
                 });
-            // 应用库：手动存档副本目录 upsert + 内容同步进 save_docs
+            // 应用库：手动存档副本目录 upsert
             _db.UpsertSave(new StoreSaveMeta(meta.Instance, meta.Name, meta.Scenario,
                 meta.Seed, meta.LastTurn, meta.MaxTurns,
                 meta.CreatedAt.ToString("o"), meta.UpdatedAt.ToString("o"), "manual"));
-            try
-            {
-                _db.StoreSaveFile(_saveDir, meta.Instance, "snapshot", meta.SnapshotTurn,
-                    $"snapshot_t{meta.SnapshotTurn}.json", meta.UpdatedAt);
-                _db.StoreSaveFile(_saveDir, meta.Instance, "meta", null, "meta.json", meta.UpdatedAt);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "手动存档内容同步入库失败（副本 {Instance}）", meta.Instance);
-            }
             await BroadcastAll(room, new Dictionary<string, object?>
             {
                 ["type"] = "saved",

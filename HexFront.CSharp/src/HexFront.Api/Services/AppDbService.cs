@@ -11,7 +11,7 @@ using Microsoft.Data.Sqlite;
 namespace HexFront.Api.Services;
 
 /// <summary>
-/// 统一 SQLite 应用库（data/app.db，HF_APP_DB 可覆盖）：用户/角色/菜单/会话、
+/// 统一 SQLite 应用库（HexFront.CSharp/app.db，HF_APP_DB 可覆盖）：用户/角色/菜单/会话、
 /// 登录日志/查询日志/错误日志/用户反馈、推演操作流水、剧本目录、房间、已存副本。
 /// 全部管理类数据一个文件，写入失败只告警不打断主流程。
 /// </summary>
@@ -43,9 +43,10 @@ public sealed class AppDbService : IDisposable
     {
         var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
         var binDir = Path.GetDirectoryName(assemblyPath);
-        if (string.IsNullOrEmpty(binDir)) return Path.Combine("data", "app.db");
+        if (string.IsNullOrEmpty(binDir)) return Path.Combine("HexFront.CSharp", "app.db");
+        // 6 级向上到 wargame 仓库根，再进 C# 项目根目录
         var root = Path.GetFullPath(Path.Combine(binDir, "..", "..", "..", "..", "..", ".."));
-        return Path.Combine(root, "data", "app.db");
+        return Path.Combine(root, "HexFront.CSharp", "app.db");
     }
 
     // ==================== Schema ====================
@@ -234,6 +235,19 @@ public sealed class AppDbService : IDisposable
             )
             """);
         Exec("CREATE INDEX IF NOT EXISTS ix_save_docs_instance ON save_docs(instance)");
+        // turn=NULL 的行（meta/init 外的 turns）不在主键去重范围内（SQLite 中 NULL 互不相等），
+        // 用部分唯一索引保证 INSERT OR REPLACE 对 meta/turns 也生效
+        Exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_save_docs_nullturn ON save_docs(instance, kind) WHERE turn IS NULL");
+        // 剧本保存前的版本备份（原 data/scenario_backups 磁盘备份的库内化）
+        Exec("""
+            CREATE TABLE IF NOT EXISTS scenario_backups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scenario TEXT NOT NULL,
+                json TEXT NOT NULL,
+                bytes INTEGER,
+                created_at TEXT NOT NULL
+            )
+            """);
     }
 
     /// <summary>启动初始化：种子数据 → 历史库迁移 → 剧本目录/内容同步 → 推演存档内容同步。幂等可重复调用。</summary>
@@ -287,11 +301,16 @@ public sealed class AppDbService : IDisposable
             ("lobby", "大厅", "/lobby", 1),
             ("new_game", "创建副本", "/new", 2),
             ("grid", "六角格管理", "/grid", 3),
-            ("scenarios", "剧本管理", "/scenarios", 4),
-            ("system", "系统管理", "/admin", 5),
+            ("saves", "副本管理", "/saves", 4),
+            ("scenarios", "剧本管理", "/scenarios", 5),
+            ("system", "系统管理", "/admin", 6),
         };
         foreach (var (code, name, path, sort) in menus)
             Exec($"INSERT OR IGNORE INTO menus(code, name, path, sort, visible) VALUES('{code}','{Esc(name)}','{path}',{sort},1)");
+
+        // 存量迁移：新菜单「副本管理」授予所有已拥有大厅权限的角色（大厅本就展示存档列表）
+        ExecCmd("INSERT OR IGNORE INTO role_menus(role_code, menu_code) " +
+                "SELECT role_code, 'saves' FROM role_menus WHERE menu_code='lobby'");
 
         // 默认管理员（首次启动创建；密码建议尽快修改）
         if (Scalar("SELECT COUNT(*) FROM users WHERE username='admin'") == 0)
@@ -306,9 +325,9 @@ public sealed class AppDbService : IDisposable
     /// <summary>角色默认可见菜单（仅角色首次创建时授一次，之后由管理页维护）。</summary>
     private static IEnumerable<string> DefaultMenusFor(string role) => role switch
     {
-        "super_admin" => new[] { "lobby", "new_game", "grid", "scenarios", "system" },
-        "director" => new[] { "lobby", "new_game", "grid", "scenarios" },
-        "red" or "blue" => new[] { "lobby", "new_game", "grid" },
+        "super_admin" => new[] { "lobby", "new_game", "saves", "grid", "scenarios", "system" },
+        "director" => new[] { "lobby", "new_game", "saves", "grid", "scenarios" },
+        "red" or "blue" => new[] { "lobby", "new_game", "saves", "grid" },
         _ => new[] { "lobby" },
     };
 
@@ -537,7 +556,7 @@ public sealed class AppDbService : IDisposable
 
     // ==================== 剧本目录 ====================
 
-    /// <summary>扫描剧本目录同步 catalog（轻量解析，缺字段不报错）。</summary>
+    /// <summary>扫描剧本目录同步 catalog（轻量解析，缺字段不报错）。磁盘仅作回填源，真源在 scenario_docs/本表。</summary>
     public int SyncScenarios(string scenarioDir)
     {
         var n = 0;
@@ -547,35 +566,45 @@ public sealed class AppDbService : IDisposable
             {
                 try
                 {
-                    using var doc = JsonDocument.Parse(File.ReadAllText(file));
-                    var d = doc.RootElement;
-                    string S(string k) => d.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
-                    int I(string k) => d.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
-                    var env = d.TryGetProperty("environment", out var e) ? e : default;
-                    string SideName(string side) =>
-                        d.TryGetProperty("sides", out var ss) && ss.TryGetProperty(side, out var sv) && sv.TryGetProperty("name", out var nv)
-                            ? nv.GetString() ?? "" : "";
-                    var unitCount = 0;
-                    if (d.TryGetProperty("sides", out var sides) && sides.ValueKind == JsonValueKind.Object)
-                        foreach (var side in sides.EnumerateObject())
-                            if (side.Value.TryGetProperty("oob", out var oob) && oob.ValueKind == JsonValueKind.Array)
-                                foreach (var u in oob.EnumerateArray())
-                                    unitCount += u.TryGetProperty("qty", out var q) && q.ValueKind == JsonValueKind.Number ? q.GetInt32() : 1;
-                    ExecCmd("INSERT OR REPLACE INTO scenarios(id,name,era,scale,max_turns,cell_km,unit_count,red_name,blue_name,description,file,updated_at,synced_at) " +
-                            "VALUES($id,$nm,$er,$sc,$mt,$ck,$uc,$rn,$bn,$de,$f,$up,$sy)",
-                        ("$id", S("id") is { Length: > 0 } id ? id : Path.GetFileNameWithoutExtension(file)),
-                        ("$nm", S("name")), ("$er", S("era")), ("$sc", S("scale")), ("$mt", I("max_turns")),
-                        ("$ck", env.ValueKind == JsonValueKind.Object && env.TryGetProperty("cell_km", out var ck) ? ck.GetDouble() : 0),
-                        ("$uc", unitCount), ("$rn", SideName("red")), ("$bn", SideName("blue")),
-                        ("$de", S("description")), ("$f", file),
-                        ("$up", File.GetLastWriteTimeUtc(file).ToString("o")), ("$sy", Now()));
-                    n++;
+                    if (UpsertScenarioCatalog(
+                            Path.GetFileNameWithoutExtension(file), File.ReadAllText(file), file))
+                        n++;
                 }
                 catch (Exception ex) { _logger.LogWarning(ex, "剧本目录同步失败: {File}", file); }
             }
         }
         catch (Exception ex) { _logger.LogWarning(ex, "剧本目录不可读: {Dir}", scenarioDir); }
         return n;
+    }
+
+    /// <summary>单条剧本 catalog upsert（从全文 JSON 轻量解析；id 取 JSON 内 id 或传入 id）。</summary>
+    public bool UpsertScenarioCatalog(string fallbackId, string json, string? file)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var d = doc.RootElement;
+        if (d.ValueKind != JsonValueKind.Object) return false;
+        string S(string k) => d.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+        int I(string k) => d.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
+        var env = d.TryGetProperty("environment", out var e) ? e : default;
+        string SideName(string side) =>
+            d.TryGetProperty("sides", out var ss) && ss.TryGetProperty(side, out var sv) && sv.TryGetProperty("name", out var nv)
+                ? nv.GetString() ?? "" : "";
+        var unitCount = 0;
+        if (d.TryGetProperty("sides", out var sides) && sides.ValueKind == JsonValueKind.Object)
+            foreach (var side in sides.EnumerateObject())
+                if (side.Value.TryGetProperty("oob", out var oob) && oob.ValueKind == JsonValueKind.Array)
+                    foreach (var u in oob.EnumerateArray())
+                        unitCount += u.TryGetProperty("qty", out var q) && q.ValueKind == JsonValueKind.Number ? q.GetInt32() : 1;
+        var id = S("id") is { Length: > 0 } sid ? sid : fallbackId;
+        ExecCmd("INSERT OR REPLACE INTO scenarios(id,name,era,scale,max_turns,cell_km,unit_count,red_name,blue_name,description,file,updated_at,synced_at) " +
+                "VALUES($id,$nm,$er,$sc,$mt,$ck,$uc,$rn,$bn,$de,$f,$up,$sy)",
+            ("$id", id),
+            ("$nm", S("name")), ("$er", S("era")), ("$sc", S("scale")), ("$mt", I("max_turns")),
+            ("$ck", env.ValueKind == JsonValueKind.Object && env.TryGetProperty("cell_km", out var ck) ? ck.GetDouble() : 0),
+            ("$uc", unitCount), ("$rn", SideName("red")), ("$bn", SideName("blue")),
+            ("$de", S("description")), ("$f", (object?)file ?? id + ".json"),
+            ("$up", DateTime.UtcNow.ToString("o")), ("$sy", Now()));
+        return true;
     }
 
     public List<Dictionary<string, object?>> ListScenarios(int limit = 500) =>
@@ -616,6 +645,44 @@ public sealed class AppDbService : IDisposable
     /// <summary>取剧本全文（供管理接口/回放；null 表示未入库）。</summary>
     public string? GetScenarioDoc(string id) =>
         (string?)QueryRow("SELECT doc_json FROM scenario_docs WHERE id=$id", ("$id", id))?["doc_json"];
+
+    /// <summary>全部剧本文档（id/文件名/全文），按文件名排序——剧本列表与开局读取的真源。</summary>
+    public List<(string Id, string File, string Json)> ListScenarioDocs()
+    {
+        var outList = new List<(string Id, string File, string Json)>();
+        foreach (var r in QueryList("SELECT id, file, doc_json FROM scenario_docs ORDER BY file"))
+            outList.Add(((string)r["id"]!, (string?)r["file"] ?? "", (string)r["doc_json"]!));
+        return outList;
+    }
+
+    /// <summary>按 id 或文件名（含/不含 .json）找剧本文档；null 表示库里没有。</summary>
+    public (string Id, string File, string Json)? FindScenarioDoc(string idOrFile)
+    {
+        if (string.IsNullOrEmpty(idOrFile)) return null;
+        var row = QueryRow("SELECT id, file, doc_json FROM scenario_docs WHERE id=$id", ("$id", idOrFile));
+        if (row == null)
+        {
+            var stem = idOrFile.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? idOrFile[..^5] : idOrFile;
+            row = QueryRow("SELECT id, file, doc_json FROM scenario_docs WHERE id=$id", ("$id", stem));
+        }
+        if (row == null) return null;
+        return ((string)row["id"]!, (string?)row["file"] ?? "", (string)row["doc_json"]!);
+    }
+
+    /// <summary>剧本全文入库（管理保存用；幂等）。</summary>
+    public void UpsertScenarioDoc(string id, string json, string? file) =>
+        ExecCmd("INSERT OR REPLACE INTO scenario_docs(id, doc_json, bytes, file, updated_at, synced_at) VALUES($id,$d,$b,$f,$u,$s)",
+            ("$id", id), ("$d", json), ("$b", json.Length),
+            ("$f", string.IsNullOrEmpty(file) ? id + ".json" : file),
+            ("$u", DateTime.UtcNow.ToString("o")), ("$s", Now()));
+
+    /// <summary>保存前的旧版本入库备份，返回备份 id。</summary>
+    public long AddScenarioBackup(string scenario, string json)
+    {
+        ExecCmd("INSERT INTO scenario_backups(scenario, json, bytes, created_at) VALUES($s,$j,$b,$c)",
+            ("$s", scenario), ("$j", json), ("$b", json.Length), ("$c", Now()));
+        return Convert.ToInt64(QueryRow("SELECT last_insert_rowid() AS id")?["id"] ?? 0);
+    }
 
     // ==================== 房间 / 副本 ====================
 
@@ -733,6 +800,79 @@ public sealed class AppDbService : IDisposable
                 ("$i", instance), ("$k", kind), ("$t", turn.Value))?["doc_json"];
         return (string?)QueryRow("SELECT doc_json FROM save_docs WHERE instance=$i AND kind=$k AND turn IS NULL",
             ("$i", instance), ("$k", kind))?["doc_json"];
+    }
+
+    /// <summary>副本目录汇总：saves 表为真源，snapshot_turn/turns_recorded/description 从 save_docs 派生。</summary>
+    public List<Dictionary<string, object?>> ListSaveSummaries(int limit = 500)
+    {
+        var snapTurn = new Dictionary<string, object?>();
+        foreach (var r in QueryList("SELECT instance, MAX(turn) AS t FROM save_docs WHERE kind='snapshot' GROUP BY instance"))
+            snapTurn[(string)r["instance"]!] = r["t"];
+
+        var turnCounts = new Dictionary<string, int>();
+        foreach (var r in QueryList("SELECT instance, doc_json FROM save_docs WHERE kind='turns'"))
+        {
+            var cnt = 0;
+            foreach (var line in ((string?)r["doc_json"] ?? "").Split('\n'))
+                if (!string.IsNullOrWhiteSpace(line)) cnt++;
+            turnCounts[(string)r["instance"]!] = cnt;
+        }
+
+        var descriptions = new Dictionary<string, string?>();
+        var scenarioNames = new Dictionary<string, string>();
+        foreach (var r in QueryList("SELECT instance, doc_json FROM save_docs WHERE kind='meta'"))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse((string)r["doc_json"]!);
+                var d = doc.RootElement;
+                descriptions[(string)r["instance"]!] =
+                    d.TryGetProperty("description", out var de) && de.ValueKind == JsonValueKind.String ? de.GetString() : null;
+                if (d.TryGetProperty("scenario", out var sc) && sc.ValueKind == JsonValueKind.String &&
+                    d.TryGetProperty("scenario_name", out var scn) && scn.ValueKind == JsonValueKind.String)
+                    scenarioNames[sc.GetString()!] = scn.GetString() ?? "";
+            }
+            catch { /* 坏 meta 不影响其余 */ }
+        }
+
+        var outList = new List<Dictionary<string, object?>>();
+        foreach (var s in QueryList("SELECT * FROM saves ORDER BY updated_at DESC LIMIT $lim", ("$lim", limit)))
+        {
+            var inst = (string)s["instance"]!;
+            var scId = s["scenario"] as string;
+            outList.Add(new Dictionary<string, object?>
+            {
+                ["instance"] = inst,
+                ["name"] = s["name"],
+                ["scenario"] = scId,
+                ["scenario_name"] = scId != null && scenarioNames.TryGetValue(scId, out var sn) ? sn : null,
+                ["last_turn"] = s["last_turn"],
+                ["max_turns"] = s["max_turns"],
+                ["seed"] = s["seed"],
+                ["created_at"] = s["created_at"],
+                ["updated_at"] = s["updated_at"],
+                ["source"] = s.TryGetValue("source", out var so) ? so : null,
+                ["turns_recorded"] = turnCounts.TryGetValue(inst, out var tc) ? tc : 0,
+                ["snapshot_turn"] = snapTurn.TryGetValue(inst, out var st) ? st : 0,
+                ["description"] = descriptions.TryGetValue(inst, out var de) ? de : null,
+            });
+        }
+        return outList;
+    }
+
+    /// <summary>从 save_docs 组装载入结果（最新快照 + 重放尾部回合）；库中无该副本内容时返回 null。</summary>
+    public StoreService.LoadOutcome? LoadSaveOutcome(string instance)
+    {
+        var init = GetSaveDoc(instance, "init", 0);
+        var snapshots = new List<(int Turn, string Json)>();
+        foreach (var r in QueryList("SELECT turn, doc_json FROM save_docs WHERE instance=$i AND kind='snapshot' ORDER BY turn",
+                     ("$i", instance)))
+            snapshots.Add((Convert.ToInt32(r["turn"]), (string)r["doc_json"]!));
+        if (init == null && snapshots.Count == 0) return null;
+
+        var turns = GetSaveDoc(instance, "turns");
+        var meta = GetSaveDoc(instance, "meta");
+        return StoreService.LoadFromDocs(new StoreService.SaveDocSet(meta, init, snapshots, turns), instance);
     }
 
     // ==================== 推演操作流水（原 OpsLogService 职能） ====================

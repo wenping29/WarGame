@@ -93,6 +93,14 @@ export interface SaveInfo {
   description?: string
 }
 
+/** 副本已入库内容文件清单项（GET /api/admin/save_docs/{instance}，仅超管） */
+export interface SaveDocMeta {
+  kind: string
+  turn: number | null
+  bytes: number
+  updated_at?: string
+}
+
 /** 服务器六角格网络包清单项（GET /api/hexgrids） */
 export interface HexGridMeta {
   id: string
@@ -130,8 +138,7 @@ export interface HexGridDoc {
 }
 
 export interface RoomInfo {
-  code: string
-  instance: string
+  code: string  instance: string
   name: string
   scenario: string
   scenario_name?: string
@@ -364,6 +371,12 @@ export const api = {
   deleteSave: (instance: string) =>
     del<{ instance: string; deleted: boolean; db_rows?: number; error?: string }>(
       '/saves/' + encodeURIComponent(instance)),
+  // ==================== 副本管理（内容查看走超管端点） ====================
+  adminSaveDocs: (instance: string) =>
+    get<{ instance: string; files: SaveDocMeta[] }>('/admin/save_docs/' + encodeURIComponent(instance)),
+  adminSaveDoc: (instance: string, kind: string, turn?: number | null) =>
+    get<string>('/admin/save_doc/' + encodeURIComponent(instance) +
+      '?kind=' + encodeURIComponent(kind) + (turn != null ? '&turn=' + turn : '')),
   // ==================== 服务器六角格网络包（剧本只存 hexgrid id） ====================
   hexgrids: () => get<{ grids: HexGridMeta[]; count: number }>('/hexgrids'),
   hexgridGet: (id: string) => get<{ grid: HexGridDoc; bbox: [number, number, number, number] }>(

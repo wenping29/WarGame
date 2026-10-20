@@ -12,6 +12,7 @@ interface LayoutProps {
 const NAV = [
   { code: 'lobby', to: '/lobby', label: '大厅' },
   { code: 'new_game', to: '/new', label: '创建副本' },
+  { code: 'saves', to: '/saves', label: '副本管理' },
   { code: 'grid', to: '/grid', label: '六角格管理' },
   { code: 'scenarios', to: '/scenarios', label: '剧本管理' },
   { code: 'system', to: '/admin', label: '系统管理' },

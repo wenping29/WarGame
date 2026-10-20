@@ -1,9 +1,9 @@
 {
   "id": "changsha_1941",
-  "name": "第三次长沙会战 1941",
-  "era": "抗日战争",
-  "scale": "战役级",
-  "description": "1941年12月至1942年1月，长沙的「天炉战法」。红方以城防吸住突进之敌、外线侧翼钳击断其退路，蓝方孤军攻坚陷入合围。",
+  "name": "\u7B2C\u4E09\u6B21\u957F\u6C99\u4F1A\u6218 1941",
+  "era": "\u6297\u65E5\u6218\u4E89",
+  "scale": "\u6218\u5F79\u7EA7",
+  "description": "1941\u5E7412\u6708\u81F31942\u5E741\u6708\uFF0C\u957F\u6C99\u7684\u300C\u5929\u7089\u6218\u6CD5\u300D\u3002\u7EA2\u65B9\u4EE5\u57CE\u9632\u5438\u4F4F\u7A81\u8FDB\u4E4B\u654C\u3001\u5916\u7EBF\u4FA7\u7FFC\u94B3\u51FB\u65AD\u5176\u9000\u8DEF\uFF0C\u84DD\u65B9\u5B64\u519B\u653B\u575A\u9677\u5165\u5408\u56F4\u3002",
   "environment": {
     "width": 24,
     "height": 18,
@@ -22,7 +22,7 @@
   },
   "clock": {
     "start_hour": 7,
-    "season": "冬"
+    "season": "\u51AC"
   },
   "weather": {
     "initial": "overcast",
@@ -48,7 +48,7 @@
   "max_turns": 14,
   "sides": {
     "red": {
-      "name": "第九战区 · 天炉战法",
+      "name": "\u7B2C\u4E5D\u6218\u533A \u00B7 \u5929\u7089\u6218\u6CD5",
       "points_budget": 155,
       "oob": [
         {
@@ -59,7 +59,7 @@
             9
           ],
           "commander": {
-            "name": "薛岳（第九战区司令长官）",
+            "name": "\u859B\u5CB3\uFF08\u7B2C\u4E5D\u6218\u533A\u53F8\u4EE4\u957F\u5B98\uFF09",
             "quality": 0.85
           },
           "training": 48,
@@ -177,7 +177,7 @@
       ]
     },
     "blue": {
-      "name": "日军 · 攻长集群",
+      "name": "\u65E5\u519B \u00B7 \u653B\u957F\u96C6\u7FA4",
       "points_budget": 145,
       "oob": [
         {
@@ -188,7 +188,7 @@
             2
           ],
           "commander": {
-            "name": "阿南惟几（第11军司令官）",
+            "name": "\u963F\u5357\u60DF\u51E0\uFF08\u7B2C11\u519B\u53F8\u4EE4\u5B98\uFF09",
             "quality": 0.65
           },
           "training": 48,

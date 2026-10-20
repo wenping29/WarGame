@@ -187,6 +187,191 @@ public static class StoreService
         return meta;
     }
 
+    // ==================== 文档化存取（SQLite 真源路径） ====================
+
+    /// <summary>一个副本的全部内容文档：meta/init/各回合快照/turns（jsonl 全文）。磁盘与 SQLite 两种载体共用。</summary>
+    public sealed record SaveDocSet(
+        string? MetaJson,
+        string? InitJson,
+        IReadOnlyList<(int Turn, string Json)> Snapshots,
+        string? TurnsJsonl);
+
+    /// <summary>开局文档组：meta 全量 + 首次 init 全文（prev==null 时生成，初始快照不可变）。</summary>
+    public static (SaveMetadata Meta, string? InitJson, string MetaJson) BuildInitDocs(
+        GameState g, string? name, string? description, JsonElement? overrides, SaveMetadata? prev)
+    {
+        var now = DateTime.UtcNow;
+        var meta = prev ?? new SaveMetadata { Instance = g.InstanceId, CreatedAt = now };
+        meta.Instance = g.InstanceId;
+        meta.Name = string.IsNullOrWhiteSpace(name) ? g.ScenarioName : name.Trim();
+        meta.Description = description;
+        meta.Scenario = g.ScenarioId;
+        meta.ScenarioName = g.ScenarioName;
+        meta.Seed = g.Seed;
+        meta.MaxTurns = g.MaxTurns;
+        meta.Overrides = overrides;
+        meta.LastTurn = Math.Max(meta.LastTurn, g.Turn - 1);
+        meta.UpdatedAt = now;
+        var initJson = prev == null ? JsonSerializer.Serialize(g, IndentedOptions) : null;
+        return (meta, initJson, JsonSerializer.Serialize(meta, IndentedOptions));
+    }
+
+    /// <summary>快照文档组：snapshot 全文 + 首次 init（prev==null 时）+ 刷新后的 meta。</summary>
+    public static (SaveMetadata Meta, string SnapshotJson, string? InitJson, string MetaJson) BuildSnapshotDocs(
+        GameState g, SaveMetadata? prev, string? name = null, string? description = null)
+    {
+        var resolvedTurn = Math.Max(0, g.Turn - 1);
+        var meta = prev ?? new SaveMetadata
+        {
+            Instance = g.InstanceId,
+            Name = g.Name,
+            Scenario = g.ScenarioId,
+            ScenarioName = g.ScenarioName,
+            Seed = g.Seed,
+            MaxTurns = g.MaxTurns,
+            CreatedAt = DateTime.UtcNow,
+        };
+        meta.LastTurn = Math.Max(meta.LastTurn, resolvedTurn);
+        meta.SnapshotTurn = Math.Max(meta.SnapshotTurn, resolvedTurn);
+        if (!string.IsNullOrWhiteSpace(name)) meta.Name = name;
+        if (description != null) meta.Description = description;
+        meta.UpdatedAt = DateTime.UtcNow;
+        var initJson = prev == null ? JsonSerializer.Serialize(g, IndentedOptions) : null;
+        return (meta, JsonSerializer.Serialize(g, IndentedOptions), initJson,
+            JsonSerializer.Serialize(meta, IndentedOptions));
+    }
+
+    /// <summary>回合指令 jsonl 读-改-写：剔除 ≥ 新回合的旧记录后追加（分岐重算不留脏尾部）。坏行直接丢弃。</summary>
+    public static string AppendTurnJsonl(string? existingJsonl, TurnRecord record)
+    {
+        var lines = new List<string>();
+        if (!string.IsNullOrEmpty(existingJsonl))
+        {
+            foreach (var raw in existingJsonl.Split('\n'))
+            {
+                var line = raw.TrimEnd('\r');
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try
+                {
+                    using var doc = JsonDocument.Parse(line);
+                    if (doc.RootElement.GetProperty("turn").GetInt32() < record.Turn) lines.Add(line);
+                }
+                catch
+                {
+                    // 坏行直接丢弃：留着它，重放会在错误的位置续跑
+                }
+            }
+        }
+        lines.Add(JsonSerializer.Serialize(record, CompactOptions));
+        return string.Join("\n", lines);
+    }
+
+    /// <summary>meta 文档 → SaveMetadata（坏/空当没有）。</summary>
+    public static SaveMetadata? ParseMetaJson(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try
+        {
+            var meta = JsonSerializer.Deserialize<SaveMetadata>(json, IndentedOptions);
+            return meta;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>turns（jsonl 全文）→ 回合记录列表（单行损坏不影响其余回合重放）。</summary>
+    public static List<TurnRecord> ParseTurnsJsonl(string? jsonl)
+    {
+        var outList = new List<TurnRecord>();
+        if (string.IsNullOrEmpty(jsonl)) return outList;
+        foreach (var raw in jsonl.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            try
+            {
+                var rec = JsonSerializer.Deserialize<TurnRecord>(line, CompactOptions);
+                if (rec != null) outList.Add(rec);
+            }
+            catch
+            {
+                // 单行损坏不影响其余回合重放
+            }
+        }
+        return outList;
+    }
+
+    /// <summary>从内容文档载入：最新快照（无快照回退 init）+ 重放其后指令记录。磁盘与 SQLite 共用。</summary>
+    public static LoadOutcome LoadFromDocs(SaveDocSet docs, string instance)
+    {
+        var bestTurn = -1;
+        string? bestJson = null;
+        foreach (var (turn, json) in docs.Snapshots)
+            if (turn > bestTurn) { bestTurn = turn; bestJson = json; }
+
+        bestJson ??= docs.InitJson;
+        if (string.IsNullOrEmpty(bestJson))
+            throw new FileNotFoundException($"存档不存在: {instance}");
+
+        GameState state;
+        try
+        {
+            state = JsonSerializer.Deserialize<GameState>(bestJson, IndentedOptions)
+                ?? throw new InvalidOperationException("存档解析失败");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException($"存档损坏: {instance}（{ex.Message}）", ex);
+        }
+
+        var snapshotTurn = Math.Max(0, bestTurn);
+        var replayed = new List<int>();
+        var mismatches = new List<string>();
+
+        foreach (var record in ParseTurnsJsonl(docs.TurnsJsonl).Where(r => r.Turn > snapshotTurn))
+        {
+            if (record.RngAtResolve is uint rngAtResolve) state.RngState = rngAtResolve;
+            if (record.FpBefore.Length > 0 && state.Fingerprint() != record.FpBefore)
+                mismatches.Add($"回合 {record.Turn}: 起点指纹 存档 {record.FpBefore} ≠ 重放 {state.Fingerprint()}");
+
+            var orders = new Dictionary<string, List<Command>>
+            {
+                ["red"] = record.Red,
+                ["blue"] = record.Blue,
+            };
+            var report = TurnResolver.ResolveTurn(state, orders);
+            replayed.Add(record.Turn);
+            if (record.FpAfter.Length > 0 && report.FingerprintAfter != record.FpAfter)
+                mismatches.Add($"回合 {record.Turn}: 终点指纹 存档 {record.FpAfter} ≠ 重放 {report.FingerprintAfter}");
+        }
+
+        return new LoadOutcome(state, snapshotTurn, replayed, mismatches);
+    }
+
+    /// <summary>磁盘目录 → 内容文档（SQLite 不可用时的磁盘兜底读也走这套）。</summary>
+    private static SaveDocSet ReadDocSet(string dir)
+    {
+        var snapshots = new List<(int Turn, string Json)>();
+        if (Directory.Exists(dir))
+        {
+            foreach (var file in Directory.GetFiles(dir, SnapshotPrefix + "*.json"))
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+                if (int.TryParse(name[SnapshotPrefix.Length..], NumberStyles.None,
+                        CultureInfo.InvariantCulture, out var turn))
+                    snapshots.Add((turn, File.ReadAllText(file)));
+            }
+        }
+
+        var initPath = Path.Combine(dir, InitFileName);
+        var initJson = File.Exists(initPath) ? File.ReadAllText(initPath) : null;
+        var turnsPath = Path.Combine(dir, TurnsFileName);
+        var turnsJsonl = File.Exists(turnsPath) ? File.ReadAllText(turnsPath) : null;
+        return new SaveDocSet(null, initJson, snapshots, turnsJsonl);
+    }
+
     // ==================== 读取 ====================
 
     /// <summary>meta.json；缺字段时用状态补齐，坏文件当没有。</summary>
@@ -216,32 +401,11 @@ public static class StoreService
         return outList;
     }
 
-    /// <summary>载入：最新快照（无快照回退 init.json）+ 重放其后指令记录。</summary>
+    /// <summary>载入：最新快照（无快照回退 init.json）+ 重放其后指令记录（磁盘兜底路径）。</summary>
     public static LoadOutcome Load(string instance, string saveDirectory)
     {
         var dir = InstanceDirectory(saveDirectory, SafeInstance(instance));
-        var (state, snapshotTurn) = ReadLatestState(dir, instance);
-        var replayed = new List<int>();
-        var mismatches = new List<string>();
-
-        foreach (var record in ReadTurnRecords(dir).Where(r => r.Turn > snapshotTurn))
-        {
-            if (record.RngAtResolve is uint rngAtResolve) state.RngState = rngAtResolve;
-            if (record.FpBefore.Length > 0 && state.Fingerprint() != record.FpBefore)
-                mismatches.Add($"回合 {record.Turn}: 起点指纹 存档 {record.FpBefore} ≠ 重放 {state.Fingerprint()}");
-
-            var orders = new Dictionary<string, List<Command>>
-            {
-                ["red"] = record.Red,
-                ["blue"] = record.Blue,
-            };
-            var report = TurnResolver.ResolveTurn(state, orders);
-            replayed.Add(record.Turn);
-            if (record.FpAfter.Length > 0 && report.FingerprintAfter != record.FpAfter)
-                mismatches.Add($"回合 {record.Turn}: 终点指纹 存档 {record.FpAfter} ≠ 重放 {report.FingerprintAfter}");
-        }
-
-        return new LoadOutcome(state, snapshotTurn, replayed, mismatches);
+        return LoadFromDocs(ReadDocSet(dir), instance);
     }
 
     /// <summary>只要状态的重载（调用方不关心重放细节时用）。</summary>
@@ -301,37 +465,6 @@ public static class StoreService
             CreatedAt = DateTime.UtcNow,
         };
 
-    private static (GameState, int) ReadLatestState(string dir, string instance)
-    {
-        var bestTurn = -1;
-        string? bestPath = null;
-        if (Directory.Exists(dir))
-        {
-            foreach (var file in Directory.GetFiles(dir, SnapshotPrefix + "*.json"))
-            {
-                var name = Path.GetFileNameWithoutExtension(file);
-                if (!int.TryParse(name[SnapshotPrefix.Length..], NumberStyles.None,
-                        CultureInfo.InvariantCulture, out var turn)) continue;
-                if (turn > bestTurn) { bestTurn = turn; bestPath = file; }
-            }
-        }
-
-        bestPath ??= Path.Combine(dir, InitFileName);
-        if (!File.Exists(bestPath))
-            throw new FileNotFoundException($"存档不存在: {instance}");
-
-        try
-        {
-            var g = JsonSerializer.Deserialize<GameState>(File.ReadAllText(bestPath), IndentedOptions);
-            if (g == null) throw new InvalidOperationException("存档解析失败");
-            return (g, Math.Max(0, bestTurn));
-        }
-        catch (JsonException ex)
-        {
-            throw new InvalidDataException($"存档损坏: {instance}（{ex.Message}）", ex);
-        }
-    }
-
     private static int LatestSnapshotTurn(string dir)
     {
         var best = 0;
@@ -354,23 +487,7 @@ public static class StoreService
     private static List<TurnRecord> ReadTurnRecords(string dir)
     {
         var file = Path.Combine(dir, TurnsFileName);
-        var outList = new List<TurnRecord>();
-        if (!File.Exists(file)) return outList;
-
-        foreach (var line in File.ReadAllLines(file))
-        {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            try
-            {
-                var rec = JsonSerializer.Deserialize<TurnRecord>(line, CompactOptions);
-                if (rec != null) outList.Add(rec);
-            }
-            catch
-            {
-                // 单行损坏不影响其余回合重放
-            }
-        }
-        return outList;
+        return ParseTurnsJsonl(File.Exists(file) ? File.ReadAllText(file) : null);
     }
 
     private static void WriteJson(string path, object value) =>

@@ -124,14 +124,14 @@ public class GameController : ControllerBase
         if (string.IsNullOrEmpty(scenarioId))
             return BadRequestDict("缺少 scenario", null);
 
-        var path = FindScenarioPath(scenarioId);
-        if (path == null)
+        var doc = FindScenarioDoc(scenarioId);
+        if (doc == null)
             return NotFoundDict($"剧本不存在: {scenarioId}");
 
         ScenarioConfig cfg;
         try
         {
-            cfg = ScenarioService.MergeOverrides(System.IO.File.ReadAllText(path), BodyOverrides(body));
+            cfg = ScenarioService.MergeOverrides(doc.Value.Json, BodyOverrides(body));
         }
         catch (Exception ex)
         {
@@ -164,21 +164,16 @@ public class GameController : ControllerBase
 
         try
         {
-            var initMeta = StoreService.WriteInit(g, name, Str(body, "description"), _rooms.SaveDirectory,
-                BodyOverrides(body));
-            // 应用库：开局副本目录 upsert + 内容同步进 save_docs
-            _db.UpsertSave(new StoreSaveMeta(initMeta.Instance, initMeta.Name, initMeta.Scenario,
-                initMeta.Seed, initMeta.LastTurn, initMeta.MaxTurns,
-                initMeta.CreatedAt.ToString("o"), initMeta.UpdatedAt.ToString("o"), "init"));
-            try
-            {
-                _db.StoreSaveFile(_rooms.SaveDirectory, initMeta.Instance, "init", 0, "init.json", initMeta.UpdatedAt);
-                _db.StoreSaveFile(_rooms.SaveDirectory, initMeta.Instance, "meta", null, "meta.json", initMeta.UpdatedAt);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "开局副本内容同步入库失败（实例 {Instance}）", initMeta.Instance);
-            }
+            // 应用库为存档真源：meta/init 直接写 save_docs（首次生成 init，初始快照不可变）
+            var prevMeta = StoreService.ParseMetaJson(_db.GetSaveDoc(g.InstanceId, "meta"));
+            var (meta, initJson, metaJson) = StoreService.BuildInitDocs(
+                g, name, Str(body, "description"), BodyOverrides(body), prevMeta);
+            if (initJson != null)
+                _db.StoreSaveDoc(g.InstanceId, "init", 0, initJson, meta.UpdatedAt.ToString("o"));
+            _db.StoreSaveDoc(g.InstanceId, "meta", null, metaJson, meta.UpdatedAt.ToString("o"));
+            _db.UpsertSave(new StoreSaveMeta(meta.Instance, meta.Name, meta.Scenario,
+                meta.Seed, meta.LastTurn, meta.MaxTurns,
+                meta.CreatedAt.ToString("o"), meta.UpdatedAt.ToString("o"), "init"));
         }
         catch (Exception ex)
         {
@@ -211,8 +206,8 @@ public class GameController : ControllerBase
         StoreService.LoadOutcome loaded;
         try
         {
-            // 最新快照 + 重放尾部指令：重放走的是同一个种子随机源，所以续局结果与不中断时一致
-            loaded = StoreService.Load(id, _rooms.SaveDirectory);
+            // 真源在 save_docs（最新快照 + 重放尾部指令）；库中缺失时回退磁盘目录
+            loaded = _db.LoadSaveOutcome(id) ?? StoreService.Load(id, _rooms.SaveDirectory);
         }
         catch (ArgumentException ex)
         {
@@ -305,42 +300,52 @@ public class GameController : ControllerBase
     private List<Dictionary<string, object?>> ListScenarioSummaries()
     {
         var outList = new List<Dictionary<string, object?>>();
-        if (!Directory.Exists(_rooms.ScenarioDirectory)) return outList;
-
-        foreach (var file in Directory.GetFiles(_rooms.ScenarioDirectory, "*.json").OrderBy(f => f))
+        // 真源：scenario_docs 全文库；库为空时回退磁盘目录
+        var docs = _db.ListScenarioDocs();
+        if (docs.Count == 0 && Directory.Exists(_rooms.ScenarioDirectory))
         {
-            try
-            {
-                using var doc = JsonDocument.Parse(System.IO.File.ReadAllText(file));
-                var m = doc.RootElement;
-                if (m.ValueKind != JsonValueKind.Object) continue;
-                outList.Add(new Dictionary<string, object?>
-                {
-                    ["file"] = Path.GetFileName(file),
-                    ["id"] = PropStr(m, "id"),
-                    ["name"] = PropStr(m, "name"),
-                    ["era"] = PropStr(m, "era"),
-                    ["scale"] = PropStr(m, "scale"),
-                    ["description"] = PropStr(m, "description"),
-                    ["gis_package"] = PropStr(m, "gis_package"),
-                    ["environment"] = m.TryGetProperty("environment", out var env) ? env.Clone() : null,
-                    ["max_turns"] = m.TryGetProperty("max_turns", out var mt) ? mt.GetInt32() : (int?)null,
-                    ["sides"] = m.TryGetProperty("sides", out var sides) && sides.ValueKind == JsonValueKind.Object
-                        ? sides.Clone()
-                        : null,
-                    ["flags"] = m.TryGetProperty("flags", out var fl) && fl.ValueKind == JsonValueKind.Object ? fl.Clone() : null,
-                    ["weather"] = m.TryGetProperty("weather", out var wx) && wx.ValueKind == JsonValueKind.Object ? wx.Clone() : null,
-                    ["clock"] = m.TryGetProperty("clock", out var ck) && ck.ValueKind == JsonValueKind.Object ? ck.Clone() : null,
-                    ["rules"] = m.TryGetProperty("rules", out var ru) && ru.ValueKind == JsonValueKind.Object ? ru.Clone() : null,
-                    ["unit_count"] = OobUnitCount(m),
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "skip invalid scenario {File}", file);
-            }
+            foreach (var file in Directory.GetFiles(_rooms.ScenarioDirectory, "*.json").OrderBy(f => f))
+                AppendScenarioSummary(outList, Path.GetFileName(file), System.IO.File.ReadAllText(file));
+            return outList;
         }
+        foreach (var (id, file, json) in docs)
+            AppendScenarioSummary(outList,
+                string.IsNullOrEmpty(file) ? id + ".json" : Path.GetFileName(file), json);
         return outList;
+    }
+
+    private void AppendScenarioSummary(List<Dictionary<string, object?>> outList, string fileName, string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var m = doc.RootElement;
+            if (m.ValueKind != JsonValueKind.Object) return;
+            outList.Add(new Dictionary<string, object?>
+            {
+                ["file"] = fileName,
+                ["id"] = PropStr(m, "id"),
+                ["name"] = PropStr(m, "name"),
+                ["era"] = PropStr(m, "era"),
+                ["scale"] = PropStr(m, "scale"),
+                ["description"] = PropStr(m, "description"),
+                ["gis_package"] = PropStr(m, "gis_package"),
+                ["environment"] = m.TryGetProperty("environment", out var env) ? env.Clone() : null,
+                ["max_turns"] = m.TryGetProperty("max_turns", out var mt) ? mt.GetInt32() : (int?)null,
+                ["sides"] = m.TryGetProperty("sides", out var sides) && sides.ValueKind == JsonValueKind.Object
+                    ? sides.Clone()
+                    : null,
+                ["flags"] = m.TryGetProperty("flags", out var fl) && fl.ValueKind == JsonValueKind.Object ? fl.Clone() : null,
+                ["weather"] = m.TryGetProperty("weather", out var wx) && wx.ValueKind == JsonValueKind.Object ? wx.Clone() : null,
+                ["clock"] = m.TryGetProperty("clock", out var ck) && ck.ValueKind == JsonValueKind.Object ? ck.Clone() : null,
+                ["rules"] = m.TryGetProperty("rules", out var ru) && ru.ValueKind == JsonValueKind.Object ? ru.Clone() : null,
+                ["unit_count"] = OobUnitCount(m),
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "skip invalid scenario {File}", fileName);
+        }
     }
 
     private static int OobUnitCount(JsonElement scenarioRoot)
@@ -404,29 +409,7 @@ public class GameController : ControllerBase
         return outList;
     }
 
-    private List<Dictionary<string, object?>> ListSaveSummaries()
-    {
-        var outList = new List<Dictionary<string, object?>>();
-        foreach (var m in StoreService.ListSaves(_rooms.SaveDirectory))
-        {
-            outList.Add(new Dictionary<string, object?>
-            {
-                ["instance"] = m.Instance,
-                ["name"] = m.Name,
-                ["scenario"] = m.Scenario,
-                ["scenario_name"] = m.ScenarioName,
-                ["last_turn"] = m.LastTurn,
-                ["max_turns"] = m.MaxTurns,
-                ["seed"] = m.Seed,
-                ["created_at"] = m.CreatedAt.ToString("o"),
-                ["updated_at"] = m.UpdatedAt.ToString("o"),
-                ["turns_recorded"] = m.TurnsRecorded,
-                ["snapshot_turn"] = m.SnapshotTurn,
-                ["description"] = m.Description,
-            });
-        }
-        return outList;
-    }
+    private List<Dictionary<string, object?>> ListSaveSummaries() => _db.ListSaveSummaries();
 
     private static Dictionary<string, object?> OobPreview(ScenarioConfig cfg, Dictionary<string, UnitTypeDef> eff)
     {
@@ -480,10 +463,32 @@ public class GameController : ControllerBase
         return null;
     }
 
+    /// <summary>剧本全文：SQLite 真源（scenario_docs）优先，未入库时回退磁盘扫描。</summary>
+    private (string Id, string File, string Json)? FindScenarioDoc(string idOrFile)
+    {
+        var hit = _db.FindScenarioDoc(idOrFile);
+        if (hit != null) return hit;
+
+        var path = FindScenarioPath(idOrFile);
+        if (path == null) return null;
+        try
+        {
+            var json = System.IO.File.ReadAllText(path);
+            using var doc = JsonDocument.Parse(json);
+            var id = doc.RootElement.TryGetProperty("id", out var v) && v.ValueKind == JsonValueKind.String
+                ? v.GetString()! : Path.GetFileNameWithoutExtension(path);
+            return (id, Path.GetFileName(path), json);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private ScenarioConfig? LoadMergedConfig(string scenarioId, JsonElement? overrides)
     {
-        var path = FindScenarioPath(scenarioId);
-        return path == null ? null : ScenarioService.MergeOverrides(System.IO.File.ReadAllText(path), overrides);
+        var doc = FindScenarioDoc(scenarioId);
+        return doc == null ? null : ScenarioService.MergeOverrides(doc.Value.Json, overrides);
     }
 
     private static JsonElement? BodyOverrides(Dictionary<string, JsonElement> body) =>
