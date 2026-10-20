@@ -286,7 +286,7 @@ public class AdminController : ControllerBase
     {
         var r = _db.GetSaveUnits(instance);
         if (r == null) return NotFound(new { error = "未找到该副本的存档内容" });
-        var (baseKind, baseTurn, width, height, units) = r.Value;
+        var (baseKind, baseTurn, width, height, geo, holes, units) = r.Value;
         return Ok(new
         {
             instance,
@@ -294,6 +294,8 @@ public class AdminController : ControllerBase
             base_turn = baseTurn,
             width,
             height,
+            geo = geo == null ? null : new { ox = geo.Ox, oy = geo.Oy, radius = geo.Radius },
+            holes,
             units,
         });
     }

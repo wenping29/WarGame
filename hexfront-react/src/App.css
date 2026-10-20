@@ -1036,6 +1036,12 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .sv-num{font-family:var(--mono, monospace)}
 .sv-dead{color:#c96a5a; font-size:12px}
 .sv-units-foot{display:flex; align-items:center; gap:12px; margin-top:8px; flex-wrap:wrap}
+.sv-units-map{position:relative; height:380px; border:1px solid var(--line); border-radius:6px; overflow:hidden; margin:6px 0 2px}
+.sv-units-legend{position:absolute; left:8px; bottom:8px; display:flex; gap:12px; padding:5px 10px;
+  background:rgba(10,16,22,.78); border-radius:5px; font-size:12px; color:var(--fg); pointer-events:none}
+.sv-units-legend span{display:inline-flex; align-items:center; gap:5px}
+.sv-units-legend i{width:10px; height:10px; border-radius:50%; border:1px solid rgba(10,14,18,.8); display:inline-block}
+.sv-units-legend i.ring{background:transparent; border:2px solid rgba(240,220,140,.95)}
 
 /* ==================== 大厅双栏布局（lb-*） ==================== */
 .lb-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start}

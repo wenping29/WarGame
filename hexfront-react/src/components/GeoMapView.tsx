@@ -72,6 +72,13 @@ export interface HexOverlay {
   terrains?: Record<string, string>
   /** true = 创建中预览（青色细线），false = 正式网格（地形涂装） */
   preview?: boolean
+  /**
+   * true = 引擎口径：行 r 增大向南（行 0 在北缘），锚点 = hex(0,0) 中心（与服务端 HexGrid 一致）。
+   * 缺省 false = 旧预览口径：行增大向北，锚点 = 包文档 west/south。
+   */
+  southward?: boolean
+  /** 单位标记：按格坐标画圆点（随 southward 口径定位）；dirty 画高亮外圈 */
+  markers?: Array<{ q: number; r: number; color: string; dirty?: boolean }>
 }
 
 interface Props {
@@ -279,7 +286,8 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
     const westM = lngToMx(o.west)
     const southM = latToMy(o.south)
     const lim = o.size * o.size
-    const row0 = Math.floor((my - southM) / (1.5 * o.size))
+    const dir = o.southward ? -1.5 : 1.5
+    const row0 = Math.floor((dir > 0 ? my - southM : southM - my) / (1.5 * o.size))
     const col0 = Math.floor((mx - westM) / (SQRT3 * o.size))
     let best: string | null = null
     let bestD = Infinity
@@ -288,7 +296,7 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
       for (let col = col0 - 2; col <= col0 + 1; col++) {
         if (col < 0 || col >= o.cols) continue
         const gx = westM + SQRT3 * o.size * (col + 0.5 * (row & 1))
-        const gy = southM + 1.5 * o.size * row
+        const gy = southM + dir * o.size * row
         const d = (mx - gx) ** 2 + (my - gy) ** 2
         if (d < bestD && d <= lim) { bestD = d; best = ckey(col, row) }
       }
@@ -390,10 +398,19 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
       if (r > 0) {
         if (r < 2.2) {
           // 极小格：整体矩形填充，不逐格绘制
-          const x0 = (westM - v.cx) * v.scale + W / 2
-          const y0 = H / 2 - (southM + o.size * (1.5 * o.rows + 0.5) - v.cy) * v.scale
-          const x1 = (westM + SQRT3 * o.size * (o.cols + 0.5) - v.cx) * v.scale + W / 2
-          const y1 = H / 2 - (southM - v.cy) * v.scale
+          let x0: number, y0: number, x1: number, y1: number
+          if (o.southward) {
+            // 锚点 = hex(0,0) 中心，行 r 增大向南
+            x0 = (westM - SQRT3 / 2 * o.size - v.cx) * v.scale + W / 2
+            x1 = (westM + SQRT3 * o.size * o.cols - v.cx) * v.scale + W / 2
+            y0 = H / 2 - (southM + o.size - v.cy) * v.scale                          // 北缘
+            y1 = H / 2 - (southM - o.size * (1.5 * o.rows - 0.5) - v.cy) * v.scale   // 南缘
+          } else {
+            x0 = (westM - v.cx) * v.scale + W / 2
+            y0 = H / 2 - (southM + o.size * (1.5 * o.rows + 0.5) - v.cy) * v.scale
+            x1 = (westM + SQRT3 * o.size * (o.cols + 0.5) - v.cx) * v.scale + W / 2
+            y1 = H / 2 - (southM - v.cy) * v.scale
+          }
           ctx.globalAlpha = o.preview ? 0.25 : 0.82
           ctx.fillStyle = '#5d7a4a'
           ctx.fillRect(x0, y0, x1 - x0, y1 - y0)
@@ -412,10 +429,11 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
           }
           if (!cs.done) {
             const t0 = performance.now()
+            const rowDir = o.southward ? -1.5 : 1.5
             while (cs.builtRows < cs.rows && performance.now() - t0 < HEX_BUILD_BUDGET_MS) {
               const row = cs.builtRows++
               const off = 0.5 * (row & 1)
-              const wy = 1.5 * o.size * row
+              const wy = rowDir * o.size * row
               for (let col = 0; col < cs.cols; col++) {
                 hexPath(cs.path, SQRT3 * o.size * (col + off), wy, o.size)
               }
@@ -428,13 +446,14 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
           if (terr !== EMPTY_TERR) {
             if (terrCacheRef.current?.ref !== terr) {
               const g: TerrGroups = new Map()
+              const rowDir = o.southward ? -1.5 : 1.5
               for (const [k, t] of Object.entries(terr)) {
                 if (!TERRAIN_COLOR[t]) continue
                 const [col, row] = k.split(',').map(Number)
                 if (!Number.isInteger(col) || !Number.isInteger(row) || col < 0 || col >= o.cols || row < 0 || row >= o.rows) continue
                 let p = g.get(t)
                 if (!p) { p = new Path2D(); g.set(t, p) }
-                hexPath(p, SQRT3 * o.size * (col + 0.5 * (row & 1)), 1.5 * o.size * row, o.size)
+                hexPath(p, SQRT3 * o.size * (col + 0.5 * (row & 1)), rowDir * o.size * row, o.size)
               }
               terrCacheRef.current = { ref: terr, path: g as unknown as Path2D }
             }
@@ -444,10 +463,11 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
           const holes = o.holes ?? []
           if (holeCacheRef.current?.ref !== holes) {
             const p = new Path2D()
+            const rowDir = o.southward ? -1.5 : 1.5
             for (const k of holes) {
               const [col, row] = k.split(',').map(Number)
               if (!Number.isInteger(col) || !Number.isInteger(row) || col < 0 || col >= o.cols || row < 0 || row >= o.rows) continue
-              hexPath(p, SQRT3 * o.size * (col + 0.5 * (row & 1)), 1.5 * o.size * row, o.size)
+              hexPath(p, SQRT3 * o.size * (col + 0.5 * (row & 1)), rowDir * o.size * row, o.size)
             }
             holeCacheRef.current = { ref: holes, path: p }
           }
@@ -499,12 +519,13 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
           if (r >= 8 && !o.preview && terr !== EMPTY_TERR) {
             const [vL, vT] = toMeters(0, 0)
             const [vR, vB] = toMeters(W, H)
+            const rowDir = o.southward ? -1.5 : 1.5
             for (const [k, t] of Object.entries(terr)) {
               if (t !== 'city' && t !== 'water') continue
               const [col, row] = k.split(',').map(Number)
               const gx = westM + SQRT3 * o.size * (col + 0.5 * (row & 1))
               if (gx < vL - o.size || gx > vR + o.size) continue
-              const gy = southM + 1.5 * o.size * row
+              const gy = southM + rowDir * o.size * row
               if (gy < vT - o.size || gy > vB + o.size) continue
               const cx = (gx - v.cx) * v.scale + W / 2
               const cy = H / 2 - (gy - v.cy) * v.scale
@@ -527,7 +548,7 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
           const [hc, hr] = hv.split(',').map(Number)
           if (hc < o.cols && hr < o.rows) {
             const gx = westM + SQRT3 * o.size * (hc + 0.5 * (hr & 1))
-            const gy = southM + 1.5 * o.size * hr
+            const gy = southM + (o.southward ? -1.5 : 1.5) * o.size * hr
             const cx = (gx - v.cx) * v.scale + W / 2
             const cy = H / 2 - (gy - v.cy) * v.scale
             const hp = new Path2D()
@@ -535,6 +556,37 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
             ctx.strokeStyle = 'rgba(240,220,140,.95)'
             ctx.lineWidth = 2.5
             ctx.stroke(hp)
+          }
+        }
+
+        // 单位标记（屏幕空间圆点；overlay.markers 每次引用变化由 effect 重绘）
+        const marks = o.markers
+        if (marks?.length && r >= 2.2) {
+          const rowDir = o.southward ? -1.5 : 1.5
+          for (const m of marks) {
+            if (!Number.isInteger(m.q) || !Number.isInteger(m.r)
+              || m.q < 0 || m.q >= o.cols || m.r < 0 || m.r >= o.rows) continue
+            const gx = westM + SQRT3 * o.size * (m.q + 0.5 * (m.r & 1))
+            const gy = southM + rowDir * o.size * m.r
+            const cx = (gx - v.cx) * v.scale + W / 2
+            const cy = H / 2 - (gy - v.cy) * v.scale
+            const rad = Math.max(3, Math.min(8, r * 0.3))
+            if (m.dirty) {
+              ctx.beginPath()
+              ctx.arc(cx, cy, rad + 2.5, 0, Math.PI * 2)
+              ctx.strokeStyle = 'rgba(240,220,140,.95)'
+              ctx.lineWidth = 2
+              ctx.stroke()
+            }
+            ctx.beginPath()
+            ctx.arc(cx, cy, rad, 0, Math.PI * 2)
+            ctx.globalAlpha = 0.92
+            ctx.fillStyle = m.color
+            ctx.fill()
+            ctx.globalAlpha = 1
+            ctx.lineWidth = 1.2
+            ctx.strokeStyle = 'rgba(10,14,18,.8)'
+            ctx.stroke()
           }
         }
       }
@@ -670,6 +722,11 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
     ro.observe(wrap)
     return () => ro.disconnect()
   }, [schedule])
+
+  // overlay / markers 引用变化即重绘（refs 已在渲染期更新）
+  useEffect(() => {
+    schedule()
+  }, [overlay, schedule])
 
   /* ---------- 交互 ---------- */
   const onWheel = useCallback((e: WheelEvent) => {

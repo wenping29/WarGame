@@ -122,6 +122,10 @@ export interface SaveUnitsInfo {
   base_turn: number
   width: number
   height: number
+  /** 网格几何：hex(0,0) 中心墨卡托米 + 外接圆半径（单位标记地图用）；缺省 = 无地图 */
+  geo?: { ox: number; oy: number; radius: number } | null
+  /** 挖除格键（"q,r"） */
+  holes?: string[]
   units: SaveUnitRow[]
 }
 

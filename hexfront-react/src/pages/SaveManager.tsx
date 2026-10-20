@@ -4,6 +4,8 @@ import { api, netError, type SaveDocMeta, type SaveInfo, type SaveUnitsInfo } fr
 import { loadMeta } from '../room/useUnitFull'
 import { useAuth } from '../components/Auth'
 import { toast } from '../components/Toast'
+import GeoMapView, { type BBox, type HexOverlay, mxToLng, myToLat } from '../components/GeoMapView'
+import { SQRT3 } from '../map/hex'
 
 /** 存档内容文件名（对齐 AppDbService.StoreSaveFile 的 kind 语义） */
 const KIND_LABEL: Record<string, string> = {
@@ -326,6 +328,48 @@ function UnitPosEditor({ instance }: { instance: string }) {
     })
   }, [info, edits])
 
+  // ── 地图展示：网格按引擎口径（r 向南，锚点 = hex(0,0) 中心），单位标记随草稿实时刷新 ──
+  const overlay: HexOverlay | null = useMemo(() => {
+    if (!info?.geo || !info.width || !info.height) return null
+    const { ox, oy, radius } = info.geo
+    const markers = info.units.filter(u => u.alive).map(u => {
+      const e = edits[u.id] ?? { q: String(u.q), r: String(u.r) }
+      const q = +e.q, r = +e.r
+      const ok = Number.isFinite(q) && Number.isFinite(r) && q >= 0 && r >= 0
+      return {
+        q: ok ? q : u.q,
+        r: ok ? r : u.r,
+        color: u.side === 'red' ? '#e07a6a' : u.side === 'blue' ? '#7aa7e0' : '#9aa4ad',
+        dirty: ok && (q !== u.q || r !== u.r),
+      }
+    })
+    return {
+      west: mxToLng(ox),           // 锚点 = hex(0,0) 中心（引擎口径）
+      south: myToLat(oy),
+      rows: info.height,
+      cols: info.width,
+      size: radius,
+      holes: info.holes ?? [],
+      southward: true,
+      markers,
+    }
+  }, [info, edits])
+
+  // 打开时飞到网面范围
+  const fit = useMemo<{ bbox: BBox; nonce: number } | null>(() => {
+    if (!info?.geo || !info.width || !info.height) return null
+    const { ox, oy, radius } = info.geo
+    return {
+      bbox: {
+        west: mxToLng(ox - SQRT3 / 2 * radius),
+        east: mxToLng(ox + SQRT3 * radius * info.width),
+        south: myToLat(oy - radius * (1.5 * info.height - 0.5)),
+        north: myToLat(oy + radius),
+      },
+      nonce: 1,
+    }
+  }, [info])
+
   const setPos = (id: string, part: 'q' | 'r', v: string) =>
     setEdits(prev => ({ ...prev, [id]: { ...prev[id], [part]: v } }))
 
@@ -372,9 +416,20 @@ function UnitPosEditor({ instance }: { instance: string }) {
         <b>单位位置编辑</b>
         <span className="muted small">
           载入基准：{info.base_kind === 'init' ? '开局 init（回合 0）' : `回合 ${info.base_turn} 快照`} · 网面 {info.width}×{info.height} 格 ·
-          修改保存后在下次「载入并导调」时生效；已推进的副本重放后续回合可能出现指纹提示，属预期
+          地图按网格坐标展示载入时的起始位置（含下方未保存的修改，黄圈标注）；修改保存后在下次「载入并导调」时生效
         </span>
       </div>
+      {overlay && (
+        <div className="sv-units-map">
+          <GeoMapView mode="pan" overlay={overlay} fit={fit} canvasOnly />
+          <div className="sv-units-legend">
+            <span><i style={{ background: '#e07a6a' }} /> 红方</span>
+            <span><i style={{ background: '#7aa7e0' }} /> 蓝方</span>
+            {rest.length > 0 && <span><i style={{ background: '#9aa4ad' }} /> 其他</span>}
+            <span><i className="ring" /> 有未保存修改</span>
+          </div>
+        </div>
+      )}
       {groups.map(g => (
         <div key={g.key}>
           <div className={'sv-side-hd ' + g.cls}>{g.label}</div>

@@ -992,8 +992,11 @@ public sealed class AppDbService : IDisposable
         return init == null ? null : ("init", 0, init);
     }
 
-    /// <summary>读取基准文档中的双方单位及当前位置。返回 (基准种类, 基准回合, 面宽, 面高, 单位列表)；副本无内容返回 null。</summary>
-    public (string BaseKind, int BaseTurn, int Width, int Height, List<Dictionary<string, object?>> Units)? GetSaveUnits(string instance)
+    /// <summary>网格几何（hex(0,0) 中心墨卡托米 + 半径），副本单位标记地图展示用。</summary>
+    public sealed record SaveGeo(double Ox, double Oy, double Radius);
+
+    /// <summary>读取基准文档中的双方单位及当前位置。返回 (基准种类, 基准回合, 面宽, 面高, 网格几何, 挖除格, 单位列表)；副本无内容返回 null。</summary>
+    public (string BaseKind, int BaseTurn, int Width, int Height, SaveGeo? Geo, List<string>? Holes, List<Dictionary<string, object?>> Units)? GetSaveUnits(string instance)
     {
         var b = BaseSaveDoc(instance);
         if (b == null) return null;
@@ -1026,14 +1029,37 @@ public sealed class AppDbService : IDisposable
             }
         }
 
-        // 面宽/面高：grid.width / grid.height（与 environment 的宽/高同语义）
+        // 面宽/面高：grid.width / grid.height（与 environment 的宽/高同语义）；
+        // 网格几何：grid.ox / grid.oy / grid.radius（引擎 HexGrid 序列化字段，hex(0,0) 中心）
         var width = 0; var height = 0;
+        SaveGeo? geo = null;
         if (root.TryGetProperty("grid", out var g) && g.ValueKind == JsonValueKind.Object)
         {
             width = g.TryGetProperty("width", out var w) ? w.GetInt32() : 0;
             height = g.TryGetProperty("height", out var h) ? h.GetInt32() : 0;
+            if (g.TryGetProperty("ox", out var oxe) && g.TryGetProperty("oy", out var oye) && g.TryGetProperty("radius", out var rre))
+            {
+                var gox = oxe.GetDouble(); var goy = oye.GetDouble(); var grad = rre.GetDouble();
+                if (grad > 0) geo = new SaveGeo(gox, goy, grad);
+            }
         }
-        return (b.Value.Kind, b.Value.Turn, width, height, units);
+
+        // 挖除格 = 全格 − cells 有效格键（键与 Hex.Key 同格式 "q,r"），标记地图叠层用
+        List<string>? holes = null;
+        if (root.TryGetProperty("cells", out var cel) && cel.ValueKind == JsonValueKind.Object
+            && width > 0 && height > 0)
+        {
+            var valid = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var p in cel.EnumerateObject()) valid.Add(p.Name);
+            holes = new List<string>(Math.Max(0, width * height - valid.Count));
+            for (var rr = 0; rr < height; rr++)
+                for (var qq = 0; qq < width; qq++)
+                {
+                    var key = qq + "," + rr;
+                    if (!valid.Contains(key)) holes.Add(key);
+                }
+        }
+        return (b.Value.Kind, b.Value.Turn, width, height, geo, holes, units);
     }
 
     /// <summary>

@@ -181,7 +181,8 @@ function scenarioToState(s: ScenarioInfo, prev: WizardState): WizardState {
     name: s.name || '',
     gis: {
       ...prev.gis,
-      mode: s.hexgrid ? 'hexgrid' : 'generate',
+      // 默认使用服务器网络包；hexPkg 优先取剧本内绑定的网格包 id（步骤 2 载入列表后按 id 匹配校验）
+      mode: 'hexgrid',
       hexPkg: s.hexgrid || '',
       pkgCellKm: '',
       bbox: center
@@ -557,7 +558,20 @@ function Step2Environment({ state, updateState, onPlanChange }: {
   const setGis = (p: Partial<WizardState['gis']>) => updateState({ gis: { ...g, ...p } })
   const [hgList, setHgList] = useState<HexGridMeta[]>([])
   const loadHgList = () => api.hexgrids().then(r => setHgList(r.grids || [])).catch(() => {})
-  useEffect(() => { loadHgList() }, [])
+  useEffect(() => {
+    // 默认选中服务器网络包：优先保持剧本内绑定的网格包 id（在列表中按 id 匹配）；
+    // 未绑定或绑定的包已不存在时，回退选中第一个可用包
+    api.hexgrids().then(r => {
+      const grids = r.grids || []
+      setHgList(grids)
+      if (!grids.length) return
+      updateState(prev => {
+        const cur = prev.gis.hexPkg
+        if (cur && grids.some(g => g.id === cur)) return {}
+        return { gis: { ...prev.gis, mode: 'hexgrid', hexPkg: grids[0].id } }
+      })
+    }).catch(() => {})
+  }, [])
 
   return (
     <div>
