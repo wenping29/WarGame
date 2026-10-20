@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, netError, type SaveDocMeta, type SaveInfo } from '../services/api'
+import { api, netError, type SaveDocMeta, type SaveInfo, type SaveUnitsInfo } from '../services/api'
 import { loadMeta } from '../room/useUnitFull'
 import { useAuth } from '../components/Auth'
 import { toast } from '../components/Toast'
@@ -43,6 +43,8 @@ export default function SaveManager() {
   const [docsInst, setDocsInst] = useState<string | null>(null)
   const [docs, setDocs] = useState<SaveDocMeta[] | null>(null)
   const [docView, setDocView] = useState<{ kind: string; turn: number | null; text: string; truncated: boolean } | null>(null)
+  // 单位位置编辑：展开哪个副本的编辑器
+  const [posInst, setPosInst] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -183,10 +185,12 @@ export default function SaveManager() {
                   docsOpen={docsInst === s.instance}
                   docs={docsInst === s.instance ? docs : undefined}
                   docView={docsInst === s.instance ? docView : null}
+                  posOpen={posInst === s.instance}
                   onLoad={() => void loadSave(s)}
                   onDelete={() => void removeSave(s)}
                   onToggleDocs={() => void toggleDocs(s.instance)}
                   onViewDoc={(k, t) => void viewDoc(s.instance, k, t)}
+                  onTogglePos={() => setPosInst(posInst === s.instance ? null : s.instance)}
                 />
               ))}
             </tbody>
@@ -206,13 +210,15 @@ interface RowProps {
   docsOpen: boolean
   docs?: SaveDocMeta[] | null | undefined // undefined=未打开 null=加载中
   docView: { kind: string; turn: number | null; text: string; truncated: boolean } | null
+  posOpen: boolean
   onLoad: () => void
   onDelete: () => void
   onToggleDocs: () => void
   onViewDoc: (kind: string, turn: number | null) => void
+  onTogglePos: () => void
 }
 
-function SaveRow({ s, busy, isSuper, docsOpen, docs, docView, onLoad, onDelete, onToggleDocs, onViewDoc }: RowProps) {
+function SaveRow({ s, busy, isSuper, docsOpen, docs, docView, posOpen, onLoad, onDelete, onToggleDocs, onViewDoc, onTogglePos }: RowProps) {
   const prog = s.max_turns ? `${s.last_turn}/${s.max_turns}` : String(s.last_turn)
   return (
     <>
@@ -230,14 +236,26 @@ function SaveRow({ s, busy, isSuper, docsOpen, docs, docView, onLoad, onDelete, 
           <div className="sv-actions">
             <button className="btn btn-sm btn-primary" onClick={onLoad} disabled={busy}>载入并导调</button>
             {isSuper && (
-              <button className="btn btn-sm" onClick={onToggleDocs}>
-                {docsOpen ? '收起内容' : '内容'}
-              </button>
+              <>
+                <button className="btn btn-sm" onClick={onTogglePos}>
+                  {posOpen ? '收起位置' : '单位位置'}
+                </button>
+                <button className="btn btn-sm" onClick={onToggleDocs}>
+                  {docsOpen ? '收起内容' : '内容'}
+                </button>
+              </>
             )}
             <button className="btn btn-sm btn-red" onClick={onDelete} disabled={busy}>删除</button>
           </div>
         </td>
       </tr>
+      {posOpen && (
+        <tr>
+          <td colSpan={7} style={{ background: 'rgba(255,255,255,.015)' }}>
+            <UnitPosEditor instance={s.instance} />
+          </td>
+        </tr>
+      )}
       {docsOpen && (
         <tr>
           <td colSpan={7} style={{ background: 'rgba(255,255,255,.015)' }}>
@@ -271,5 +289,127 @@ function SaveRow({ s, busy, isSuper, docsOpen, docs, docView, onLoad, onDelete, 
         </tr>
       )}
     </>
+  )
+}
+
+// ==================== 单位位置编辑器 ====================
+
+type SideGroup = { key: string; label: string; cls: string }
+
+/** 编辑副本载入基准（最新快照或开局 init）中双方单位的地图位置；保存后下次「载入并导调」生效。 */
+function UnitPosEditor({ instance }: { instance: string }) {
+  const [info, setInfo] = useState<SaveUnitsInfo | null>(null)
+  const [err, setErr] = useState('')
+  // 草稿：unitId → { q, r }（字符串态便于输入框清空重输）
+  const [edits, setEdits] = useState<Record<string, { q: string; r: string }>>({})
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    api.adminSaveUnits(instance)
+      .then(r => {
+        if (!alive) return
+        setInfo(r)
+        const e: Record<string, { q: string; r: string }> = {}
+        for (const u of r.units) e[u.id] = { q: String(u.q), r: String(u.r) }
+        setEdits(e)
+      })
+      .catch(e => { if (alive) setErr(netError(e) || '读取失败（需要超级管理员）') })
+    return () => { alive = false }
+  }, [instance])
+
+  const changed = useMemo(() => {
+    if (!info) return []
+    return info.units.filter(u => {
+      const e = edits[u.id]
+      return e && (+e.q !== u.q || +e.r !== u.r) && Number.isFinite(+e.q) && Number.isFinite(+e.r)
+    })
+  }, [info, edits])
+
+  const setPos = (id: string, part: 'q' | 'r', v: string) =>
+    setEdits(prev => ({ ...prev, [id]: { ...prev[id], [part]: v } }))
+
+  const save = async () => {
+    if (!info || !changed.length) return
+    setSaving(true)
+    try {
+      const r = await api.adminSaveUnitsUpdate(instance,
+        changed.map(u => ({ unit: u.id, q: +edits[u.id].q, r: +edits[u.id].r })))
+      setInfo(prev => prev ? {
+        ...prev,
+        units: prev.units.map(u => {
+          const e = edits[u.id]
+          return e && (+e.q !== u.q || +e.r !== u.r)
+            ? { ...u, q: +e.q, r: +e.r }
+            : u
+        }),
+      } : prev)
+      const parts = [`已更新 ${r.updated} 个单位的位置`]
+      if (r.unknown.length) parts.push('未知单位：' + r.unknown.join('、'))
+      if (r.invalid.length) parts.push('无效落点：' + r.invalid.join('、'))
+      toast(parts.join('；'), r.unknown.length || r.invalid.length ? 'err' : undefined)
+    } catch (e) {
+      toast('保存失败：' + netError(e), 'err')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (err) return <span className="muted">{err}</span>
+  if (!info) return <span className="muted">读取单位列表中…</span>
+
+  // 红 / 蓝 / 其余（neutral）分组
+  const groups: SideGroup[] = [
+    { key: 'red', label: '红方', cls: 'red' },
+    { key: 'blue', label: '蓝方', cls: 'blue' },
+  ]
+  const rest = info.units.filter(u => u.side !== 'red' && u.side !== 'blue')
+  if (rest.length) groups.push({ key: 'neutral', label: '其他', cls: '' })
+
+  return (
+    <div className="sv-units">
+      <div className="sv-units-head">
+        <b>单位位置编辑</b>
+        <span className="muted small">
+          载入基准：{info.base_kind === 'init' ? '开局 init（回合 0）' : `回合 ${info.base_turn} 快照`} · 网面 {info.width}×{info.height} 格 ·
+          修改保存后在下次「载入并导调」时生效；已推进的副本重放后续回合可能出现指纹提示，属预期
+        </span>
+      </div>
+      {groups.map(g => (
+        <div key={g.key}>
+          <div className={'sv-side-hd ' + g.cls}>{g.label}</div>
+          <table className="adm-table sv-units-table">
+            <thead>
+              <tr><th>单位</th><th>类型</th><th>兵力</th><th>状态</th><th>列 q</th><th>行 r</th></tr>
+            </thead>
+            <tbody>
+              {info.units.filter(u => g.key === 'neutral' ? (u.side !== 'red' && u.side !== 'blue') : u.side === g.key)
+                .map(u => {
+                  const e = edits[u.id] ?? { q: String(u.q), r: String(u.r) }
+                  const dirty = +e.q !== u.q || +e.r !== u.r
+                  return (
+                    <tr key={u.id} style={dirty ? { background: 'rgba(127,176,105,.10)' } : undefined}>
+                      <td className="mono">{u.id}{u.is_hq ? ' ★' : ''}</td>
+                      <td className="mono muted">{u.unit_type}</td>
+                      <td className="mono">{u.personnel}</td>
+                      <td>{u.alive ? <span className="muted">在场</span> : <span className="sv-dead">歼灭</span>}</td>
+                      <td><input type="number" className="sv-num" value={e.q}
+                        onChange={ev => setPos(u.id, 'q', ev.target.value)} /></td>
+                      <td><input type="number" className="sv-num" value={e.r}
+                        onChange={ev => setPos(u.id, 'r', ev.target.value)} /></td>
+                    </tr>
+                  )
+                })}
+            </tbody>
+          </table>
+        </div>
+      ))}
+      <div className="sv-units-foot">
+        <span className="muted small">修改 {changed.length} 处（落点须在有效格内，界外/挖除格保存时会被拒绝）</span>
+        <button className="btn btn-sm btn-primary" disabled={!changed.length || saving} onClick={() => void save()}>
+          {saving ? '保存中…' : '保存位置修改'}
+        </button>
+      </div>
+    </div>
   )
 }

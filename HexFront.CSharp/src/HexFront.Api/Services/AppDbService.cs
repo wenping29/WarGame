@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using HexFront.Core.Services;
 using Microsoft.Data.Sqlite;
 
@@ -967,6 +968,119 @@ public sealed class AppDbService : IDisposable
         var turns = GetSaveDoc(instance, "turns");
         var meta = GetSaveDoc(instance, "meta");
         return StoreService.LoadFromDocs(new StoreService.SaveDocSet(meta, init, snapshots, turns), instance);
+    }
+
+    // ==================== 副本单位位置编辑（副本管理页） ====================
+
+    /// <summary>一条位置修改：单位 id → 目标格（q,r）。</summary>
+    public sealed record SaveUnitEdit(string Unit, int Q, int R);
+
+    /// <summary>位置编辑结果：updated 生效数；unknown 库中不存在的单位 id；invalid 落点在 cells 之外的（单位→目标键）。</summary>
+    public sealed record SaveUnitsEditResult(string BaseKind, int BaseTurn, int Updated, List<string> Unknown, List<string> Invalid);
+
+    /// <summary>
+    /// 副本载入基准文档：最新快照，无快照回退开局 init —— 与 StoreService.LoadFromDocs 的基准选择同口径，
+    /// 保证这里改的位置在下次「载入并导调」时必然生效。
+    /// </summary>
+    private (string Kind, int Turn, string Json)? BaseSaveDoc(string instance)
+    {
+        var snap = QueryRow("SELECT turn, doc_json FROM save_docs WHERE instance=$i AND kind='snapshot' ORDER BY turn DESC LIMIT 1",
+            ("$i", instance));
+        if (snap?["doc_json"] is string sj)
+            return ("snapshot", Convert.ToInt32(snap["turn"] ?? 0), sj);
+        var init = GetSaveDoc(instance, "init", 0);
+        return init == null ? null : ("init", 0, init);
+    }
+
+    /// <summary>读取基准文档中的双方单位及当前位置。返回 (基准种类, 基准回合, 面宽, 面高, 单位列表)；副本无内容返回 null。</summary>
+    public (string BaseKind, int BaseTurn, int Width, int Height, List<Dictionary<string, object?>> Units)? GetSaveUnits(string instance)
+    {
+        var b = BaseSaveDoc(instance);
+        if (b == null) return null;
+        using var doc = JsonDocument.Parse(b.Value.Json);
+        var root = doc.RootElement;
+
+        var units = new List<Dictionary<string, object?>>();
+        if (root.TryGetProperty("units", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var u in arr.EnumerateArray())
+            {
+                var q = 0; var r = 0;
+                if (u.TryGetProperty("pos", out var p) && p.ValueKind == JsonValueKind.Object)
+                {
+                    q = p.TryGetProperty("q", out var qe) ? qe.GetInt32() : 0;
+                    r = p.TryGetProperty("r", out var re) ? re.GetInt32() : 0;
+                }
+                var personnel = u.TryGetProperty("personnel", out var pe) ? pe.GetInt32() : 0;
+                units.Add(new Dictionary<string, object?>
+                {
+                    ["id"] = u.TryGetProperty("id", out var ie) ? ie.GetString() ?? "" : "",
+                    ["side"] = u.TryGetProperty("side", out var se) ? se.GetString() ?? "" : "",
+                    ["unit_type"] = u.TryGetProperty("unit_type", out var te) ? te.GetString() ?? "" : "",
+                    ["is_hq"] = u.TryGetProperty("is_hq", out var he) && he.ValueKind == JsonValueKind.True,
+                    ["personnel"] = personnel,
+                    ["alive"] = personnel > 0,
+                    ["q"] = q,
+                    ["r"] = r,
+                });
+            }
+        }
+
+        // 面宽/面高：grid.width / grid.height（与 environment 的宽/高同语义）
+        var width = 0; var height = 0;
+        if (root.TryGetProperty("grid", out var g) && g.ValueKind == JsonValueKind.Object)
+        {
+            width = g.TryGetProperty("width", out var w) ? w.GetInt32() : 0;
+            height = g.TryGetProperty("height", out var h) ? h.GetInt32() : 0;
+        }
+        return (b.Value.Kind, b.Value.Turn, width, height, units);
+    }
+
+    /// <summary>
+    /// 修改基准文档中的单位位置并写回 save_docs（SQLite 真源；改动在下次载入时生效）。
+    /// cells 非空时校验落点必须在有效格内（界外/挖除格拒绝）；返回 null 表示副本无内容。
+    /// </summary>
+    public SaveUnitsEditResult? UpdateSaveUnitPositions(string instance, IEnumerable<SaveUnitEdit> positions)
+    {
+        var b = BaseSaveDoc(instance);
+        if (b == null) return null;
+
+        var root = JsonNode.Parse(b.Value.Json) as JsonObject
+            ?? throw new InvalidDataException($"副本 {instance} 基准文档不是 JSON 对象");
+        var unknown = new List<string>();
+        var invalid = new List<string>();
+
+        // 有效格键集合（cells 非空才校验；键与 Hex.Key 同格式 "q,r"）
+        HashSet<string>? cells = null;
+        if (root["cells"] is JsonObject co && co.Count > 0)
+            cells = new HashSet<string>(co.Select(kv => kv.Key), StringComparer.Ordinal);
+
+        var byId = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+        if (root["units"] is JsonArray ua)
+            foreach (var n in ua.OfType<JsonObject>())
+            {
+                var id = n["id"]?.ToString();
+                if (!string.IsNullOrEmpty(id)) byId[id] = n;
+            }
+
+        var updated = 0;
+        foreach (var p in positions)
+        {
+            if (!byId.TryGetValue(p.Unit, out var u)) { unknown.Add(p.Unit); continue; }
+            var key = p.Q + "," + p.R;
+            if (cells != null && !cells.Contains(key)) { invalid.Add($"{p.Unit}→{key}"); continue; }
+            u["pos"] = new JsonObject { ["q"] = p.Q, ["r"] = p.R };
+            updated++;
+        }
+
+        if (updated > 0)
+        {
+            var kind = b.Value.Kind;
+            StoreSaveDoc(instance, kind, kind == "snapshot" ? b.Value.Turn : 0,
+                root.ToJsonString(new JsonSerializerOptions { WriteIndented = false }),
+                DateTime.UtcNow.ToString("o"));
+        }
+        return new SaveUnitsEditResult(b.Value.Kind, b.Value.Turn, updated, unknown, invalid);
     }
 
     // ==================== 推演操作流水（原 OpsLogService 职能） ====================

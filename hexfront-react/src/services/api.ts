@@ -103,6 +103,28 @@ export interface SaveDocMeta {
   updated_at?: string
 }
 
+/** 副本单位位置编辑（GET/PUT /api/admin/save_units/{instance}，仅超管） */
+export interface SaveUnitRow {
+  id: string
+  side: string
+  unit_type: string
+  is_hq: boolean
+  personnel: number
+  alive: boolean
+  q: number
+  r: number
+}
+
+export interface SaveUnitsInfo {
+  instance: string
+  /** 载入基准：init = 开局全量，snapshot = 最新回合快照 */
+  base_kind: 'init' | 'snapshot' | string
+  base_turn: number
+  width: number
+  height: number
+  units: SaveUnitRow[]
+}
+
 /** 服务器六角格网络包清单项（GET /api/hexgrids） */
 export interface HexGridMeta {
   id: string
@@ -382,6 +404,13 @@ export const api = {
   adminSaveDoc: (instance: string, kind: string, turn?: number | null) =>
     get<string>('/admin/save_doc/' + encodeURIComponent(instance) +
       '?kind=' + encodeURIComponent(kind) + (turn != null ? '&turn=' + turn : '')),
+  adminSaveUnits: (instance: string) =>
+    get<SaveUnitsInfo>('/admin/save_units/' + encodeURIComponent(instance)),
+  adminSaveUnitsUpdate: (instance: string, positions: Array<{ unit: string; q: number; r: number }>) =>
+    put<{
+      instance: string; base_kind: string; base_turn: number
+      updated: number; unknown: string[]; invalid: string[]
+    }>('/admin/save_units/' + encodeURIComponent(instance), { positions }),
   // ==================== 服务器六角格网络包（剧本只存 hexgrid id） ====================
   hexgrids: () => get<{ grids: HexGridMeta[]; count: number }>('/hexgrids'),
   hexgridGet: (id: string) => get<{ grid: HexGridDoc; bbox: [number, number, number, number] }>(

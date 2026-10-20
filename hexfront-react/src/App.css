@@ -998,6 +998,19 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .sv-doc-item.on{border-color:var(--accent); background:rgba(120,160,255,.08)}
 .sv-doc-view{max-height:360px; overflow:auto; margin:0; padding:10px; border:1px solid var(--line); border-radius:6px; background:rgba(0,0,0,.25); font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-all}
 
+/* 单位位置编辑器 */
+.sv-units{display:flex; flex-direction:column; gap:2px; padding:4px 0}
+.sv-units-head{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:6px}
+.sv-side-hd{font-weight:700; font-size:12px; letter-spacing:1px; margin:8px 0 2px}
+.sv-side-hd.red{color:#e07a6a}
+.sv-side-hd.blue{color:#7aa7e0}
+.sv-units-table th, .sv-units-table td{padding:4px 10px; font-size:12px}
+.sv-units-table input{width:74px; padding:3px 6px; border:1px solid var(--line); border-radius:4px; background:var(--panel2); color:var(--fg); font-size:12px}
+.sv-units-table input:focus{outline:none; border-color:var(--accent)}
+.sv-num{font-family:var(--mono, monospace)}
+.sv-dead{color:#c96a5a; font-size:12px}
+.sv-units-foot{display:flex; align-items:center; gap:12px; margin-top:8px; flex-wrap:wrap}
+
 /* ==================== 大厅双栏布局（lb-*） ==================== */
 .lb-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start}
 @media (max-width:960px){.lb-grid{grid-template-columns:1fr}}

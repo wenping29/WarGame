@@ -8,9 +8,9 @@
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, netError, type CreateInstanceBody, type GisCapabilities, type GisJob, type GisPlan, type HexGridMeta, type ScenarioInfo, type ValidateResult } from '../services/api'
+import { api, netError, type CreateInstanceBody, type GisPlan, type HexGridMeta, type ScenarioInfo, type ValidateResult } from '../services/api'
 import { loadMeta, useMeta, type UnitTypeDef } from '../room/useUnitFull'
-import GeoMapView, { type BBox } from '../components/GeoMapView'
+import HexGenPanel from '../components/HexGenPanel'
 import { toast } from '../components/Toast'
 
 const STEP_TITLES = ['剧本与名称', '战场环境', '天气', '部队编成', '审阅并创建']
@@ -50,32 +50,6 @@ interface OOBRow {
   experience: string
   cname: string
   cquality: string
-}
-
-/** 现场生成会话：与表单状态分开存，切步骤/轮询都不丢日志。 */
-interface GenSession {
-  caps: GisCapabilities | null
-  plan: GisPlan | null
-  planErr: string
-  planBusy: boolean
-  job: GisJob | null
-  jobErr: string
-}
-
-const LAYER_LABEL_CN: Record<string, string> = {
-  recommended: '推荐档位', heavy: '格数偏多', coarse: '格数偏少',
-}
-
-const JOB_STATUS_CN: Record<string, string> = {
-  queued: '排队中', running: '生成中', done: '已完成', failed: '失败',
-}
-
-/** 范围框 → [西,南,东,北]；不合法返回 null（服务端同样拒，前置判断只为给中文提示） */
-function bboxOf(b: { w: string; s: string; e: string; n: string }): [number, number, number, number] | null {
-  const w = num(b.w), s = num(b.s), e = num(b.e), n = num(b.n)
-  if (w === null || s === null || e === null || n === null) return null
-  if (!(w < e && s < n)) return null
-  return [w, s, e, n]
 }
 
 interface WizardState {
@@ -252,84 +226,9 @@ export default function Wizard() {
     setState(prev => ({ ...prev, ...(typeof updates === 'function' ? updates(prev) : updates) }))
 
   // ── 现场生成六角格：能力探测 / 格网方案 / 作业轮询 ──
-  const [gen, setGen] = useState<GenSession>({ caps: null, plan: null, planErr: '', planBusy: false, job: null, jobErr: '' })
-  const patchGen = (p: Partial<GenSession>) => setGen(prev => ({ ...prev, ...p }))
-
-  useEffect(() => {
-    if (state.gis.mode !== 'generate' || gen.caps) return
-    api.gisCapabilities().then(c => patchGen({ caps: c })).catch(() => {})
-  }, [state.gis.mode, gen.caps])
-
-  // 范围框/对边距变化后 420ms 去抖算方案：几何一律由服务端 plan 给，前端不自算
-  useEffect(() => {
-    if (state.gis.mode !== 'generate') return
-    const bb = bboxOf(state.gis.bbox)
-    if (!bb) {
-      setGen(prev => ({ ...prev, plan: null, planErr: '范围框需满足 西<东、南<北' }))
-      return
-    }
-    const cell = num(state.gis.cell_km) || undefined
-    setGen(prev => ({ ...prev, planBusy: true }))
-    const t = setTimeout(() => {
-      api.gisPlan(bb, cell)
-        .then(res => setGen(prev => ({ ...prev, planBusy: false, plan: res, planErr: res.error || '' })))
-        .catch(e => setGen(prev => ({ ...prev, planBusy: false, plan: null, planErr: netError(e) })))
-    }, 420)
-    return () => clearTimeout(t)
-  }, [state.gis.mode, state.gis.bbox, state.gis.cell_km])
-
-  const jobLive = gen.job != null && (gen.job.status === 'queued' || gen.job.status === 'running')
-  useEffect(() => {
-    const id = gen.job?.id
-    if (!id || !jobLive) return
-    const timer = setInterval(async () => {
-      let j: GisJob
-      try {
-        j = await api.gisJob(id)
-      } catch (e) {
-        setGen(prev => ({ ...prev, job: null, jobErr: netError(e) }))
-        toast(netError(e), 'err')
-        return
-      }
-      setGen(prev => ({ ...prev, job: j, jobErr: '' }))
-      if (j.status === 'done') {
-        // 生成完成时服务端已把数据包存储为服务器网络包（hexgrid_id）；副本直接引用它
-        await loadMeta(true).catch(() => {})
-        if (j.hexgrid_id) {
-          setState(prev => ({ ...prev, gis: { ...prev.gis, hexPkg: j.hexgrid_id!, pkgCellKm: String(j.meta?.cell_km ?? '') } }))
-          toast(`六角格已生成并存储到服务器：${j.hexgrid_id}（${j.meta?.width ?? '?'}×${j.meta?.height ?? '?'} 格）`)
-        } else {
-          setGen(prev => ({ ...prev, jobErr: '存储服务器网络包失败，见作业日志' }))
-          toast('生成完成，但存储服务器网络包失败：见作业日志', 'err')
-        }
-      } else if (j.status === 'failed') {
-        toast('生成失败：' + (j.error || '见日志'), 'err')
-      }
-    }, 1500)
-    return () => clearInterval(timer)
-  }, [gen.job?.id, jobLive])
-
-  const startGen = async () => {
-    const g = state.gis
-    if (gen.job && (gen.job.status === 'queued' || gen.job.status === 'running')) return
-    const bb = bboxOf(g.bbox)
-    if (!bb) return toast('范围框需满足 西<东、南<北', 'err')
-    const cell = num(g.cell_km) || gen.plan?.recommended.cell_km
-    if (!cell) return toast(gen.planErr || '正在计算格网方案，稍候', 'warn')
-    try {
-      const job = await api.gisStartJob({
-        bbox: bb, cell_km: cell, name: g.name.trim(),
-        dem: g.dem as 'auto' | 'local' | 'synthetic',
-        landuse: g.landuse as 'auto' | 'proxy' | 'off',
-        roads: g.roads, water: g.water, network: g.network, features: g.features,
-      })
-      setGen(prev => ({ ...prev, job, jobErr: '' }))
-    } catch (e) {
-      const msg = netError(e)
-      setGen(prev => ({ ...prev, jobErr: msg }))
-      toast(msg, 'err')
-    }
-  }
+  // 现场生成的会话逻辑（caps/方案/作业/轮询）由公共组件 HexGenPanel 内部持有；
+  // 这里只保留推荐方案引用，供创建前的一致性校验使用
+  const [genPlan, setGenPlan] = useState<GisPlan | null>(null)
 
   const types: UnitTypeDef[] = useMemo(
     () => {
@@ -373,7 +272,7 @@ export default function Wizard() {
     ov.hexgrid = st.gis.hexPkg
     // 一致性校验：已生成包的格距必须与当前选择的方案一致，否则副本仍按旧格距生成
     if (st.gis.mode === 'generate') {
-      const wantKm = num(st.gis.cell_km) ?? (gen.plan?.recommended.cell_km ?? null)
+      const wantKm = num(st.gis.cell_km) ?? (genPlan?.recommended.cell_km ?? null)
       const gotKm = num(st.gis.pkgCellKm)
       if (wantKm !== null && gotKm !== null && Math.abs(wantKm - gotKm) > 1e-6) {
         return { __invalid: `已生成的数据包是 ${gotKm} km 格距，与当前选择的 ${wantKm} km 不一致：请回到「战场环境」重新点「生成六角格网格」` }
@@ -550,7 +449,7 @@ export default function Wizard() {
             </div>
           )}
 
-          {step === 1 && <Step2Environment state={state} updateState={u} gen={gen} onStart={startGen} />}
+          {step === 1 && <Step2Environment state={state} updateState={u} onPlanChange={setGenPlan} />}
           {step === 2 && <Step3Weather state={state} updateState={u} weatherList={weatherList} />}
           {step === 3 && (
             <Step4OOB

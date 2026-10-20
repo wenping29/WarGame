@@ -15,8 +15,13 @@ namespace HexFront.Api.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly AppDbService _db;
+    private readonly RoomService _rooms;
 
-    public AdminController(AppDbService db) => _db = db;
+    public AdminController(AppDbService db, RoomService rooms)
+    {
+        _db = db;
+        _rooms = rooms;
+    }
 
     /// <summary>守卫通过后由 SuperAdminAttribute 放入的当前用户。</summary>
     private Dictionary<string, object?> CurrentUser =>
@@ -268,6 +273,73 @@ public class AdminController : ControllerBase
         var doc = _db.GetScenarioDoc(id);
         if (doc == null) return NotFound(new { error = "未找到该剧本文档（可能尚未同步）" });
         return Content(doc, "application/json");
+    }
+
+    // ==================== 副本单位位置编辑（副本管理页） ====================
+
+    /// <summary>
+    /// GET /api/admin/save_units/{instance} — 副本载入基准（最新快照，无快照回退开局 init）中的双方单位及当前位置。
+    /// 位置编辑以此为基准，保证改完「载入并导调」必然生效。
+    /// </summary>
+    [HttpGet("api/admin/save_units/{instance}")]
+    public IActionResult SaveUnits(string instance)
+    {
+        var r = _db.GetSaveUnits(instance);
+        if (r == null) return NotFound(new { error = "未找到该副本的存档内容" });
+        var (baseKind, baseTurn, width, height, units) = r.Value;
+        return Ok(new
+        {
+            instance,
+            base_kind = baseKind,
+            base_turn = baseTurn,
+            width,
+            height,
+            units,
+        });
+    }
+
+    public sealed record SaveUnitPosBodyItem(
+        [property: System.Text.Json.Serialization.JsonPropertyName("unit")] string Unit,
+        [property: System.Text.Json.Serialization.JsonPropertyName("q")] int Q,
+        [property: System.Text.Json.Serialization.JsonPropertyName("r")] int R);
+
+    public sealed record SaveUnitPosBody(List<SaveUnitPosBodyItem>? positions);
+
+    /// <summary>
+    /// PUT /api/admin/save_units/{instance} — 修改双方单位的地图位置（body: {positions:[{unit,q,r}]}）。
+    /// 落点必须在有效格内；改动写回 save_docs 真源，下次载入生效；副本正被活跃房间使用时拒绝（409）。
+    /// </summary>
+    [HttpPut("api/admin/save_units/{instance}")]
+    public IActionResult SaveUnitsUpdate(string instance, SaveUnitPosBody body)
+    {
+        var positions = body.positions ?? new List<SaveUnitPosBodyItem>();
+        if (positions.Count == 0) return BadRequest(new { error = "缺少 positions" });
+
+        var code = _rooms.FindRoomByInstance(instance);
+        if (code != null)
+            return StatusCode(409, new { error = $"副本正被活跃房间 {code} 使用，请先让所有终端退出后再修改位置" });
+
+        AppDbService.SaveUnitsEditResult? r;
+        try
+        {
+            r = _db.UpdateSaveUnitPositions(instance,
+                positions.Select(p => new AppDbService.SaveUnitEdit(p.Unit, p.Q, p.R)));
+        }
+        catch (InvalidDataException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        if (r == null) return NotFound(new { error = "未找到该副本的存档内容" });
+
+        return Ok(new
+        {
+            instance,
+            base_kind = r.BaseKind,
+            base_turn = r.BaseTurn,
+            updated = r.Updated,
+            unknown = r.Unknown,
+            invalid = r.Invalid,
+        });
     }
 
     private static int Clamp(int v) => Math.Clamp(v, 1, 1000);
