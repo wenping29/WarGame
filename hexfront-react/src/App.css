@@ -62,8 +62,8 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 /* Home page */
 .page{padding:18px; height:100%; overflow:auto}
 
-/* ===== 六角格管理 ===== */
-.gridmgr{display:grid; grid-template-columns:250px minmax(0,1fr) 290px; gap:12px; padding:12px; height:calc(100vh - 52px); overflow:hidden}
+/* ===== 六角格管理（只读浏览：列表 + canvas 展示） ===== */
+.gridmgr{display:grid; grid-template-columns:300px minmax(0,1fr); gap:12px; padding:12px; height:calc(100vh - 52px); overflow:hidden}
 .gm-col{display:flex; flex-direction:column; gap:10px; min-height:0; overflow:auto}
 .gm-canvas-col{display:flex; flex-direction:column; gap:0; position:relative; min-height:0}
 .gm-canvas-wrap{flex:1; min-height:0; position:relative; background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden}
@@ -95,16 +95,6 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .gm-sec[open] summary::after{content:'▾'}
 .gm-sec[open] summary{margin-bottom:2px}
 .gm-sec-head{display:flex; align-items:flex-start; gap:8px; justify-content:space-between}
-/* 框选地图范围弹窗 */
-.gm-frame-modal{width:min(900px,94vw); background:var(--panel); border:1px solid var(--line);
-  border-radius:8px; padding:12px 14px; display:flex; flex-direction:column; gap:10px}
-.gm-frame-head{display:flex; align-items:center; gap:12px}
-.gm-frame-head b{font-size:14px}
-.gm-frame-head .btn{margin-left:auto}
-.gm-frame-map{height:min(56vh,540px); position:relative; border:1px solid var(--line);
-  border-radius:6px; overflow:hidden}
-.gm-frame-foot{display:flex; align-items:center; gap:8px}
-.gm-frame-foot span{flex:1; min-width:0}
 .home-page{padding:12vh 18px 18px; display:flex; flex-direction:column; align-items:center; gap:18px}
 .home-hero{max-width:760px; text-align:center}
 .home-hero h2{margin:0 0 8px; font-size:20px; letter-spacing:1px}
