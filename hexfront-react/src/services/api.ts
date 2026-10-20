@@ -174,7 +174,7 @@ export interface CreateInstanceBody {
   seed?: number
   ai_red?: boolean
   ai_blue?: boolean
-  /** 数据包选择走 overrides.gis_package，与其他覆盖同一入口 */
+  /** 战场六角格走 overrides.hexgrid（服务器网络包 id），与其他覆盖同一入口 */
   overrides?: Record<string, unknown>
   force?: boolean
 }
@@ -262,6 +262,8 @@ export interface GisJob {
     errors?: string[]
   }
   created_at?: string
+  /** 生成完成后自动存储到的服务器网络包 id（overrides.hexgrid 用它）；发布失败为 null */
+  hexgrid_id?: string | null
 }
 
 export interface GisJobSpec {

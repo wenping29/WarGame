@@ -26,6 +26,9 @@ public sealed class HexGridDoc
     public List<string> Holes { get; set; } = new();
     /// <summary>格键 → 地形 id 覆盖。</summary>
     public Dictionary<string, string> Terrains { get; set; } = new();
+    /// <summary>格级完整数据（GIS 生成包发布到服务器时写入；键 "col,row"）。
+    /// 存在时 Build 逐格采用 elev/slope/道路水系地物等全部数据；缺省时只按 Terrains/DefaultTerrain 落地形。</summary>
+    public Dictionary<string, HexCell>? Cells { get; set; }
     public string CreatedAt { get; set; } = "";
     public string UpdatedAt { get; set; } = "";
     /// <summary>来源：scenmgr（剧本管理页）/ gridmgr（六角格管理页）/ api。</summary>

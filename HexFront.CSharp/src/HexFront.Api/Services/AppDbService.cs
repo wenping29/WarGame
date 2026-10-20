@@ -248,10 +248,33 @@ public sealed class AppDbService : IDisposable
                 created_at TEXT NOT NULL
             )
             """);
+        // 地图包目录：id 与剧本的地图 id（JSON hexgrid / scenarios.map_id）对应；
+        // path 为包存储路径（data/hexgrids/<id>.zip），rows/cols 行列数，flat_to_flat 对边距（米）
+        Exec("""
+            CREATE TABLE IF NOT EXISTS map_packages (
+                id TEXT PRIMARY KEY,
+                path TEXT,
+                rows INTEGER,
+                cols INTEGER,
+                flat_to_flat REAL,
+                updated_at TEXT,
+                synced_at TEXT NOT NULL
+            )
+            """);
+        // 列迁移：scenarios.map_id（剧本绑定的地图 id，取自剧本 JSON 的 hexgrid 字段）
+        if (!HasColumn("scenarios", "map_id"))
+            Exec("ALTER TABLE scenarios ADD COLUMN map_id TEXT");
     }
 
-    /// <summary>启动初始化：种子数据 → 历史库迁移 → 剧本目录/内容同步 → 推演存档内容同步。幂等可重复调用。</summary>
-    public void Initialize(string? scenarioDir = null, string? saveDir = null)
+    /// <summary>幂等检查某表是否已有某列（表不存在返回 false）。</summary>
+    private bool HasColumn(string table, string column)
+    {
+        var row = QueryRow($"SELECT COUNT(*) AS n FROM pragma_table_info('{Esc(table)}') WHERE name='{Esc(column)}'");
+        return row != null && Convert.ToInt64(row["n"]) > 0;
+    }
+
+    /// <summary>启动初始化：种子数据 → 历史库迁移 → 剧本目录/内容同步 → 地图包目录同步 → 推演存档内容同步。幂等可重复调用。</summary>
+    public void Initialize(string? scenarioDir = null, string? saveDir = null, string? hexgridDir = null)
     {
         SeedDefaults();
         MigrateOpsLog();
@@ -261,8 +284,78 @@ public sealed class AppDbService : IDisposable
             SyncScenarios(scenarioDir);
             SyncScenarioDocs(scenarioDir);
         }
+        BackfillScenarioMapIds();
+        if (hexgridDir != null) SyncMapPackages(hexgridDir);
         if (saveDir != null) SyncSaveDocs(saveDir);
     }
+
+    /// <summary>从 scenario_docs（真源）提取剧本 JSON 的 hexgrid 回填 scenarios.map_id，覆盖仅存库内、磁盘已缺的剧本。</summary>
+    private void BackfillScenarioMapIds()
+    {
+        var n = 0;
+        foreach (var r in QueryList("SELECT id, doc_json FROM scenario_docs"))
+        {
+            try
+            {
+                string? mapId = null;
+                using (var doc = JsonDocument.Parse((string)r["doc_json"]!))
+                    if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                        doc.RootElement.TryGetProperty("hexgrid", out var hg) &&
+                        hg.ValueKind == JsonValueKind.String)
+                        mapId = hg.GetString();
+                ExecCmd("UPDATE scenarios SET map_id=$m WHERE id=$id", ("$m", mapId), ("$id", (string)r["id"]!));
+                n++;
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "剧本 map_id 回填失败: {Id}", r["id"]); }
+        }
+        _logger.LogInformation("剧本地图列回填完成: {N} 条", n);
+    }
+
+    // ==================== 地图包目录 ====================
+    // id 与剧本的地图 id（JSON hexgrid / scenarios.map_id）对应，记录包路径、行列数、对边距；
+    // 真源是 data/hexgrids/<id>.zip，本表是可查询的目录镜像（启动同步 + 增删时维护）。
+
+    /// <summary>启动同步：扫描包目录 zip 入库；目录里已消失的包同步删行。返回条数。</summary>
+    public int SyncMapPackages(string hexgridDir)
+    {
+        var n = 0;
+        try
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var doc in HexGridPackageService.ListAll(hexgridDir))
+            {
+                UpsertMapPackage(doc.Id, Path.Combine(hexgridDir, doc.Id + ".zip"),
+                    doc.Rows, doc.Cols, doc.FlatToFlat);
+                seen.Add(doc.Id);
+                n++;
+            }
+            // 目录已删但表里残留的行一并清理
+            foreach (var r in QueryList("SELECT id FROM map_packages"))
+                if (r["id"] is string id && !seen.Contains(id))
+                    DeleteMapPackage(id);
+            _logger.LogInformation("地图包目录同步完成: {N} 个", n);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "地图包目录不可读: {Dir}", hexgridDir); }
+        return n;
+    }
+
+    /// <summary>单条地图包 upsert（幂等）。</summary>
+    public void UpsertMapPackage(string id, string? path, int rows, int cols, double flatToFlat) =>
+        ExecCmd("INSERT OR REPLACE INTO map_packages(id,path,rows,cols,flat_to_flat,updated_at,synced_at) VALUES($id,$p,$r,$c,$f,$u,$s)",
+            ("$id", id), ("$p", path), ("$r", rows), ("$c", cols), ("$f", flatToFlat),
+            ("$u", DateTime.UtcNow.ToString("o")), ("$s", Now()));
+
+    /// <summary>按地图 id 取地图包目录行；null 表示未登记。</summary>
+    public Dictionary<string, object?>? GetMapPackage(string id) =>
+        QueryRow("SELECT * FROM map_packages WHERE id=$id", ("$id", id));
+
+    /// <summary>全部地图包目录行。</summary>
+    public List<Dictionary<string, object?>> ListMapPackages() =>
+        QueryList("SELECT * FROM map_packages ORDER BY id");
+
+    /// <summary>删除地图包目录行。</summary>
+    public bool DeleteMapPackage(string id) =>
+        ExecCmd("DELETE FROM map_packages WHERE id=$id", ("$id", id)) > 0;
 
     // ==================== 种子数据 ====================
 
@@ -596,13 +689,14 @@ public sealed class AppDbService : IDisposable
                     foreach (var u in oob.EnumerateArray())
                         unitCount += u.TryGetProperty("qty", out var q) && q.ValueKind == JsonValueKind.Number ? q.GetInt32() : 1;
         var id = S("id") is { Length: > 0 } sid ? sid : fallbackId;
-        ExecCmd("INSERT OR REPLACE INTO scenarios(id,name,era,scale,max_turns,cell_km,unit_count,red_name,blue_name,description,file,updated_at,synced_at) " +
-                "VALUES($id,$nm,$er,$sc,$mt,$ck,$uc,$rn,$bn,$de,$f,$up,$sy)",
+        var mapId = d.TryGetProperty("hexgrid", out var hg) && hg.ValueKind == JsonValueKind.String ? hg.GetString() : null;
+        ExecCmd("INSERT OR REPLACE INTO scenarios(id,name,era,scale,max_turns,cell_km,unit_count,red_name,blue_name,description,map_id,file,updated_at,synced_at) " +
+                "VALUES($id,$nm,$er,$sc,$mt,$ck,$uc,$rn,$bn,$de,$mi,$f,$up,$sy)",
             ("$id", id),
             ("$nm", S("name")), ("$er", S("era")), ("$sc", S("scale")), ("$mt", I("max_turns")),
             ("$ck", env.ValueKind == JsonValueKind.Object && env.TryGetProperty("cell_km", out var ck) ? ck.GetDouble() : 0),
             ("$uc", unitCount), ("$rn", SideName("red")), ("$bn", SideName("blue")),
-            ("$de", S("description")), ("$f", (object?)file ?? id + ".json"),
+            ("$de", S("description")), ("$mi", mapId), ("$f", (object?)file ?? id + ".json"),
             ("$up", DateTime.UtcNow.ToString("o")), ("$sy", Now()));
         return true;
     }

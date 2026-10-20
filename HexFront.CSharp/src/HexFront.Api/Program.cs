@@ -24,7 +24,7 @@ var app = builder.Build();
 // scenario_feedback.json）→ 剧本目录/内容同步 → 推演存档内容同步。失败不阻断启动。
 var appDb = app.Services.GetRequiredService<AppDbService>();
 var roomSvc = app.Services.GetRequiredService<RoomService>();
-appDb.Initialize(roomSvc.ScenarioDirectory, roomSvc.SaveDirectory);
+appDb.Initialize(roomSvc.ScenarioDirectory, roomSvc.SaveDirectory, roomSvc.HexGridDirectory);
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

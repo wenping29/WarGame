@@ -22,11 +22,13 @@ public class HexGridsController : ControllerBase
 
     private readonly RoomService _rooms;
     private readonly ILogger<HexGridsController> _logger;
+    private readonly AppDbService _db;
 
-    public HexGridsController(RoomService rooms, ILogger<HexGridsController> logger)
+    public HexGridsController(RoomService rooms, ILogger<HexGridsController> logger, AppDbService db)
     {
         _rooms = rooms;
         _logger = logger;
+        _db = db;
     }
 
     private string Dir => _rooms.HexGridDirectory;
@@ -134,6 +136,9 @@ public class HexGridsController : ControllerBase
             return StatusCode(500, new { error = "网格包保存失败: " + ex.Message });
         }
 
+        // 地图包目录表同步登记（id ↔ 剧本 hexgrid / scenarios.map_id）
+        _db.UpsertMapPackage(doc.Id, Path.Combine(Dir, doc.Id + ".zip"), doc.Rows, doc.Cols, doc.FlatToFlat);
+
         _logger.LogInformation("hexgrid {Id} created ({Rows}x{Cols} @ {Ftf}m)", doc.Id, rows, cols, ftf);
         return DocOk(new Dictionary<string, object?>
         {
@@ -164,6 +169,7 @@ public class HexGridsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        _db.DeleteMapPackage(id); // 地图包目录表同步移除
         _logger.LogInformation("hexgrid {Id} deleted", id);
         return Ok(new { id, deleted = true });
     }

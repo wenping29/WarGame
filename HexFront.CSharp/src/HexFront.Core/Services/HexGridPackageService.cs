@@ -151,14 +151,84 @@ public static class HexGridPackageService
             {
                 var key = $"{q},{r}";
                 if (holes.Contains(key)) continue;
-                cells[key] = new Cell
-                {
-                    Terrain = doc.Terrains != null && doc.Terrains.TryGetValue(key, out var t)
-                        ? t : doc.DefaultTerrain,
-                };
+                // 格级完整数据优先（GIS 生成包发布时逐格搬运）；否则退回地形覆盖/默认地形
+                cells[key] = doc.Cells != null && doc.Cells.TryGetValue(key, out var cd)
+                    ? new Cell
+                    {
+                        Terrain = string.IsNullOrEmpty(cd.Terrain) ? doc.DefaultTerrain : cd.Terrain,
+                        Elev = cd.Elev, Slope = cd.Slope,
+                        Road = cd.Road, River = cd.River, Bridge = cd.Bridge, City = cd.City,
+                        Railway = cd.Railway, RailStation = cd.RailStation, Tunnel = cd.Tunnel,
+                        Powerline = cd.Powerline, PowerPlant = cd.PowerPlant,
+                        Substation = cd.Substation, FuelStation = cd.FuelStation, Airport = cd.Airport,
+                    }
+                    : new Cell
+                    {
+                        Terrain = doc.Terrains != null && doc.Terrains.TryGetValue(key, out var t)
+                            ? t : doc.DefaultTerrain,
+                    };
             }
         }
         return (grid, cells);
+    }
+
+    // ==================== GIS 生成包 → 服务器网络包 ====================
+
+    /// <summary>把 GIS 生成包（data/gis/&lt;name&gt;.json，hexgen.py 产物）转换成服务器网络包文档：
+    /// 几何取 meta（Mercator 原点/半径），格数据逐格搬运；范围内没有格数据的坐标记挖除。</summary>
+    public static HexGridDoc FromHexPackage(HexPackage pkg, string name)
+    {
+        var meta = pkg.Meta;
+        var radius = meta.RadiusM;                                 // Mercator 米（与 LoadGisCells 同口径）
+        if (radius <= 0)
+        {
+            var scale = meta.MercatorScale;
+            if (scale <= 0 && meta.CenterLonLat is { Count: >= 2 } c)
+                scale = 1.0 / Math.Cos(Math.Clamp(c[1], -89.0, 89.0) * Math.PI / 180.0);
+            if (scale <= 0) scale = 1.0;
+            radius = (meta.CellGroundM > 0 ? meta.CellGroundM : 5000.0) * scale / Sqrt3;
+        }
+        var ftf = radius * Sqrt3;
+        var ox = meta.MercatorOx != 0 ? meta.MercatorOx : 4500000;
+        var oy = meta.MercatorOy != 0 ? meta.MercatorOy : 3200000;
+
+        var terrains = new Dictionary<string, string>();
+        var cells = new Dictionary<string, HexCell>();
+        var present = new HashSet<string>();
+        foreach (var h in pkg.Hexes)
+        {
+            var key = $"{h.Q},{h.R}";
+            present.Add(key);
+            if (!string.IsNullOrEmpty(h.Terrain) && h.Terrain != "clear") terrains[key] = h.Terrain;
+            // 只存有内容的格（纯平地无地物格交给 DefaultTerrain），控制包体积
+            if (h.Elev != 0 || h.Slope != 0 || h.Road || h.River || h.Bridge || h.City != 0 ||
+                h.Railway || h.RailStation || h.Tunnel || h.Powerline || h.PowerPlant ||
+                h.Substation || h.FuelStation || h.Airport != 0)
+                cells[key] = h;
+        }
+        var holes = new List<string>();
+        for (var r = 0; r < pkg.Height; r++)
+            for (var q = 0; q < pkg.Width; q++)
+                if (!present.Contains($"{q},{r}")) holes.Add($"{q},{r}");
+
+        var now = DateTime.UtcNow.ToString("o");
+        return new HexGridDoc
+        {
+            Id = "hg_" + Guid.NewGuid().ToString("N")[..10],
+            Name = string.IsNullOrWhiteSpace(name) ? (string.IsNullOrEmpty(meta.Name) ? "现场生成网格" : meta.Name) : name.Trim(),
+            Rows = pkg.Height,
+            Cols = pkg.Width,
+            FlatToFlat = ftf,
+            West = MxToLng(ox - Sqrt3 / 2.0 * radius),
+            South = MyToLat(oy - radius),
+            DefaultTerrain = "clear",
+            Holes = holes,
+            Terrains = terrains,
+            Cells = cells.Count > 0 ? cells : null,
+            CreatedAt = now,
+            UpdatedAt = now,
+            Source = "gis",
+        };
     }
 
     // ==================== Web Mercator 换算（与六角格管理页同一套口径） ====================

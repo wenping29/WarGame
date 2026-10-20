@@ -94,6 +94,9 @@ public sealed class GisJob
     /// <summary>生成器回传的作业元信息（ok/fails/warns/layers/terrain_counts…），线上字段名保持 snake_case。</summary>
     public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
 
+    /// <summary>生成完成后自动发布到的服务器网络包 id（data/hexgrids/&lt;id&gt;.zip）；发布失败为 null。</summary>
+    public string? HexGridId { get; set; }
+
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
     public DateTime? StartedAt { get; set; }
     public DateTime? FinishedAt { get; set; }

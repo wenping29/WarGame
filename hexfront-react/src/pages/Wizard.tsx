@@ -2,7 +2,8 @@
  * 创建副本向导：5步流程。核心原则——未编辑字段绝不进入 overrides，
  * 服务端把 overrides deepMerge 到剧本默认；未出现的键即"用默认"。
  * 第 2 步支持现场生成六角格：GET /api/gis/plan 出档位阶梯与服务端推荐，
- * POST /api/gis/jobs 起后台作业并 1.5s 轮询日志，产物按 overrides.gis_package 进入本局。
+ * POST /api/gis/jobs 起后台作业并 1.5s 轮询日志；生成完成时服务端自动把数据包存储为服务器网络包（data/hexgrids/<id>.zip），
+ * 副本统一通过 overrides.hexgrid 引用服务器网络包的六角格。
  */
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
@@ -81,17 +82,14 @@ interface WizardState {
   scenarioId: string
   name: string
   seed: string
-  env: { width: string; height: string; cell_km: string; lon: string; lat: string }
   gis: {
-    /** hexgrid = 绑定服务器六角格网络包（优先级最高） */
-    mode: 'existing' | 'generate' | 'hexgrid'
-    pkg: string
-    /** hexgrid 模式下选中的服务器网络包 id（overrides.hexgrid） */
+    /** hexgrid = 绑定服务器网络包；generate = 现场生成（完成即存储为服务器网络包）。
+     *  副本统一只用服务器网络包六角格：overrides 恒为 overrides.hexgrid，不再发 gis_package。 */
+    mode: 'generate' | 'hexgrid'
+    /** hexgrid 模式下选中的包 id；generate 模式下是作业完成后自动存储的服务器网络包 id（overrides.hexgrid） */
     hexPkg: string
-    /** 已生成数据包的实际格距 km（作业完成时从 meta.cell_km 记录；用于检测"改了方案但没重新生成"） */
+    /** 已生成包的实际格距 km（作业完成时从 meta.cell_km 记录；用于检测"改了方案但没重新生成"） */
     pkgCellKm: string
-    /** generate 模式作业完成后的产物包名：进入 overrides.gis_package */
-    genPkg: string
     bbox: { w: string; s: string; e: string; n: string }
     cell_km: string
     dem: string
@@ -169,17 +167,11 @@ function scenarioToState(s: ScenarioInfo, prev: WizardState): WizardState {
     ...prev,
     scenarioId: s.id || s.file,
     name: s.name || '',
-    env: {
-      width: str(env.width), height: str(env.height),
-      cell_km: str(env.cell_km), lon: fmt(center?.[0]), lat: fmt(center?.[1]),
-    },
     gis: {
       ...prev.gis,
-      mode: s.hexgrid ? 'hexgrid' : 'existing',
+      mode: s.hexgrid ? 'hexgrid' : 'generate',
       hexPkg: s.hexgrid || '',
-      pkg: s.gis_package || '',
       pkgCellKm: '',
-      genPkg: '',
       bbox: center
         ? { w: fmt(center[0] - 0.95), e: fmt(center[0] + 0.95), s: fmt(center[1] - 0.55), n: fmt(center[1] + 0.55) }
         : prev.gis.bbox,
@@ -218,9 +210,8 @@ export default function Wizard() {
     scenarioId: '',
     name: '',
     seed: '',
-    env: { width: '', height: '', cell_km: '', lon: '', lat: '' },
     gis: {
-      mode: 'existing', pkg: '', hexPkg: '', pkgCellKm: '', genPkg: '',
+      mode: 'hexgrid', hexPkg: '', pkgCellKm: '',
       bbox: { w: '', s: '', e: '', n: '' },
       cell_km: '', dem: 'auto', landuse: 'auto',
       roads: true, water: true, network: true, features: true, name: '',
@@ -302,10 +293,15 @@ export default function Wizard() {
       }
       setGen(prev => ({ ...prev, job: j, jobErr: '' }))
       if (j.status === 'done') {
-        // 新包要进 /api/scenarios 的 gis 列表，也要成为本局的 gis_package；格距一并记录供一致性校验
+        // 生成完成时服务端已把数据包存储为服务器网络包（hexgrid_id）；副本直接引用它
         await loadMeta(true).catch(() => {})
-        setState(prev => ({ ...prev, gis: { ...prev.gis, pkg: j.name, genPkg: j.name, pkgCellKm: String(j.meta?.cell_km ?? '') } }))
-        toast(`六角格数据包已生成：${j.name}（${j.meta?.width ?? '?'}×${j.meta?.height ?? '?'} 格）`)
+        if (j.hexgrid_id) {
+          setState(prev => ({ ...prev, gis: { ...prev.gis, hexPkg: j.hexgrid_id!, pkgCellKm: String(j.meta?.cell_km ?? '') } }))
+          toast(`六角格已生成并存储到服务器：${j.hexgrid_id}（${j.meta?.width ?? '?'}×${j.meta?.height ?? '?'} 格）`)
+        } else {
+          setGen(prev => ({ ...prev, jobErr: '存储服务器网络包失败，见作业日志' }))
+          toast('生成完成，但存储服务器网络包失败：见作业日志', 'err')
+        }
       } else if (j.status === 'failed') {
         toast('生成失败：' + (j.error || '见日志'), 'err')
       }
@@ -366,33 +362,23 @@ export default function Wizard() {
   // 与 web wizard 的 buildOverrides 同语义，但接受显式 state（避免 setState 异步下读到旧值）
   function buildOverridesFor(st: WizardState): Record<string, unknown> & { __invalid?: string } {
     const ov: Record<string, unknown> = {}
-    const env: Record<string, unknown> = {}
-    if (st.gis.mode === 'hexgrid') {
-      // 服务器网络包模式：overrides.hexgrid，引擎棋盘优先级最高（> gis_package > environment）
-      if (!st.gis.hexPkg) return { __invalid: '请选择服务器六角格网络包' }
-      ov.hexgrid = st.gis.hexPkg
-    } else {
-      const pkg = st.gis.mode === 'existing' ? st.gis.pkg : st.gis.genPkg
-      if (st.gis.mode === 'generate' && !pkg) {
-        return { __invalid: '战场数据尚未生成：请先在「战场环境」里点「生成六角格网格」并等待完成' }
-      }
-      if (pkg) ov.gis_package = pkg
-      // 一致性校验：已生成数据包的格距必须与当前选择的方案一致，否则副本仍按旧格距生成
-      if (st.gis.mode === 'generate' && pkg) {
-        const wantKm = num(st.gis.cell_km) ?? (gen.plan?.recommended.cell_km ?? null)
-        const gotKm = num(st.gis.pkgCellKm)
-        if (wantKm !== null && gotKm !== null && Math.abs(wantKm - gotKm) > 1e-6) {
-          return { __invalid: `已生成的数据包是 ${gotKm} km 格距，与当前选择的 ${wantKm} km 不一致：请回到「战场环境」重新点「生成六角格网格」` }
-        }
-      }
-      if (!pkg) {
-        if (num(st.env.width) !== null) env.width = num(st.env.width)
-        if (num(st.env.height) !== null) env.height = num(st.env.height)
-        if (num(st.env.cell_km) !== null) env.cell_km = num(st.env.cell_km)
-        if (num(st.env.lon) !== null && num(st.env.lat) !== null) env.center_lonlat = [num(st.env.lon), num(st.env.lat)]
+    // 六角格棋盘恒来自服务器网络包：hexgrid 模式选包；generate 模式作业完成时服务端已自动存储（hexPkg = 发布 id）
+    if (!st.gis.hexPkg) {
+      return {
+        __invalid: st.gis.mode === 'generate'
+          ? '战场数据尚未生成：请先在「战场环境」里点「生成六角格网格」并等待完成'
+          : '请选择服务器六角格网络包',
       }
     }
-    if (Object.keys(env).length) ov.environment = env
+    ov.hexgrid = st.gis.hexPkg
+    // 一致性校验：已生成包的格距必须与当前选择的方案一致，否则副本仍按旧格距生成
+    if (st.gis.mode === 'generate') {
+      const wantKm = num(st.gis.cell_km) ?? (gen.plan?.recommended.cell_km ?? null)
+      const gotKm = num(st.gis.pkgCellKm)
+      if (wantKm !== null && gotKm !== null && Math.abs(wantKm - gotKm) > 1e-6) {
+        return { __invalid: `已生成的数据包是 ${gotKm} km 格距，与当前选择的 ${wantKm} km 不一致：请回到「战场环境」重新点「生成六角格网格」` }
+      }
+    }
     const flags: Record<string, boolean> = {}
     for (const [k] of FLAGS) if (st.flags[k] !== 'default') flags[k] = st.flags[k] === 'on'
     if (Object.keys(flags).length) ov.flags = flags
@@ -474,7 +460,7 @@ export default function Wizard() {
   useEffect(() => {
     if (step >= 1 && state.scenarioId) doValidate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.weather.initial, state.weather.mode, state.weather.schedule, state.clock, state.gis.pkg, state.gis.genPkg, state.flags,
+  }, [state.weather.initial, state.weather.mode, state.weather.schedule, state.clock, state.gis.hexPkg, state.flags,
       state.sides, state.typeRows, state.typeAttrs, state.scenarioId, oobDirty])
 
   return (
@@ -600,13 +586,15 @@ function Step2Environment({ state, updateState, gen, onStart }: {
   state: WizardState; updateState: (u: Partial<WizardState>) => void
   gen: GenSession; onStart: () => void
 }) {
-  const meta = useMeta()
-  const packages = (meta?.gis || []) as Array<{ name: string; cell_km?: number; width?: number; height?: number; cells?: number }>
   const g = state.gis
   const [hgList, setHgList] = useState<HexGridMeta[]>([])
+  const loadHgList = () => api.hexgrids().then(r => setHgList(r.grids || [])).catch(() => {})
+  useEffect(() => { loadHgList() }, [])
+  // 现场生成完成后服务器包清单变化（新包已入库），切回「服务器网络包」模式能看到
   useEffect(() => {
-    api.hexgrids().then(r => setHgList(r.grids || [])).catch(() => {})
-  }, [])
+    if (gen.job?.status === 'done') loadHgList()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gen.job?.status])
 
   return (
     <div>
@@ -615,7 +603,7 @@ function Step2Environment({ state, updateState, gen, onStart }: {
       <div className="gis-box">
         <h3>战场数据与六角格网络</h3>
         <p className="muted small">
-          可绑定服务器网络包、复用已生成的数据包，或按范围现场生成；服务器网络包优先级最高。
+          副本统一使用服务器网络包的六角格：可直接绑定已有包，或按范围现场生成（完成时自动存储为服务器网络包）。
         </p>
 
         <div className="row">
@@ -624,12 +612,6 @@ function Step2Environment({ state, updateState, gen, onStart }: {
             onClick={() => updateState({ gis: { ...g, mode: 'hexgrid' } })}
           >
             服务器网络包
-          </button>
-          <button
-            className={`btn btn-sm${g.mode === 'existing' ? ' btn-1' : ''}`}
-            onClick={() => updateState({ gis: { ...g, mode: 'existing' } })}
-          >
-            使用已有数据包
           </button>
           <button
             className={`btn btn-sm${g.mode === 'generate' ? ' btn-1' : ''}`}
@@ -671,35 +653,6 @@ function Step2Environment({ state, updateState, gen, onStart }: {
               )
             })()}
           </div>
-        ) : g.mode === 'existing' ? (
-          <div style={{ marginTop: '10px' }}>
-            <div className="row">
-              <label>
-                <span>数据包</span>
-                <select value={g.pkg} onChange={e => updateState({ gis: { ...g, pkg: e.target.value } })}>
-                  <option value="">（无：用剧本默认）</option>
-                  {packages.map(p => (
-                    <option key={p.name} value={p.name}>
-                      {p.name} · 对边距 {p.cell_km} km · {p.width}×{p.height} 格
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {g.pkg && (() => {
-              const p = packages.find(x => x.name === g.pkg)
-              return p ? (
-                <div className="card pkg-card" style={{ marginTop: '8px' }}>
-                  <div className="kv">
-                    <span>格网</span><b>{p.width}×{p.height} 格</b>
-                  </div>
-                  <div className="kv">
-                    <span>有效格</span><b>{p.cells ?? '-'}</b>
-                  </div>
-                </div>
-              ) : null
-            })()}
-          </div>
         ) : (
           <GeneratePanel state={state} updateState={updateState} gen={gen} onStart={onStart} />
         )}
@@ -720,31 +673,9 @@ function Step2Environment({ state, updateState, gen, onStart }: {
         ))}
       </div>
 
-      <details style={{ marginTop: '12px' }}>
-        <summary className="muted small">程序化地形参数（仅在没有任何数据包时生效）</summary>
-        <div className="row" style={{ marginTop: '8px' }}>
-          <label><span>宽（格）</span>
-            <input type="number" value={state.env.width} placeholder="继承默认"
-              onChange={e => updateState({ env: { ...state.env, width: e.target.value } })} /></label>
-          <label><span>高（格）</span>
-            <input type="number" value={state.env.height} placeholder="继承默认"
-              onChange={e => updateState({ env: { ...state.env, height: e.target.value } })} /></label>
-          <label><span>对边距（实地 km）</span>
-            <input type="number" step="0.1" value={state.env.cell_km} placeholder="继承默认"
-              onChange={e => updateState({ env: { ...state.env, cell_km: e.target.value } })} /></label>
-        </div>
-        <div className="row">
-          <label><span>中心经度</span>
-            <input type="number" step="0.01" value={state.env.lon} placeholder="如 6.95"
-              onChange={e => updateState({ env: { ...state.env, lon: e.target.value } })} /></label>
-          <label><span>中心纬度</span>
-            <input type="number" step="0.01" value={state.env.lat} placeholder="如 51.42"
-              onChange={e => updateState({ env: { ...state.env, lat: e.target.value } })} /></label>
-        </div>
-      </details>
-
       <p className="muted small">
-        六角格几何（原点、半径、行列数）取自所绑定的服务器网络包；未绑定时取自所选数据包，与在线天地图瓦片同一墨卡托框架；对边距按实地公里计。
+        六角格几何（原点、对边距、行列数）与地形、高程、道路水系等地物全部取自服务器网络包；
+        现场生成完成后自动存储为服务器网络包，创建的副本只引用服务器网络包的 id。
       </p>
     </div>
   )
@@ -765,7 +696,7 @@ function GeneratePanel({ state, updateState, gen, onStart }: {
   const notes = capsNotes(caps, g)
   // 已生成包格距 vs 当前选择：不一致时警告（副本会按旧包格距生成）
   const pkgKm = num(g.pkgCellKm)
-  const kmMismatch = !running && !!g.genPkg && pkgKm !== null && activeKm != null && Math.abs(pkgKm - activeKm) > 1e-6
+  const kmMismatch = !running && !!g.hexPkg && pkgKm !== null && activeKm != null && Math.abs(pkgKm - activeKm) > 1e-6
 
   /* ── 地图选取弹窗：在在线地图上框选范围回填四至 ── */
   const [pickOpen, setPickOpen] = useState(false)
@@ -791,7 +722,7 @@ function GeneratePanel({ state, updateState, gen, onStart }: {
   const onFramePick = (b: BBox) => {
     setGis({
       bbox: { w: b.west.toFixed(4), s: b.south.toFixed(4), e: b.east.toFixed(4), n: b.north.toFixed(4) },
-      genPkg: '',
+      hexPkg: '', pkgCellKm: '',
     })
     setPickOpen(false)
     toast(`已选取范围：西 ${b.west.toFixed(3)} / 南 ${b.south.toFixed(3)} / 东 ${b.east.toFixed(3)} / 北 ${b.north.toFixed(3)}`)
@@ -888,12 +819,13 @@ function GeneratePanel({ state, updateState, gen, onStart }: {
         <button className="btn btn-primary" disabled={!!running || caps?.available === false} onClick={onStart}>
           {running ? '生成中…' : '生成六角格网格'}
         </button>
-        {gen.job?.status === 'done' && (
-          <button className="btn" onClick={() => updateState({ gis: { ...g, mode: 'existing', pkg: gen.job!.name } })}>
-            改用已有数据包列表
-          </button>
-        )}
       </div>
+
+      {gen.job?.status === 'done' && g.hexPkg && (
+        <p className="muted small">
+          已存储为服务器网络包：<b>{g.hexPkg}</b>——创建副本时自动引用，无需再选。
+        </p>
+      )}
 
       <JobCard job={gen.job} err={gen.jobErr} />
 

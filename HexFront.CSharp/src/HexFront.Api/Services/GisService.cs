@@ -35,7 +35,9 @@ public sealed class GisService
     private readonly ILogger<GisService> _logger;
     private readonly string _repoRoot;
     private readonly string _gisDir;
+    private readonly string _hexGridDir;
     private readonly string _scriptPath;
+    private readonly AppDbService _db;
 
     private readonly object _gate = new();
     private readonly Dictionary<string, GisJob> _jobs = new();
@@ -49,11 +51,13 @@ public sealed class GisService
     private Task<JsonObject>? _capsProbe;
     private string? _pythonExe;
 
-    public GisService(ILogger<GisService> logger, RoomService rooms)
+    public GisService(ILogger<GisService> logger, RoomService rooms, AppDbService db)
     {
         _logger = logger;
         // GIS 目录只有一份口径：与建格/存档用的 RoomService.GisDirectory 同源
         _gisDir = rooms.GisDirectory;
+        _hexGridDir = rooms.HexGridDirectory;
+        _db = db;
         _repoRoot = Path.GetDirectoryName(Path.GetDirectoryName(_gisDir)!) ?? Directory.GetCurrentDirectory();
         _scriptPath = Path.Combine(_repoRoot, "tools", "gis", "hexgen.py");
         Directory.CreateDirectory(_gisDir);
@@ -313,8 +317,32 @@ public sealed class GisService
             Log(job, "失败：" + e.Message);
         }
         if (job.Status == GisJobStatus.Done)
+        {
             Log(job, $"完成：data/gis/{job.PkgName}.json（{MetaInt(job, "width")}×{MetaInt(job, "height")} 格）");
+            PublishToHexGrid(job);   // 副本统一只用服务器网络包：生成完成即存储为 data/hexgrids/<id>.zip
+        }
         job.FinishedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>生成完成即发布为服务器网络包（转换 + zip 落盘 + 地图包目录表登记）；失败只记日志不影响数据包本身。</summary>
+    private void PublishToHexGrid(GisJob job)
+    {
+        try
+        {
+            var pkgPath = Path.Combine(_gisDir, job.PkgName + ".json");
+            var pkg = JsonSerializer.Deserialize<HexPackage>(File.ReadAllText(pkgPath), PackageJson);
+            if (pkg == null || pkg.Hexes.Count == 0) throw new InvalidOperationException("数据包无格数据");
+            var doc = HexGridPackageService.FromHexPackage(pkg, job.Spec.Name);
+            HexGridPackageService.Save(_hexGridDir, doc);
+            job.HexGridId = doc.Id;
+            _db.UpsertMapPackage(doc.Id, Path.Combine(_hexGridDir, doc.Id + ".zip"), doc.Rows, doc.Cols, doc.FlatToFlat);
+            Log(job, $"已存储为服务器网络包：{doc.Id}（{doc.Rows}×{doc.Cols} 格 · 对边距 {doc.FlatToFlat:F0} m）");
+        }
+        catch (Exception e)
+        {
+            Log(job, "存储服务器网络包失败（数据包仍在 data/gis，可重新生成）：" + e.Message);
+            _logger.LogWarning(e, "hexgrid publish failed for {Pkg}", job.PkgName);
+        }
     }
 
     private static int MetaInt(GisJob job, string key) =>
@@ -636,6 +664,7 @@ internal static class JobJson
             ["log"] = ArrStr(log),
             ["error"] = job.Error == null ? null : JsonValue.Create(job.Error),
             ["meta"] = job.Meta?.DeepClone(),
+            ["hexgrid_id"] = job.HexGridId == null ? null : JsonValue.Create(job.HexGridId),
             ["created_at"] = JsonValue.Create(job.CreatedAt.ToString("O")),
             ["started_at"] = job.StartedAt == null ? null : JsonValue.Create(job.StartedAt.Value.ToString("O")),
             ["finished_at"] = job.FinishedAt == null ? null : JsonValue.Create(job.FinishedAt.Value.ToString("O")),
