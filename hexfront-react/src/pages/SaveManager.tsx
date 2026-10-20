@@ -22,6 +22,11 @@ const fmtTime = (iso?: string) => {
 const fmtBytes = (n: number) =>
   n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + ' MB' : n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B'
 
+/** 尽量格式化 JSON（turns 是 JSONL/解析失败时原文返回） */
+const pretty = (text: string) => {
+  try { return JSON.stringify(JSON.parse(text), null, 2) } catch { return text }
+}
+
 /** 原文预览上限：init/snapshot 动辄几十 MB，超出只展示片段 */
 const PREVIEW_LIMIT = 64 * 1024
 
@@ -126,10 +131,6 @@ export default function SaveManager() {
     }
   }
 
-  const pretty = (text: string) => {
-    try { return JSON.stringify(JSON.parse(text), null, 2) } catch { return text }
-  }
-
   return (
     <div className="page sv-page">
       <div className="sv-head">
@@ -203,7 +204,7 @@ interface RowProps {
   busy: boolean
   isSuper: boolean
   docsOpen: boolean
-  docs?: SaveDocMeta[] | undefined // undefined=未打开 null=加载中
+  docs?: SaveDocMeta[] | null | undefined // undefined=未打开 null=加载中
   docView: { kind: string; turn: number | null; text: string; truncated: boolean } | null
   onLoad: () => void
   onDelete: () => void

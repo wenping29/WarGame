@@ -948,3 +948,43 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .sv-doc-item:hover{border-color:var(--accent)}
 .sv-doc-item.on{border-color:var(--accent); background:rgba(120,160,255,.08)}
 .sv-doc-view{max-height:360px; overflow:auto; margin:0; padding:10px; border:1px solid var(--line); border-radius:6px; background:rgba(0,0,0,.25); font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-all}
+
+/* ==================== 大厅双栏布局（lb-*） ==================== */
+.lb-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start}
+@media (max-width:960px){.lb-grid{grid-template-columns:1fr}}
+.lb-col{display:flex; flex-direction:column; gap:8px; min-width:0}
+.lb-label{font-size:12px; font-weight:700; color:var(--warn); letter-spacing:.5px}
+.lb-label-row{display:flex; align-items:center; justify-content:space-between}
+.lb-mini{opacity:.75}
+.lb-quick{width:100%; padding:9px 14px; justify-content:center}
+.lb-join{display:flex; gap:8px}
+.lb-join input{flex:1; min-width:0}
+.lb-join select{width:96px}
+.lb-join .btn{flex:0 0 auto; padding:6px 18px}
+.lb-panel{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 10px}
+.lb-empty{color:var(--dim); font-size:13px; padding:14px 6px}
+.lb-scroll{max-height:52vh; overflow:auto}
+.lb-row{display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:7px 4px; border-bottom:1px solid var(--line); font-size:13px}
+.lb-row:last-child{border-bottom:none}
+.lb-row-main{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.lb-dim{color:var(--dim); font-size:12px}
+.lb-desc{display:block; white-space:normal; margin-top:2px}
+.lb-row-ops{display:flex; gap:6px; flex:0 0 auto}
+.lb-del{visibility:hidden}
+.lb-row:hover .lb-del{visibility:visible}
+.lb-del:hover{border-color:var(--danger); color:#f0c9c4}
+.lb-scn{cursor:pointer}
+.lb-scn:hover{background:rgba(255,255,255,.025)}
+.lb-scn:hover .lb-row-main{color:#fff}
+.lb-meta{flex:0 0 auto; color:var(--dim); font-size:12px; text-align:right}
+
+/* ==================== 全局细滚动条（深色主题统一） ==================== */
+/* Firefox */
+*{scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.20) transparent}
+/* Chromium / WebKit */
+::-webkit-scrollbar{width:8px; height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18); border-radius:4px; border:2px solid transparent; background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.34); border:2px solid transparent; background-clip:padding-box}
+::-webkit-scrollbar-corner{background:transparent}

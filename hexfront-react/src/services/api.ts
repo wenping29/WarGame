@@ -138,7 +138,8 @@ export interface HexGridDoc {
 }
 
 export interface RoomInfo {
-  code: string  instance: string
+  code: string
+  instance: string
   name: string
   scenario: string
   scenario_name?: string

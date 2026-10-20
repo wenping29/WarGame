@@ -36,7 +36,6 @@ export default function Lobby() {
   const [rooms, setRooms] = useState<RoomInfo[]>([])
   const [joinCode, setJoinCode] = useState('')
   const [joinRole, setJoinRole] = useState<string>('director')
-  const [nickname, setNickname] = useState('')
 
   useEffect(() => {
     loadMeta()
@@ -131,172 +130,174 @@ export default function Lobby() {
   }
 
   return (
-    <div className="page">
-      <div className="hero">
-        <button className="btn btn-primary" onClick={quickStart}>
-          一键开局（默认剧本）
-        </button>
-        <button className="btn" onClick={() => navigate('/new')}>
-          创建副本向导
-        </button>
-        <span className="muted small">
-          默认剧本 {scenarios[0]?.name || ''} · 免覆盖直接进导演部
-        </span>
-      </div>
+    <div className="page lb-page">
+      <h1 style={{ margin: '0 0 14px', fontSize: 18 }}>大厅</h1>
+      <div className="lb-grid">
+        {/* ============ 左列：开局 / 加入 / 存档 ============ */}
+        <div className="lb-col">
+          <div className="lb-label">一键开局</div>
+          <button
+            className="btn btn-primary lb-quick"
+            title={'默认剧本 ' + (scenarios[0]?.name || '') + ' · 无覆盖直接进导演部'}
+            onClick={quickStart}
+          >
+            默认剧本 · 无覆盖 · 直进导演部
+          </button>
 
-      <div className="join-bar">
-        <label>
-          <span>房间码</span>
-          <input
-            placeholder="房间码（6位）"
-            style={{ width: '140px' }}
-            value={joinCode}
-            onChange={e => setJoinCode(e.target.value)}
-          />
-        </label>
-        <label>
-          <span>角色</span>
-          <select value={joinRole} onChange={e => setJoinRole(e.target.value)}>
-            {ROLES.map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>昵称</span>
-          <input
-            placeholder="昵称（可空）"
-            style={{ width: '130px' }}
-            value={nickname}
-            onChange={e => setNickname(e.target.value)}
-          />
-        </label>
-        <button className="btn btn-1" onClick={() => {
-          if (!joinCode.trim()) return toast('请输入房间码', 'warn')
-          joinRoom(joinCode.trim(), joinRole, nickname)
-        }}>
-          加入
-        </button>
-        <div className="spacer" />
-        <button className="btn btn-sm" onClick={refreshRooms}>刷新列表</button>
-      </div>
+          <div className="lb-label" style={{ marginTop: 14 }}>按房间码加入</div>
+          <div className="lb-join">
+            <input
+              placeholder="房间码"
+              value={joinCode}
+              onChange={e => setJoinCode(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && joinCode.trim()) joinRoom(joinCode.trim(), joinRole, '')
+              }}
+            />
+            <select value={joinRole} onChange={e => setJoinRole(e.target.value)}>
+              {ROLES.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+            <button className="btn" onClick={() => {
+              if (!joinCode.trim()) return toast('请输入房间码', 'warn')
+              joinRoom(joinCode.trim(), joinRole, '')
+            }}>
+              加入
+            </button>
+          </div>
 
-      <section className="card" style={{ marginBottom: '16px' }}>
-        <h3>活跃房间 ({rooms.length})</h3>
-        {rooms.length === 0 ? (
-          <div className="muted small">暂无活跃房间</div>
-        ) : (
-          <div className="grid-3">
-            {rooms.map(room => {
-              const online = ROLES.filter(([value]) => (room.roles?.[value] ?? 0) > 0)
-              const aiOn = ROLES.filter(([value]) =>
-                (value === 'red' || value === 'blue') && room.ai?.[value] === true)
-              return (
-                <div key={room.code} className="card room-card">
-                  <div className="hd">
-                    <b className="code">{room.code}</b>
-                    <span className={'tag' + (room.fog ? '' : ' blue')}>{room.fog ? '迷雾' : '明牌'}</span>
-                    {room.over && (
-                      <span className="tag red">终局 · {sideLabel(room.winner)}</span>
-                    )}
-                    <span className="spacer" />
-                    <span className="mono muted small">{room.turn ?? '?'}/{room.max_turns ?? '?'}</span>
-                  </div>
-                  <div className="name">{room.name}</div>
-                  <div className="sub">
-                    {room.scenario_name || room.scenario} · {room.width}×{room.height} · {WEATHER_LABEL[room.weather ?? ''] ?? (room.weather || '—')}
-                  </div>
-                  <div className="kv">
-                    <span>{online.length ? '在线 ' + online.map(([, l]) => l).join(' · ') : '无人在线'}</span>
-                    <span>
-                      {aiOn.map(([value]) => (
-                        <span key={value} className="tag warn" style={{ marginLeft: 4 }}>
-                          {value === 'red' ? '红' : '蓝'}AI
-                        </span>
-                      ))}
+          <div className="lb-label" style={{ marginTop: 14 }}>存档</div>
+          <div className="lb-panel">
+            {saves.length === 0 ? (
+              <div className="lb-empty">暂无存档</div>
+            ) : (
+              <div className="lb-scroll">
+                {saves.map(s => (
+                  <div key={s.instance} className="lb-row">
+                    <span className="lb-row-main" title={s.scenario_name || s.scenario}>
+                      {s.name || s.instance}{' '}
+                      <span className="lb-dim">t{s.last_turn ?? '?'}</span>
+                    </span>
+                    <span className="lb-row-ops">
+                      <button className="btn btn-sm lb-del" onClick={() => removeSave(s)}>删除</button>
+                      <button className="btn btn-sm" onClick={() => loadSave(s)}>载入</button>
                     </span>
                   </div>
-                  <div className="foot">
-                    {ROLES.map(([value, label]) => {
-                      const taken = (value === 'red' || value === 'blue') && room.side_taken?.[value] === true
-                      return (
-                        <button key={value}
-                          className={'btn btn-sm' + (taken ? ' role-taken' : '')}
-                          title={taken ? '加入将顶掉当前指挥官' : undefined}
-                          onClick={() => joinRoom(room.code, value, '')}>
-                          {taken ? label + '·接管' : label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </section>
-
-      <section className="card" style={{ marginBottom: '16px' }}>
-        <h3>可用剧本</h3>
-        <div className="grid-3">
-          {scenarios.map(scenario => (
-            <div key={scenario.id || scenario.file} className="card scn-card">
-              <div>
-                <b>{scenario.name || scenario.id}</b>
-                <span className="tag" style={{ marginLeft: '8px' }}>{scenario.era || ''}</span>
-              </div>
-              <div className="desc">{scenario.description}</div>
-              <div className="kv">
-                <span>回合 {scenario.max_turns ?? '?'}</span>
-                <span>单位 {scenario.unit_count ?? '?'}</span>
-                <span>{scenario.scale}</span>
-              </div>
-              <div className="foot">
-                <button className="btn btn-sm btn-primary" onClick={() => startScenario(scenario)}>
-                  以此开局
-                </button>
-                <button className="btn btn-sm" onClick={() => navigate('/new')}>
-                  向导创建
-                </button>
-              </div>
-            </div>
-          ))}
         </div>
-      </section>
 
-      <section className="card" style={{ marginBottom: '16px' }}>
-        <h3>已存副本 ({saves.length})</h3>
-        {saves.length === 0 ? (
-          <div className="muted small">暂无存档</div>
-        ) : (
-          <div className="grid-3">
-            {saves.map(s => (
-              <div key={s.instance} className="card save-card">
-                <div className="hd">
-                  <b className="code">{s.instance}</b>
-                  <span className="spacer" />
-                  <span className="tag">回合 {s.last_turn ?? '?'}</span>
-                </div>
-                <div className="name">{s.name}</div>
-                <div className="sub">
-                  {s.scenario_name || s.scenario}
-                  {' · '}{new Date(s.created_at).toLocaleString('zh-CN')}
-                  {s.seed !== undefined ? ` · 种子 ${s.seed}` : ''}
-                  {s.turns_recorded ? ` · 已记 ${s.turns_recorded} 回合` : ''}
-                </div>
-                <div className="foot">
-                  <button className="btn btn-sm btn-primary" onClick={() => loadSave(s)}>
-                    载入并导调
-                  </button>
-                  <button className="btn btn-sm btn-red" onClick={() => removeSave(s)}>
-                    删除
-                  </button>
-                </div>
-              </div>
-            ))}
+        {/* ============ 右列：房间 / 剧本 ============ */}
+        <div className="lb-col">
+          <div className="lb-label lb-label-row">
+            <span>活跃房间</span>
+            <button className="btn btn-sm lb-mini" onClick={refreshRooms}>刷新</button>
           </div>
-        )}
-      </section>
+          <div className="lb-panel">
+            {rooms.length === 0 ? (
+              <div className="lb-empty">暂无活跃房间</div>
+            ) : (
+              <div className="grid-3">
+                {rooms.map(room => {
+                  const online = ROLES.filter(([value]) => (room.roles?.[value] ?? 0) > 0)
+                  const aiOn = ROLES.filter(([value]) =>
+                    (value === 'red' || value === 'blue') && room.ai?.[value] === true)
+                  return (
+                    <div key={room.code} className="card room-card">
+                      <div className="hd">
+                        <b className="code">{room.code}</b>
+                        <span className={'tag' + (room.fog ? '' : ' blue')}>{room.fog ? '迷雾' : '明牌'}</span>
+                        {room.over && (
+                          <span className="tag red">终局 · {sideLabel(room.winner)}</span>
+                        )}
+                        <span className="spacer" />
+                        <span className="mono muted small">{room.turn ?? '?'}/{room.max_turns ?? '?'}</span>
+                      </div>
+                      <div className="name">{room.name}</div>
+                      <div className="sub">
+                        {room.scenario_name || room.scenario} · {room.width}×{room.height} · {WEATHER_LABEL[room.weather ?? ''] ?? (room.weather || '—')}
+                      </div>
+                      <div className="kv">
+                        <span>{online.length ? '在线 ' + online.map(([, l]) => l).join(' · ') : '无人在线'}</span>
+                        <span>
+                          {aiOn.map(([value]) => (
+                            <span key={value} className="tag warn" style={{ marginLeft: 4 }}>
+                              {value === 'red' ? '红' : '蓝'}AI
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                      <div className="foot">
+                        {ROLES.map(([value, label]) => {
+                          const taken = (value === 'red' || value === 'blue') && room.side_taken?.[value] === true
+                          return (
+                            <button key={value}
+                              className={'btn btn-sm' + (taken ? ' role-taken' : '')}
+                              title={taken ? '加入将顶掉当前指挥官' : undefined}
+                              onClick={() => joinRoom(room.code, value, '')}>
+                              {taken ? label + '·接管' : label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="lb-label lb-label-row" style={{ marginTop: 14 }}>
+            <span>可用剧本</span>
+            <button className="btn btn-sm lb-mini" onClick={() => navigate('/new')}>向导创建</button>
+          </div>
+          <div className="lb-panel">
+            {scenarios.length === 0 ? (
+              <div className="lb-empty">暂无可用剧本</div>
+            ) : (
+              <div>
+                {scenarios.map(scenario => (
+                  <div
+                    key={scenario.id || scenario.file}
+                    className="lb-row lb-scn"
+                    title="点击以此剧本开局"
+                    onClick={() => startScenario(scenario)}
+                  >
+                    <span className="lb-row-main">
+                      {scenario.name || scenario.id}
+                      {scenario.description && (
+                        <span className="lb-dim lb-desc">{scenario.description}</span>
+                      )}
+                    </span>
+                    <span className="lb-meta">{scnMeta(scenario)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
+}
+
+/** 剧本行右侧摘要：二战·西线 24×16格·红11/蓝11·16回合 */
+function scnMeta(s: ScenarioInfo): string {
+  const env = (s.environment || {}) as Record<string, unknown>
+  const w = env.width, h = env.height
+  const sideCount = (side: string) => {
+    const oob = (s.sides as Record<string, unknown> | undefined)?.[side] as { oob?: Array<{ qty?: number }> } | undefined
+    return (oob?.oob || []).reduce((a, u) => a + (u.qty ?? 1), 0)
+  }
+  const parts: string[] = []
+  const head = [s.era, s.scale].filter(Boolean).join('·')
+  if (head) parts.push(head)
+  if (typeof w === 'number' && typeof h === 'number') parts.push(`${w}×${h}格`)
+  const r = sideCount('red'), b = sideCount('blue')
+  if (r || b) parts.push(`红${r || 0}/蓝${b || 0}`)
+  if (s.max_turns) parts.push(`${s.max_turns}回合`)
+  return parts.join('·')
 }
