@@ -147,6 +147,12 @@ export default function ScenManager() {
   }, [])
   useEffect(refreshHexgrids, [refreshHexgrids])
 
+  // 剧本已绑定网格包时，下拉框默认选中当前绑定的包（按 id 匹配，包已删则保持空）
+  useEffect(() => {
+    const cur = doc?.hexgrid
+    if (cur && hgList.some(g => g.id === cur)) setHgPick(String(cur))
+  }, [doc?.hexgrid, hgList])
+
   const hgBind = (id: string) => {
     if (!id) return
     upd(d => { d.hexgrid = id })

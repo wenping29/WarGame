@@ -1,9 +1,9 @@
 {
   "id": "shipai_1943",
-  "name": "石牌保卫战 1943",
-  "era": "抗日战争",
-  "scale": "战役级",
-  "description": "1943年5月，鄂西长江三峡口的石牌要塞。红方凭峡江天险与山地工事死守陪都门户，蓝方沿江西进仰攻要塞。",
+  "name": "\u77F3\u724C\u4FDD\u536B\u6218 1943",
+  "era": "\u6297\u65E5\u6218\u4E89",
+  "scale": "\u6218\u5F79\u7EA7",
+  "description": "1943\u5E745\u6708\uFF0C\u9102\u897F\u957F\u6C5F\u4E09\u5CE1\u53E3\u7684\u77F3\u724C\u8981\u585E\u3002\u7EA2\u65B9\u51ED\u5CE1\u6C5F\u5929\u9669\u4E0E\u5C71\u5730\u5DE5\u4E8B\u6B7B\u5B88\u966A\u90FD\u95E8\u6237\uFF0C\u84DD\u65B9\u6CBF\u6C5F\u897F\u8FDB\u4EF0\u653B\u8981\u585E\u3002",
   "environment": {
     "width": 22,
     "height": 18,
@@ -22,7 +22,9 @@
   },
   "clock": {
     "start_hour": 6,
-    "season": "春"
+    "season": "\u6625",
+    "night_from": 17,
+    "night_to": 7
   },
   "weather": {
     "initial": "clear",
@@ -31,7 +33,7 @@
   "max_turns": 12,
   "sides": {
     "red": {
-      "name": "第十八军 · 石牌守军",
+      "name": "\u7B2C\u5341\u516B\u519B \u00B7 \u77F3\u724C\u5B88\u519B",
       "points_budget": 155,
       "oob": [
         {
@@ -42,7 +44,7 @@
             10
           ],
           "commander": {
-            "name": "胡琏（第11师师长）",
+            "name": "\u80E1\u740F\uFF08\u7B2C11\u5E08\u5E08\u957F\uFF09",
             "quality": 0.82
           },
           "training": 48,
@@ -115,7 +117,10 @@
           "at": [
             8,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -123,7 +128,10 @@
           "at": [
             8,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -131,7 +139,10 @@
           "at": [
             9,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -139,7 +150,10 @@
           "at": [
             8,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -147,7 +161,10 @@
           "at": [
             6,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "aa",
@@ -155,12 +172,15 @@
           "at": [
             9,
             8
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     },
     "blue": {
-      "name": "日军 · 溯江突击集群",
+      "name": "\u65E5\u519B \u00B7 \u6EAF\u6C5F\u7A81\u51FB\u96C6\u7FA4",
       "points_budget": 145,
       "oob": [
         {
@@ -171,7 +191,7 @@
             10
           ],
           "commander": {
-            "name": "澄田赉四郎（第39师团长）",
+            "name": "\u6F84\u7530\u8D49\u56DB\u90CE\uFF08\u7B2C39\u5E08\u56E2\u957F\uFF09",
             "quality": 0.62
           },
           "training": 48,
@@ -239,7 +259,10 @@
           "at": [
             17,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -247,7 +270,10 @@
           "at": [
             18,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -255,7 +281,10 @@
           "at": [
             16,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -263,7 +292,10 @@
           "at": [
             18,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -271,7 +303,10 @@
           "at": [
             19,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     }
@@ -291,5 +326,6 @@
       "amount": 0,
       "turns": 12
     }
-  ]
+  ],
+  "hexgrid": "hg_a9684d278f"
 }

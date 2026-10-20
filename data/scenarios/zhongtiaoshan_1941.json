@@ -1,9 +1,9 @@
 {
   "id": "zhongtiaoshan_1941",
-  "name": "中条山战役 1941",
-  "era": "抗日战争",
-  "scale": "战役级",
-  "description": "1941年5月，晋南中条山根据地的山地防御。红方补给困难、山地分散设防，蓝方以穿插合围与空中侦察协助的钳形攻势突入。",
+  "name": "\u4E2D\u6761\u5C71\u6218\u5F79 1941",
+  "era": "\u6297\u65E5\u6218\u4E89",
+  "scale": "\u6218\u5F79\u7EA7",
+  "description": "1941\u5E745\u6708\uFF0C\u664B\u5357\u4E2D\u6761\u5C71\u6839\u636E\u5730\u7684\u5C71\u5730\u9632\u5FA1\u3002\u7EA2\u65B9\u8865\u7ED9\u56F0\u96BE\u3001\u5C71\u5730\u5206\u6563\u8BBE\u9632\uFF0C\u84DD\u65B9\u4EE5\u7A7F\u63D2\u5408\u56F4\u4E0E\u7A7A\u4E2D\u4FA6\u5BDF\u534F\u52A9\u7684\u94B3\u5F62\u653B\u52BF\u7A81\u5165\u3002",
   "environment": {
     "width": 24,
     "height": 20,
@@ -22,7 +22,9 @@
   },
   "clock": {
     "start_hour": 6,
-    "season": "春"
+    "season": "\u6625",
+    "night_from": 19,
+    "night_to": 7
   },
   "weather": {
     "initial": "clear",
@@ -31,7 +33,7 @@
   "max_turns": 12,
   "sides": {
     "red": {
-      "name": "第一战区 · 中条山守军",
+      "name": "\u7B2C\u4E00\u6218\u533A \u00B7 \u4E2D\u6761\u5C71\u5B88\u519B",
       "points_budget": 155,
       "oob": [
         {
@@ -42,7 +44,7 @@
             10
           ],
           "commander": {
-            "name": "曾万钟（第5集团军总司令）",
+            "name": "\u66FE\u4E07\u949F\uFF08\u7B2C5\u96C6\u56E2\u519B\u603B\u53F8\u4EE4\uFF09",
             "quality": 0.55
           },
           "training": 48,
@@ -127,7 +129,10 @@
           "at": [
             9,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -135,7 +140,10 @@
           "at": [
             8,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -143,7 +151,10 @@
           "at": [
             10,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -151,7 +162,10 @@
           "at": [
             7,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -159,7 +173,10 @@
           "at": [
             1,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "aa",
@@ -167,12 +184,15 @@
           "at": [
             10,
             8
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     },
     "blue": {
-      "name": "日军 · 合围集群",
+      "name": "\u65E5\u519B \u00B7 \u5408\u56F4\u96C6\u7FA4",
       "points_budget": 145,
       "oob": [
         {
@@ -183,7 +203,7 @@
             3
           ],
           "commander": {
-            "name": "多田骏（华北方面军司令官）",
+            "name": "\u591A\u7530\u9A8F\uFF08\u534E\u5317\u65B9\u9762\u519B\u53F8\u4EE4\u5B98\uFF09",
             "quality": 0.78
           },
           "training": 48,
@@ -240,7 +260,10 @@
           "at": [
             12,
             3
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -248,7 +271,10 @@
           "at": [
             13,
             2
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -256,7 +282,10 @@
           "at": [
             12,
             2
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -264,7 +293,10 @@
           "at": [
             13,
             2
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -272,7 +304,10 @@
           "at": [
             14,
             2
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     }
@@ -292,5 +327,6 @@
       "amount": 0,
       "turns": 12
     }
-  ]
+  ],
+  "hexgrid": "hg_569db69b86"
 }

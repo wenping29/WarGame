@@ -1,9 +1,9 @@
 {
   "id": "songhu_1937",
-  "name": "淞沪会战 1937",
-  "era": "抗日战争",
-  "scale": "战役级",
-  "description": "1937年8月至11月，上海及近郊水网地带的大规模会战。红方逐次投入兵力在市街与江南水网间节节抵抗，蓝方凭舰炮与陆海协同正面强推。",
+  "name": "\u6DDE\u6CAA\u4F1A\u6218 1937",
+  "era": "\u6297\u65E5\u6218\u4E89",
+  "scale": "\u6218\u5F79\u7EA7",
+  "description": "1937\u5E748\u6708\u81F311\u6708\uFF0C\u4E0A\u6D77\u53CA\u8FD1\u90CA\u6C34\u7F51\u5730\u5E26\u7684\u5927\u89C4\u6A21\u4F1A\u6218\u3002\u7EA2\u65B9\u9010\u6B21\u6295\u5165\u5175\u529B\u5728\u5E02\u8857\u4E0E\u6C5F\u5357\u6C34\u7F51\u95F4\u8282\u8282\u62B5\u6297\uFF0C\u84DD\u65B9\u51ED\u8230\u70AE\u4E0E\u9646\u6D77\u534F\u540C\u6B63\u9762\u5F3A\u63A8\u3002",
   "environment": {
     "width": 26,
     "height": 20,
@@ -22,7 +22,9 @@
   },
   "clock": {
     "start_hour": 6,
-    "season": "夏"
+    "season": "\u590F",
+    "night_from": 19,
+    "night_to": 7
   },
   "weather": {
     "initial": "overcast",
@@ -31,7 +33,7 @@
   "max_turns": 16,
   "sides": {
     "red": {
-      "name": "中国军队 · 淞沪围攻军",
+      "name": "\u4E2D\u56FD\u519B\u961F \u00B7 \u6DDE\u6CAA\u56F4\u653B\u519B",
       "points_budget": 155,
       "oob": [
         {
@@ -42,7 +44,7 @@
             10
           ],
           "commander": {
-            "name": "张治中（第9集团军总司令）",
+            "name": "\u5F20\u6CBB\u4E2D\uFF08\u7B2C9\u96C6\u56E2\u519B\u603B\u53F8\u4EE4\uFF09",
             "quality": 0.72
           },
           "training": 48,
@@ -79,7 +81,10 @@
           "at": [
             8,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -87,7 +92,10 @@
           "at": [
             7,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -95,7 +103,10 @@
           "at": [
             8,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -103,7 +114,10 @@
           "at": [
             8,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -111,7 +125,10 @@
           "at": [
             1,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "aa",
@@ -119,12 +136,15 @@
           "at": [
             8,
             7
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     },
     "blue": {
-      "name": "日军 · 上海派遣军",
+      "name": "\u65E5\u519B \u00B7 \u4E0A\u6D77\u6D3E\u9063\u519B",
       "points_budget": 145,
       "oob": [
         {
@@ -135,7 +155,7 @@
             10
           ],
           "commander": {
-            "name": "松井石根（上海派遣军司令官）",
+            "name": "\u677E\u4E95\u77F3\u6839\uFF08\u4E0A\u6D77\u6D3E\u9063\u519B\u53F8\u4EE4\u5B98\uFF09",
             "quality": 0.7
           },
           "training": 48,
@@ -192,7 +212,10 @@
           "at": [
             20,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -200,7 +223,10 @@
           "at": [
             21,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -208,7 +234,10 @@
           "at": [
             20,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -216,7 +245,10 @@
           "at": [
             22,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -224,7 +256,10 @@
           "at": [
             23,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     }
@@ -244,5 +279,6 @@
       "amount": 0,
       "turns": 16
     }
-  ]
+  ],
+  "hexgrid": "hg_91ce0c787b"
 }

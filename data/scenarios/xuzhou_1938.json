@@ -1,9 +1,9 @@
 {
   "id": "xuzhou_1938",
-  "name": "徐州会战 1938",
-  "era": "抗日战争",
-  "scale": "战役级",
-  "description": "1938年1月至5月，以徐州为核心的津浦线大会战。红方在鲁南苏北平原多线设防，蓝方南北对进实施大纵深合围。",
+  "name": "\u5F90\u5DDE\u4F1A\u6218 1938",
+  "era": "\u6297\u65E5\u6218\u4E89",
+  "scale": "\u6218\u5F79\u7EA7",
+  "description": "1938\u5E741\u6708\u81F35\u6708\uFF0C\u4EE5\u5F90\u5DDE\u4E3A\u6838\u5FC3\u7684\u6D25\u6D66\u7EBF\u5927\u4F1A\u6218\u3002\u7EA2\u65B9\u5728\u9C81\u5357\u82CF\u5317\u5E73\u539F\u591A\u7EBF\u8BBE\u9632\uFF0C\u84DD\u65B9\u5357\u5317\u5BF9\u8FDB\u5B9E\u65BD\u5927\u7EB5\u6DF1\u5408\u56F4\u3002",
   "environment": {
     "width": 26,
     "height": 20,
@@ -22,7 +22,9 @@
   },
   "clock": {
     "start_hour": 6,
-    "season": "春"
+    "season": "\u6625",
+    "night_from": 19,
+    "night_to": 7
   },
   "weather": {
     "initial": "clear",
@@ -31,7 +33,7 @@
   "max_turns": 16,
   "sides": {
     "red": {
-      "name": "第五战区 · 徐州守军",
+      "name": "\u7B2C\u4E94\u6218\u533A \u00B7 \u5F90\u5DDE\u5B88\u519B",
       "points_budget": 155,
       "oob": [
         {
@@ -42,7 +44,7 @@
             10
           ],
           "commander": {
-            "name": "李宗仁（第五战区司令长官）",
+            "name": "\u674E\u5B97\u4EC1\uFF08\u7B2C\u4E94\u6218\u533A\u53F8\u4EE4\u957F\u5B98\uFF09",
             "quality": 0.85
           },
           "training": 48,
@@ -79,7 +81,10 @@
           "at": [
             9,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -87,7 +92,10 @@
           "at": [
             8,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -95,7 +103,10 @@
           "at": [
             9,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -103,7 +114,10 @@
           "at": [
             8,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -111,7 +125,10 @@
           "at": [
             1,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "aa",
@@ -119,12 +136,15 @@
           "at": [
             9,
             7
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     },
     "blue": {
-      "name": "日军 · 南北对进集群",
+      "name": "\u65E5\u519B \u00B7 \u5357\u5317\u5BF9\u8FDB\u96C6\u7FA4",
       "points_budget": 145,
       "oob": [
         {
@@ -135,7 +155,7 @@
             3
           ],
           "commander": {
-            "name": "寺内寿一（华北方面军司令官）",
+            "name": "\u5BFA\u5185\u5BFF\u4E00\uFF08\u534E\u5317\u65B9\u9762\u519B\u53F8\u4EE4\u5B98\uFF09",
             "quality": 0.75
           },
           "training": 48,
@@ -192,7 +212,10 @@
           "at": [
             13,
             3
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -200,7 +223,10 @@
           "at": [
             12,
             3
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -208,7 +234,10 @@
           "at": [
             13,
             2
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -216,7 +245,10 @@
           "at": [
             14,
             2
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -224,7 +256,10 @@
           "at": [
             15,
             2
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     }
@@ -244,5 +279,6 @@
       "amount": 0,
       "turns": 16
     }
-  ]
+  ],
+  "hexgrid": "hg_00a0d90368"
 }
