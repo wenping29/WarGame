@@ -106,7 +106,7 @@ function UsersTab() {
     <>
       <fieldset className="scm-sec">
         <legend>新建用户</legend>
-        <div className="scm-grid">
+        <div className="adm-form">
           <label className="scm-f">
             <span>用户名</span>
             <input value={nu.username} onChange={(e) => setNu({ ...nu, username: e.target.value })} />
@@ -287,7 +287,7 @@ function RolesTab() {
     <>
       <fieldset className="scm-sec">
         <legend>新建角色</legend>
-        <div className="scm-grid">
+        <div className="adm-form">
           <label className="scm-f">
             <span>code（小写字母/数字/下划线）</span>
             <input value={nr.code} onChange={(e) => setNr({ ...nr, code: e.target.value })} placeholder="observer" />
@@ -466,7 +466,7 @@ function MenusTab() {
     <>
       <fieldset className="scm-sec">
         <legend>新建菜单</legend>
-        <div className="scm-grid">
+        <div className="adm-form">
           <label className="scm-f">
             <span>code</span>
             <input value={nm.code} onChange={(e) => setNm({ ...nm, code: e.target.value })} placeholder="replay" />

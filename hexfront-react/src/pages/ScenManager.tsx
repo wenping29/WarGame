@@ -121,11 +121,11 @@ export default function ScenManager() {
   const [selId, setSelId] = useState('')
   const [file, setFile] = useState('')
   const [doc, setDoc] = useState<Doc | null>(null)
+  const schedN = ((doc?.weather?.schedule || []) as Doc[]).length
   const [dirty, setDirty] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [search, setSearch] = useState('')
-  const [showJson, setShowJson] = useState(false)
   const [jsonText, setJsonText] = useState('')
   const [fbOpen, setFbOpen] = useState(false)
   const [fbAll, setFbAll] = useState<FeedbackEntry[]>([])
@@ -457,8 +457,8 @@ export default function ScenManager() {
             )}
 
             <div className="scm-scroll">
-              <fieldset className="scm-sec">
-                <legend>基本信息</legend>
+              <details className="scm-sec" open>
+                <summary>基本信息</summary>
                 <div className="scm-grid">
                   <Text label="剧本 ID" path="id" />
                   <Text label="名称" path="name" />
@@ -469,10 +469,10 @@ export default function ScenManager() {
                   <Text label="GIS 数据包" path="gis_package" ph="留空 = 程序化地形" />
                   <Area label="描述" path="description" />
                 </div>
-              </fieldset>
+              </details>
 
-              <fieldset className="scm-sec">
-                <legend>战场环境</legend>
+              <details className="scm-sec" open>
+                <summary>战场环境</summary>
                 <div className="scm-grid">
                   <Text label="图宽（列）" path="environment.width" />
                   <Text label="图高（行）" path="environment.height" />
@@ -556,10 +556,10 @@ export default function ScenManager() {
                     {hgBusy ? '生成中…' : '⚙ 生成六角格包并绑定'}
                   </button>
                 </div>
-              </fieldset>
+              </details>
 
-              <fieldset className="scm-sec">
-                <legend>模式与日夜</legend>
+              <details className="scm-sec">
+                <summary>模式与日夜</summary>
                 <div className="scm-flags">
                   {FLAGS.map(([k, t]) => (
                     <label key={k} className="scm-flag">
@@ -576,10 +576,10 @@ export default function ScenManager() {
                   <Text label="夜幕开始（时）" path="clock.night_from" />
                   <Text label="夜幕结束（时）" path="clock.night_to" />
                 </div>
-              </fieldset>
+              </details>
 
-              <fieldset className="scm-sec">
-                <legend>天气</legend>
+              <details className="scm-sec">
+                <summary>天气{schedN > 0 && <span className="cnt">已排 {schedN} 段</span>}</summary>
                 <div className="scm-grid">
                   <Select label="初始天气" path="weather.initial"
                     options={[['', '（默认）'], ['clear', '晴'], ['overcast', '阴'], ['rain', '雨'], ['snow', '雪'], ['storm', '暴风']]}/>
@@ -622,10 +622,10 @@ export default function ScenManager() {
                     d.weather.schedule = [{ from: 1, to: 3, weather: 'rain' }]
                   })}>＋ 添加分段天气计划</button>
                 )}
-              </fieldset>
+              </details>
 
-              <fieldset className="scm-sec">
-                <legend>胜负判定</legend>
+              <details className="scm-sec">
+                <summary>胜负判定{((doc.victory || []) as Doc[]).length > 0 && <span className="cnt">{((doc.victory || []) as Doc[]).length} 条</span>}</summary>
                 <table className="oob-table">
                   <thead><tr><th>阵营</th><th>种类</th><th>目标格（capture）</th><th>回合/数值</th><th></th></tr></thead>
                   <tbody>
@@ -656,33 +656,27 @@ export default function ScenManager() {
                 <button className="btn btn-sm" style={{ marginTop: 6 }} onClick={() => upd(d => {
                   (d.victory ??= []).push({ kind: 'survive', side: 'red', target: null, amount: 0, turns: 12 })
                 })}>＋ 增一条判定</button>
-              </fieldset>
+              </details>
 
-              <fieldset className="scm-sec">
-                <legend>部队编制</legend>
+              <details className="scm-sec">
+                <summary>部队编制</summary>
                 <OobTable side="red" />
                 <OobTable side="blue" />
-              </fieldset>
+              </details>
 
-              <fieldset className="scm-sec">
-                <legend>
-                  JSON 源（高级）
-                  <button className="btn btn-sm" style={{ marginLeft: 10 }}
-                    onClick={() => setShowJson(v => !v)}>{showJson ? '收起' : '展开'}</button>
-                </legend>
-                {showJson && (
-                  <div>
-                    <textarea className="scm-json" rows={16} value={jsonText}
-                      onChange={e => setJsonText(e.target.value)} spellCheck={false} />
-                    <div style={{ marginTop: 6 }}>
-                      <button className="btn btn-sm" onClick={applyJson}>应用源码到编辑器</button>
-                      <span className="muted small" style={{ marginLeft: 8 }}>
-                        改动其余高级字段（rules / unit_type_defs / gis 等）后应用，再点上方「保存」
-                      </span>
-                    </div>
+              <details className="scm-sec">
+                <summary>JSON 源（高级）</summary>
+                <div>
+                  <textarea className="scm-json" rows={16} value={jsonText}
+                    onChange={e => setJsonText(e.target.value)} spellCheck={false} />
+                  <div style={{ marginTop: 6 }}>
+                    <button className="btn btn-sm" onClick={applyJson}>应用源码到编辑器</button>
+                    <span className="muted small" style={{ marginLeft: 8 }}>
+                      改动其余高级字段（rules / unit_type_defs / gis 等）后应用，再点上方「保存」
+                    </span>
                   </div>
-                )}
-              </fieldset>
+                </div>
+              </details>
             </div>
           </>
         )}

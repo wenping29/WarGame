@@ -133,9 +133,9 @@ export default function Lobby() {
     <div className="page lb-page">
       <h1 style={{ margin: '0 0 14px', fontSize: 18 }}>大厅</h1>
       <div className="lb-grid">
-        {/* ============ 左列：开局 / 加入 / 存档 ============ */}
-        <div className="lb-col">
-          <div className="lb-label">一键开局</div>
+        {/* ============ 顶部操作条：一键开局 / 加入（全宽，不参与两栏） ============ */}
+        <div className="lb-top" style={{ gridColumn: '1 / -1' }}>
+          <span className="lb-label">一键开局</span>
           <button
             className="btn btn-primary lb-quick"
             title={'默认剧本 ' + (scenarios[0]?.name || '') + ' · 无覆盖直接进导演部'}
@@ -143,31 +143,32 @@ export default function Lobby() {
           >
             默认剧本 · 无覆盖 · 直进导演部
           </button>
+          <span className="lb-top-sep" />
+          <span className="lb-label">按房间码加入</span>
+          <input
+            placeholder="房间码"
+            value={joinCode}
+            onChange={e => setJoinCode(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && joinCode.trim()) joinRoom(joinCode.trim(), joinRole, '')
+            }}
+          />
+          <select value={joinRole} onChange={e => setJoinRole(e.target.value)}>
+            {ROLES.map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+          <button className="btn" onClick={() => {
+            if (!joinCode.trim()) return toast('请输入房间码', 'warn')
+            joinRoom(joinCode.trim(), joinRole, '')
+          }}>
+            加入
+          </button>
+        </div>
 
-          <div className="lb-label" style={{ marginTop: 14 }}>按房间码加入</div>
-          <div className="lb-join">
-            <input
-              placeholder="房间码"
-              value={joinCode}
-              onChange={e => setJoinCode(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && joinCode.trim()) joinRoom(joinCode.trim(), joinRole, '')
-              }}
-            />
-            <select value={joinRole} onChange={e => setJoinRole(e.target.value)}>
-              {ROLES.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-            <button className="btn" onClick={() => {
-              if (!joinCode.trim()) return toast('请输入房间码', 'warn')
-              joinRoom(joinCode.trim(), joinRole, '')
-            }}>
-              加入
-            </button>
-          </div>
-
-          <div className="lb-label" style={{ marginTop: 14 }}>存档</div>
+        {/* ============ 左列：存档 ============ */}
+        <div className="lb-col">
+          <div className="lb-label">存档</div>
           <div className="lb-panel">
             {saves.length === 0 ? (
               <div className="lb-empty">暂无存档</div>
@@ -193,9 +194,40 @@ export default function Lobby() {
               </div>
             )}
           </div>
+
+          <div className="lb-label lb-label-row" style={{ marginTop: 14 }}>
+            <span>可用剧本</span>
+            <button className="btn btn-sm lb-mini" onClick={() => navigate('/new')}>向导创建</button>
+          </div>
+          <div className="lb-panel">
+            {scenarios.length === 0 ? (
+              <div className="lb-empty">暂无可用剧本</div>
+            ) : (
+              <div className="lb-cards lb-scroll">
+                {scenarios.map(scenario => (
+                  <div
+                    key={scenario.id || scenario.file}
+                    className="lb-card lb-scn"
+                    title="点击以此剧本开局"
+                    onClick={() => startScenario(scenario)}
+                  >
+                    <div className="lb-card-title">
+                      {scenario.name || scenario.id}
+                    </div>
+                    {scenario.description && (
+                      <div className="lb-card-desc lb-dim">{scenario.description}</div>
+                    )}
+                    <div className="lb-card-foot">
+                      <span className="lb-dim">{scnMeta(scenario)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* ============ 右列：房间 / 剧本 ============ */}
+        {/* ============ 右列：房间 ============ */}
         <div className="lb-col">
           <div className="lb-label lb-label-row">
             <span>活跃房间</span>
@@ -251,37 +283,6 @@ export default function Lobby() {
                     </div>
                   )
                 })}
-              </div>
-            )}
-          </div>
-
-          <div className="lb-label lb-label-row" style={{ marginTop: 14 }}>
-            <span>可用剧本</span>
-            <button className="btn btn-sm lb-mini" onClick={() => navigate('/new')}>向导创建</button>
-          </div>
-          <div className="lb-panel">
-            {scenarios.length === 0 ? (
-              <div className="lb-empty">暂无可用剧本</div>
-            ) : (
-              <div className="lb-cards lb-scroll">
-                {scenarios.map(scenario => (
-                  <div
-                    key={scenario.id || scenario.file}
-                    className="lb-card lb-scn"
-                    title="点击以此剧本开局"
-                    onClick={() => startScenario(scenario)}
-                  >
-                    <div className="lb-card-title">
-                      {scenario.name || scenario.id}
-                    </div>
-                    {scenario.description && (
-                      <div className="lb-card-desc lb-dim">{scenario.description}</div>
-                    )}
-                    <div className="lb-card-foot">
-                      <span className="lb-dim">{scnMeta(scenario)}</span>
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
           </div>

@@ -1,8 +1,9 @@
 /**
  * 六角格管理系统：左侧网格列表（删除/修改/点击在地图上显示），
- * 中间在线地图显示六角格网，右侧创建/编辑表单（行列、对边距、区域坐标、名称、
+ * 中间纯 canvas 视图显示六角格网（经纬网格线为底，不加载在线底图，避免卡顿），
+ * 右侧创建/编辑表单（行列、对边距、区域坐标、名称、
  * 框选地图范围、创建按钮）。框选与主地图工具一致，完成后矩形常驻显示在地图上。几何与主地图一致：pointy-top + odd-r，对边距 = √3 · 半径，
- * 几何量以墨卡托米计（与天地图底图同坐标系）。数据持久化 localStorage，支持导入导出 JSON。
+ * 几何量以墨卡托米计。数据持久化 localStorage，支持导入导出 JSON。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -122,6 +123,10 @@ export default function GridManager() {
   const [fit, setFit] = useState<{ bbox: BBox; nonce: number } | null>(null)
   /** 常驻显示在地图上的框选范围矩形（与表单四至对应，手动改字段时清除） */
   const [rangeBox, setRangeBox] = useState<BBox | null>(null)
+  /** 框选弹窗：打开状态 + 弹窗内已框选的范围 + 打开时的初始视角 */
+  const [frameOpen, setFrameOpen] = useState(false)
+  const [picked, setPicked] = useState<BBox | null>(null)
+  const [frameFit, setFrameFit] = useState<{ bbox: BBox; nonce: number } | null>(null)
   /** GIS 分析进行中的阶段提示（null = 空闲） */
   const [gisBusy, setGisBusy] = useState<string | null>(null)
   /* ---------- 服务器六角格网络包（剧本管理页生成的 zip 包） ---------- */
@@ -333,6 +338,24 @@ export default function GridManager() {
     toast(`已框选范围：${R} 行 × ${C} 列`)
   }
 
+  /* ---------- 框选弹窗 ---------- */
+  const openFrameModal = () => {
+    // 初始视角：当前表单对应范围（无效时给默认区域）
+    const b = geom
+      ? deriveBBox(geom.west, geom.south, geom.rows, geom.cols, geom.ftf)
+      : { west: 106.5, south: 32.5, east: 107.5, north: 33.5 }
+    setFrameFit({ bbox: b, nonce: Date.now() })
+    setPicked(null)
+    setFrameOpen(true)
+  }
+
+  /** 弹窗内拖出的矩形 → 记录，确认时走与主地图一致的 onFrame 逻辑 */
+  const applyPicked = () => {
+    if (!picked) return
+    onFrame(picked)
+    setFrameOpen(false)
+  }
+
   const onCellClick = (k: string | null) => {
     if (!k) return
     if (srvView) setSrvView(null) // 退出服务器包查看态，落到本地网格编辑
@@ -447,7 +470,6 @@ export default function GridManager() {
     ['paint', '涂刷'],
     ['dig', '挖格'],
     ['fill', '补格'],
-    ['frame', '框选范围'],
   ]
   const side = geom ? geom.ftf / SQRT3 : 0
   const area = geom ? ((3 * SQRT3) / 2) * side * side : 0
@@ -482,23 +504,19 @@ export default function GridManager() {
             ))}
           </div>
         </div>
-        <div className="panel">
-          <div className="panel-header">
-            <h3>导入 / 导出</h3>
-          </div>
+        <details className="gm-sec">
+          <summary>导入 / 导出</summary>
           <div className="gm-row2">
             <button className="btn" onClick={exportDoc}>导出当前</button>
             <button className="btn" onClick={() => fileRef.current?.click()}>导入 JSON</button>
           </div>
           <input ref={fileRef} type="file" accept=".json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importDoc(f); e.target.value = '' }} />
-        </div>
-        <div className="panel">
-          <div className="panel-header">
-            <h3>服务器网格包（{srvList.length}）</h3>
+        </details>
+        <details className="gm-sec">
+          <summary>服务器网格包（{srvList.length}）</summary>
+          <div className="gm-sec-head">
+            <span className="muted small">剧本管理页「战场环境」生成的六角格网络（zip 存服务器，剧本只引用 id）</span>
             <button className="btn btn-sm" title="刷新" onClick={refreshSrv}>↻</button>
-          </div>
-          <div className="muted small" style={{ marginBottom: 6 }}>
-            剧本管理页「战场环境」生成的六角格网络（zip 存服务器，剧本只引用 id）
           </div>
           <div className="gm-list">
             {srvList.length === 0 && <div className="muted small">暂无服务器网格包</div>}
@@ -523,17 +541,15 @@ export default function GridManager() {
               </div>
             ))}
           </div>
-        </div>
+        </details>
         {active && (
-          <div className="panel">
-            <div className="panel-header">
-              <h3>统计</h3>
-            </div>
+          <details className="gm-sec">
+            <summary>统计</summary>
             <div className="kv"><span>网格规格</span><span>{active.rows} 行 × {active.cols} 列</span></div>
             <div className="kv"><span>有效格数</span><span>{active.rows * active.cols - active.holes.length}</span></div>
             <div className="kv"><span>已挖格数</span><span>{active.holes.length}</span></div>
             <div className="kv"><span>涂装格数</span><span>{Object.keys(active.terrains).length}</span></div>
-          </div>
+          </details>
         )}
       </div>
 
@@ -554,13 +570,12 @@ export default function GridManager() {
             </span>
           )}
           <span className="muted small gm-modehint">
-            {mode === 'frame' && '在地图上拖拽矩形框选范围（松开后矩形保持显示）'}
-            {mode === 'pan' && '拖动地图 · 滚轮缩放'}
+            {mode === 'pan' && '拖动地图 · 滚轮缩放 · 框选范围请用右侧「框选地图范围」'}
             {(mode === 'paint' || mode === 'dig' || mode === 'fill') && '点击/拖动格子进行编辑'}
           </span>
         </div>
         <div className="gm-canvas-wrap">
-          <GeoMapView mode={mode} overlay={srvView ?? overlay} onFrame={onFrame} onPick={onPick} onCellClick={onCellClick} fit={fit} range={rangeBox} gis={active?.gis ?? null} />
+          <GeoMapView mode={mode} overlay={srvView ?? overlay} onFrame={onFrame} onPick={onPick} onCellClick={onCellClick} fit={fit} range={rangeBox} gis={active?.gis ?? null} canvasOnly />
         </div>
       </div>
 
@@ -586,8 +601,8 @@ export default function GridManager() {
           </label>
           <div className="gm-coordhead">
             <span>区域坐标（度）</span>
-            <button className={`btn btn-sm${mode === 'frame' ? ' btn-primary' : ''}`} title="在地图上拖拽框选范围，矩形常驻显示并自动生成网格" onClick={() => setMode(mode === 'frame' ? 'pan' : 'frame')}>
-              {mode === 'frame' ? '框选中…在地图拖拽' : '🔲 框选地图范围'}
+            <button className="btn btn-sm" title="打开弹框，在弹框地图上拖拽框选范围" onClick={openFrameModal}>
+              🔲 框选地图范围
             </button>
           </div>
           <div className="gm-row2">
@@ -617,25 +632,56 @@ export default function GridManager() {
             )}
           </div>
           <button className="btn btn-primary" onClick={saveFromDraft} disabled={!!gisBusy}>{editingId ? '保存修改' : '创建网格'}</button>
-          {gisBusy ? (
+          {gisBusy && (
             <div className="muted small gm-geom">⏳ GIS 分析中：{gisBusy}</div>
-          ) : active?.gis ? (
-            <div className="muted small gm-geom">
-              GIS：道路 {Object.keys(active.gis.roads).length} 格 · 铁路 {active.gis.rails.length} 格 · 河流 {active.gis.rivers.length} 格 · 自动地形 {Object.keys(active.gis.terrains).length} 格
-              {active.gis.pkg?.terrainCounts && (
-                <><br />地形分布：{Object.entries(active.gis.pkg.terrainCounts).map(([k, v]) => `${k} ${v}`).join(' · ')}</>
+          )}
+          {!gisBusy && active?.gis && (
+            <details className="gm-sec">
+              <summary>GIS 数据</summary>
+              <div className="muted small gm-geom">
+                道路 {Object.keys(active.gis.roads).length} 格 · 铁路 {active.gis.rails.length} 格 · 河流 {active.gis.rivers.length} 格 · 自动地形 {Object.keys(active.gis.terrains).length} 格
+                {active.gis.pkg?.terrainCounts && (
+                  <><br />地形分布：{Object.entries(active.gis.pkg.terrainCounts).map(([k, v]) => `${k} ${v}`).join(' · ')}</>
+                )}
+                <br />数据包 {active.gisPkg ?? active.gis.pkg?.name}（{new Date(active.gis.at).toLocaleString()}）
+              </div>
+              {geom && (
+                <button className="btn" onClick={() => void runGis(active.id, draft.name || active.name, geom.rows, geom.cols, geom.ftf, bb!, active.holes, active.terrains)}>重新分析 GIS 数据</button>
               )}
-              <br />数据包 {active.gisPkg ?? active.gis.pkg?.name}（{new Date(active.gis.at).toLocaleString()}）
-            </div>
-          ) : null}
-          {!gisBusy && active?.gis && geom && (
-            <button className="btn" onClick={() => void runGis(active.id, draft.name || active.name, geom.rows, geom.cols, geom.ftf, bb!, active.holes, active.terrains)}>重新分析 GIS 数据</button>
+            </details>
           )}
           {editingId && (
             <button className="btn" onClick={() => { setEditingId(null); setDraft(DEFAULT_DRAFT); setRangeBox(null); toast('已切换为新建模式') }}>新建（清空表单）</button>
           )}
         </div>
       </div>
+
+      {/* 框选地图范围弹窗：弹框内拖拽矩形框选，确认后写入表单 */}
+      {frameOpen && (
+        <div className="scm-modal-mask" onClick={() => setFrameOpen(false)}>
+          <div className="gm-frame-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="gm-frame-head">
+              <b>框选地图范围</b>
+              <span className="muted small">在地图上按住拖拽矩形，松开后矩形保持显示，可反复框选</span>
+              <button className="btn btn-sm" title="关闭" onClick={() => setFrameOpen(false)}>×</button>
+            </div>
+            <div className="gm-frame-map">
+              <GeoMapView mode="frame" overlay={srvView ?? overlay} onFrame={setPicked} fit={frameFit} range={picked} canvasOnly />
+            </div>
+            <div className="gm-frame-foot">
+              <span className="muted small">
+                {picked
+                  ? (geom
+                    ? `已选 ${picked.west.toFixed(4)}°E, ${picked.south.toFixed(4)}°N → ${picked.east.toFixed(4)}°E, ${picked.north.toFixed(4)}°N · 约 ${clamp(Math.ceil((lngToMx(picked.east) - lngToMx(picked.west)) / (SQRT3 * (geom.ftf / SQRT3))), 1, 200)} 列 × ${clamp(Math.ceil((latToMy(picked.north) - latToMy(picked.south)) / (1.5 * (geom.ftf / SQRT3))), 1, 200)} 行`
+                    : '已选范围（先填写有效对边距才能换算行列）')
+                  : '尚未框选：在上方地图拖拽矩形'}
+              </span>
+              <button className="btn btn-sm" onClick={() => setFrameOpen(false)}>取消</button>
+              <button className="btn btn-sm primary" disabled={!picked || !geom} onClick={applyPicked}>确认使用该范围</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

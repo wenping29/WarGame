@@ -35,6 +35,7 @@ export default function DirectorView() {
   const [inject, setInject] = useState<{ side: string; unit: string }>({ side: 'red', unit: '' })
   const [newWeather, setNewWeather] = useState('')
   const [jumpTurn, setJumpTurn] = useState(1)
+  const [sideFilter, setSideFilter] = useState<'all' | 'red' | 'blue'>('all')
 
   const units = view?.units ?? []
   const cfMax = Math.max(0.001, ...units.map(u => cfIndex(u, typeMap)))
@@ -61,29 +62,47 @@ export default function DirectorView() {
   const rowsFor = (side: string) =>
     units.filter(u => u.side === side).sort((a, b) => cfIndex(b, typeMap) - cfIndex(a, typeMap))
 
+  const nRed = units.filter(u => u.side === 'red').length
+  const nBlue = units.filter(u => u.side === 'blue').length
+  const shownRed = sideFilter !== 'blue' ? rowsFor('red') : []
+  const shownBlue = sideFilter !== 'red' ? rowsFor('blue') : []
+
   return (
-    <div className="terminal" style={{ gridTemplateColumns: 'minmax(280px,340px) minmax(420px,1fr) minmax(260px,320px)' }}>
+    <div className="terminal" style={{ gridTemplateColumns: 'minmax(280px,340px) minmax(420px,1fr) minmax(300px,370px)' }}>
       {/* Left column: Global forces */}
       <div className="col">
         <div className="panel grow">
           <h3>全局兵力</h3>
           <div className="scroll">
             <div className="mini">
-              <b className="nred">红 {units.filter(u => u.side === 'red').length}</b> ·{' '}
-              <b className="nblue">蓝 {units.filter(u => u.side === 'blue').length}</b> · 合计 {units.length}
+              <b className="nred">红 {nRed}</b> ·{' '}
+              <b className="nblue">蓝 {nBlue}</b> · 合计 {units.length}
+            </div>
+            <div className="urow-filter">
+              {([['all', `全部 ${units.length}`], ['red', `红方 ${nRed}`], ['blue', `蓝方 ${nBlue}`]] as const).map(([key, label]) => (
+                <button key={key}
+                  className={`btn btn-sm${sideFilter === key ? ' btn-primary' : ''}`}
+                  onClick={() => setSideFilter(key)}>{label}</button>
+              ))}
             </div>
             <div className="legend mini">
               {['foot', 'motor', 'mech', 'air', 'structure'].map(c => (
                 <span key={c}><i className={`cs ${c}`} />{CLS_LABEL[c]}</span>
               ))}
-              <span>兵种 ｜ 战力条 · 士气点按档位着色 ｜ 悬停看明细</span>
+              <span>悬停看明细 · 点击选中</span>
             </div>
-            {rowsFor('red').map(u => (
+            {shownRed.length > 0 && (
+              <div className="side-hd nred">红方 {shownRed.length}</div>
+            )}
+            {shownRed.map(u => (
               <UnitRow key={u.id} u={u} cf={cfIndex(u, typeMap)} cfMax={cfMax} typeDef={typeMap[u.type]}
                 selected={inject.unit === u.id}
                 onClick={() => setInject(prev => ({ ...prev, unit: u.id }))} />
             ))}
-            {rowsFor('blue').map(u => (
+            {shownBlue.length > 0 && (
+              <div className="side-hd nblue">蓝方 {shownBlue.length}</div>
+            )}
+            {shownBlue.map(u => (
               <UnitRow key={u.id} u={u} cf={cfIndex(u, typeMap)} cfMax={cfMax} typeDef={typeMap[u.type]}
                 selected={inject.unit === u.id}
                 onClick={() => setInject(prev => ({ ...prev, unit: u.id }))} />
@@ -138,50 +157,60 @@ export default function DirectorView() {
               <button className="btn" onClick={() => { play('tap'); room.save('') }}>存档</button>
             </div>
 
-            <div className="row">
-              <label>
-                <span>改天气</span>
-                <select value={newWeather || view?.weather?.id || ''} onChange={e => setNewWeather(e.target.value)}>
-                  {weatherList.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
-                </select>
-              </label>
-              <button className="btn btn-sm" onClick={() => send({ action: 'weather', id: newWeather || view?.weather?.id })}>设定</button>
-            </div>
-
-            <WeatherScheduleCard sched={view?.weather_schedule} weatherList={weatherList} send={send} />
-
-            <div className="toolbar">
-              <Toggle label="战争迷雾" on={view?.flags?.fog === true} onChange={on => send({ action: 'fog', on })} />
-              <Toggle label="观战全知" on={view?.spectator_omniscient === true} onChange={on => send({ action: 'spectator_omniscient', on })} />
-            </div>
-
-            <div className="toolbar">
-              <Toggle label="红方 AI 代管" on={view?.ai?.red === true} onChange={on => send({ action: 'ai', side: 'red', on })} />
-              <Toggle label="蓝方 AI 代管" on={view?.ai?.blue === true} onChange={on => send({ action: 'ai', side: 'blue', on })} />
-            </div>
-
             <div className="mini" style={{ margin: '4px 0' }}>
               就绪：红 {(view?.ready?.red ? '✓' : '✗')} · 蓝 {(view?.ready?.blue ? '✓' : '✗')}
             </div>
 
-            <h3 style={{ marginTop: '8px' }}>注入情报</h3>
-            <div className="row">
-              <select value={inject.side} onChange={e => setInject(prev => ({ ...prev, side: e.target.value }))}>
-                <option value="red">向红方</option>
-                <option value="blue">向蓝方</option>
-              </select>
-              <input value={inject.unit} placeholder="目标单位 id" style={{ width: '110px' }}
-                onChange={e => setInject(prev => ({ ...prev, unit: e.target.value }))} />
-              <button className="btn btn-sm" onClick={() => send({ action: 'inject_intel', side: inject.side, unit: inject.unit })}>暴露</button>
-            </div>
-            <div className="mini">提示：点选地图单位即填入目标 id</div>
+            <details className="sec" open>
+              <summary>天气与天候计划</summary>
+              <div className="row">
+                <label>
+                  <span>改天气</span>
+                  <select value={newWeather || view?.weather?.id || ''} onChange={e => setNewWeather(e.target.value)}>
+                    {weatherList.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
+                  </select>
+                </label>
+                <button className="btn btn-sm" onClick={() => send({ action: 'weather', id: newWeather || view?.weather?.id })}>设定</button>
+              </div>
 
-            <h3 style={{ marginTop: '8px' }}>跳回合（引擎暂未开放回跳）</h3>
-            <div className="row">
-              <input type="number" value={jumpTurn} min={1} style={{ width: '80px' }}
-                onChange={e => setJumpTurn(parseInt(e.target.value) || 1)} />
-              <button className="btn btn-sm" onClick={() => send({ action: 'jump_turn', turn: jumpTurn })}>跳转</button>
-            </div>
+              <WeatherScheduleCard sched={view?.weather_schedule} weatherList={weatherList} send={send} />
+            </details>
+
+            <details className="sec">
+              <summary>战场开关（迷雾 / 全知 / AI）</summary>
+              <div className="toolbar">
+                <Toggle label="战争迷雾" on={view?.flags?.fog === true} onChange={on => send({ action: 'fog', on })} />
+                <Toggle label="观战全知" on={view?.spectator_omniscient === true} onChange={on => send({ action: 'spectator_omniscient', on })} />
+              </div>
+
+              <div className="toolbar">
+                <Toggle label="红方 AI 代管" on={view?.ai?.red === true} onChange={on => send({ action: 'ai', side: 'red', on })} />
+                <Toggle label="蓝方 AI 代管" on={view?.ai?.blue === true} onChange={on => send({ action: 'ai', side: 'blue', on })} />
+              </div>
+            </details>
+
+            <details className="sec">
+              <summary>注入情报</summary>
+              <div className="row">
+                <select value={inject.side} onChange={e => setInject(prev => ({ ...prev, side: e.target.value }))}>
+                  <option value="red">向红方</option>
+                  <option value="blue">向蓝方</option>
+                </select>
+                <input value={inject.unit} placeholder="目标单位 id" style={{ width: '110px' }}
+                  onChange={e => setInject(prev => ({ ...prev, unit: e.target.value }))} />
+                <button className="btn btn-sm" onClick={() => send({ action: 'inject_intel', side: inject.side, unit: inject.unit })}>暴露</button>
+              </div>
+              <div className="mini">提示：点选地图单位即填入目标 id</div>
+            </details>
+
+            <details className="sec">
+              <summary>跳回合（引擎暂未开放回跳）</summary>
+              <div className="row">
+                <input type="number" value={jumpTurn} min={1} style={{ width: '80px' }}
+                  onChange={e => setJumpTurn(parseInt(e.target.value) || 1)} />
+                <button className="btn btn-sm" onClick={() => send({ action: 'jump_turn', turn: jumpTurn })}>跳转</button>
+              </div>
+            </details>
           </div>
         </div>
 

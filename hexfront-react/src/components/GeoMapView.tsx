@@ -86,6 +86,8 @@ interface Props {
   range?: BBox | null
   /** GIS 生成数据（道路/铁路/河流线要素） */
   gis?: GisData | null
+  /** 纯 canvas 模式：不加载天地图瓦片，以经纬网格线为底（避免在线底图卡顿） */
+  canvasOnly?: boolean
 }
 
 /* ---------- 墨卡托 <-> 经纬度 ---------- */
@@ -135,7 +137,7 @@ function buildLine(pts: number[], path: Path2D) {
 
 const ckey = (col: number, row: number) => `${col},${row}`
 
-export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick, fit, range, gis }: Props) {
+export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick, fit, range, gis, canvasOnly }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewRef = useRef<View>({ cx: lngToMx(107), cy: latToMy(34), scale: (256 * Math.pow(2, 5)) / (2 * E) })
@@ -163,6 +165,7 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
   const gisRef = useRef(gis)
   const bmRef = useRef(basemap)
   const tkRef = useRef(tk)
+  const coRef = useRef(canvasOnly)
   const cbRef = useRef({ onFrame, onPick, onCellClick })
   modeRef.current = mode
   overlayRef.current = overlay
@@ -170,6 +173,7 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
   gisRef.current = gis
   bmRef.current = basemap
   tkRef.current = tk
+  coRef.current = canvasOnly
   cbRef.current = { onFrame, onPick, onCellClick }
 
   const schedule = useCallback(() => {
@@ -311,40 +315,70 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
     ctx.fillRect(0, 0, W, H)
 
     const v = viewRef.current
-    // 瓦片层
-    const zfac = (v.scale * 2 * E) / 256
-    const ziLog = Math.round(Math.log2(zfac))
-    const zi = clamp(ziLog, 1, 18)
-    if (ziLog !== zoomLabel) setZoomLabel(ziLog)
-    const worldPx = 2 * E * v.scale
-    const tilePx = worldPx / Math.pow(2, zi)
-    if (tilePx >= 64 && tilePx <= 1024) {
-      const n = Math.pow(2, zi)
+    // 底图层：纯 canvas 模式画经纬网格线；否则加载天地图瓦片
+    if (coRef.current) {
       const [mxL, myT] = toMeters(0, 0)
       const [mxR, myB] = toMeters(W, H)
-      const tx0 = Math.floor(((mxL + E) / (2 * E)) * n)
-      const tx1 = Math.floor(((mxR + E) / (2 * E)) * n)
-      const ty0 = Math.floor(((E - myT) / (2 * E)) * n)
-      const ty1 = Math.floor(((E - myB) / (2 * E)) * n)
-      for (const layer of LAYERS[bmRef.current].layers) {
-        for (let tx = tx0; tx <= tx1; tx++) {
-          if (tx < 0 || tx >= n) continue
-          for (let ty = ty0; ty <= ty1; ty++) {
-            if (ty < 0 || ty >= n) continue
-            const t = getTile(`${layer}/${zi}/${tx}/${ty}`, layer, zi, tx, ty)
-            if (!t.ok || !t.img) continue
-            const m0x = -E + tx * ((2 * E) / n)
-            const m0y = E - ty * ((2 * E) / n)
-            const [sx, sy] = toScreen(m0x, m0y)
-            ctx.drawImage(t.img, sx, sy, tilePx + 1, tilePx + 1)
+      const lngL = mxToLng(mxL)
+      const lngR = mxToLng(mxR)
+      const latT = myToLat(myT)
+      const latB = myToLat(myB)
+      const span = Math.max(lngR - lngL, latT - latB, 0.0001)
+      const step = span > 30 ? 10 : span > 12 ? 5 : span > 6 ? 2 : span > 3 ? 1
+        : span > 1.2 ? 0.5 : span > 0.6 ? 0.25 : span > 0.25 ? 0.1
+        : span > 0.1 ? 0.05 : span > 0.05 ? 0.02 : 0.01
+      ctx.font = '10px sans-serif'
+      ctx.lineWidth = 1
+      // 经线（垂直）
+      ctx.strokeStyle = 'rgba(255,255,255,.06)'
+      ctx.fillStyle = 'rgba(255,255,255,.3)'
+      ctx.textAlign = 'left'
+      for (let lng = Math.ceil(lngL / step) * step; lng <= lngR; lng += step) {
+        const x = toScreen(lngToMx(lng), 0)[0]
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke()
+        ctx.fillText(`${lng.toFixed(step < 1 ? 2 : 0)}°E`, x + 3, H - 5)
+      }
+      // 纬线（水平）
+      for (let lat = Math.ceil(latB / step) * step; lat <= latT; lat += step) {
+        const y = toScreen(0, latToMy(lat))[1]
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke()
+        ctx.fillText(`${lat.toFixed(step < 1 ? 2 : 0)}°N`, 4, y - 4)
+      }
+    } else {
+      const zfac = (v.scale * 2 * E) / 256
+      const ziLog = Math.round(Math.log2(zfac))
+      const zi = clamp(ziLog, 1, 18)
+      if (ziLog !== zoomLabel) setZoomLabel(ziLog)
+      const worldPx = 2 * E * v.scale
+      const tilePx = worldPx / Math.pow(2, zi)
+      if (tilePx >= 64 && tilePx <= 1024) {
+        const n = Math.pow(2, zi)
+        const [mxL, myT] = toMeters(0, 0)
+        const [mxR, myB] = toMeters(W, H)
+        const tx0 = Math.floor(((mxL + E) / (2 * E)) * n)
+        const tx1 = Math.floor(((mxR + E) / (2 * E)) * n)
+        const ty0 = Math.floor(((E - myT) / (2 * E)) * n)
+        const ty1 = Math.floor(((E - myB) / (2 * E)) * n)
+        for (const layer of LAYERS[bmRef.current].layers) {
+          for (let tx = tx0; tx <= tx1; tx++) {
+            if (tx < 0 || tx >= n) continue
+            for (let ty = ty0; ty <= ty1; ty++) {
+              if (ty < 0 || ty >= n) continue
+              const t = getTile(`${layer}/${zi}/${tx}/${ty}`, layer, zi, tx, ty)
+              if (!t.ok || !t.img) continue
+              const m0x = -E + tx * ((2 * E) / n)
+              const m0y = E - ty * ((2 * E) / n)
+              const [sx, sy] = toScreen(m0x, m0y)
+              ctx.drawImage(t.img, sx, sy, tilePx + 1, tilePx + 1)
+            }
           }
         }
+        ctx.fillStyle = 'rgba(255,255,255,.75)'
+        ctx.font = '10px sans-serif'
+        ctx.textAlign = 'right'
+        ctx.fillText('© 天地图 · 国家基础地理信息中心', W - 6, H - 6)
+        ctx.textAlign = 'left'
       }
-      ctx.fillStyle = 'rgba(255,255,255,.75)'
-      ctx.font = '10px sans-serif'
-      ctx.textAlign = 'right'
-      ctx.fillText('© 天地图 · 国家基础地理信息中心', W - 6, H - 6)
-      ctx.textAlign = 'left'
     }
 
     // 六角格网叠加（世界坐标缓存路径 + translate 绘制）
@@ -756,16 +790,18 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
   return (
     <div ref={wrapRef} className="gmv-wrap">
       <canvas ref={canvasRef} onMouseDown={onDown} onMouseMove={onMouseMove} onMouseUp={() => { paintingRef.current = false; lastCellRef.current = null }} onMouseLeave={() => { paintingRef.current = false; hoverRef.current = null; schedule() }} style={{ cursor }} />
-      <div className="gmv-layers">
-        {(Object.keys(LAYERS) as Array<keyof typeof LAYERS>).map((k) => (
-          <button key={k} className={`btn btn-sm${basemap === k ? ' btn-primary' : ''}`} onClick={() => { setBasemap(k); schedule() }}>
-            {LAYERS[k].label}
-          </button>
-        ))}
-        <span className="muted small">Z{zoomLabel}</span>
-      </div>
-      {!tk && <div className="gmv-tkwarn">未取得天地图密钥，底图不可用</div>}
-      {tk && tileFail && <div className="gmv-tkwarn">底图瓦片加载失败（密钥无效、配额用尽或网络受限），六角网格不受影响</div>}
+      {!canvasOnly && (
+        <div className="gmv-layers">
+          {(Object.keys(LAYERS) as Array<keyof typeof LAYERS>).map((k) => (
+            <button key={k} className={`btn btn-sm${basemap === k ? ' btn-primary' : ''}`} onClick={() => { setBasemap(k); schedule() }}>
+              {LAYERS[k].label}
+            </button>
+          ))}
+          <span className="muted small">Z{zoomLabel}</span>
+        </div>
+      )}
+      {!canvasOnly && !tk && <div className="gmv-tkwarn">未取得天地图密钥，底图不可用</div>}
+      {!canvasOnly && tk && tileFail && <div className="gmv-tkwarn">底图瓦片加载失败（密钥无效、配额用尽或网络受限），六角网格不受影响</div>}
     </div>
   )
 }
