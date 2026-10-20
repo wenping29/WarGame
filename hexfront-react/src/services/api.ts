@@ -5,6 +5,7 @@
 
 import axios, { type AxiosInstance, AxiosError } from 'axios'
 import type { WireWeather } from '../room/protocol'
+import { clearToken, getToken } from './token'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
@@ -14,6 +15,13 @@ const apiClient: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+})
+
+// 登录后所有请求自动带上 Bearer token
+apiClient.interceptors.request.use((config) => {
+  const token = getToken()
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
 })
 
 if (import.meta.env.DEV) {
@@ -31,6 +39,8 @@ apiClient.interceptors.response.use(
   (error: AxiosError) => {
     if (error.response) {
       console.error(`[API Error] ${error.response.status}:`, error.response.data)
+      // 会话失效：清本地 token，让下次 fetchMe 回到未登录态
+      if (error.response.status === 401) clearToken()
     } else if (error.request) {
       console.error('[API Error] Network error:', error.message)
     }
@@ -42,6 +52,10 @@ const get = async <T>(path: string): Promise<T> =>
   (await apiClient.get<T>(path)).data
 const post = async <T>(path: string, body: unknown): Promise<T> =>
   (await apiClient.post<T>(path, body)).data
+const put = async <T>(path: string, body: unknown): Promise<T> =>
+  (await apiClient.put<T>(path, body)).data
+const del = async <T>(path: string): Promise<T> =>
+  (await apiClient.delete<T>(path)).data
 
 // ==================== 契约类型 ====================
 
@@ -55,7 +69,12 @@ export interface ScenarioInfo {
   gis_package?: string | null
   environment?: Record<string, unknown>
   max_turns?: number
-  sides?: Record<string, unknown>
+  /** 完整 sides（含 oob 明细），供向导卡片一键回填部队编制 */
+  sides?: Record<string, unknown> | null
+  flags?: Record<string, unknown> | null
+  weather?: Record<string, unknown> | null
+  clock?: Record<string, unknown> | null
+  rules?: Record<string, unknown> | null
   unit_count?: number
 }
 
@@ -219,6 +238,72 @@ export const netError = (e: unknown): string => {
   return data?.error || String(e)
 }
 
+// ==================== 系统管理（AdminController，仅超级管理员） ====================
+
+export interface AdminUser {
+  id: number
+  username: string
+  display_name?: string | null
+  role_code: string
+  status: string
+  created_at: string
+  last_login_at?: string | null
+}
+
+export interface AdminRole {
+  id: number
+  code: string
+  name: string
+  description?: string | null
+  user_count?: number
+}
+
+export interface AdminMenu {
+  id: number
+  code: string
+  name: string
+  path?: string | null
+  sort: number
+  visible: number
+}
+
+export interface RoleMenuRow {
+  role_code: string
+  menu_code: string
+}
+
+export interface AdminLoginLog {
+  id: number
+  ts: string
+  username?: string | null
+  user_id?: number | null
+  action: string
+  ok: number
+  ip?: string | null
+  user_agent?: string | null
+  detail?: string | null
+}
+
+export interface AdminQueryLog {
+  id: number
+  ts: string
+  method: string
+  path: string
+  status?: number | null
+  duration_ms?: number | null
+  username?: string | null
+  ip?: string | null
+}
+
+export interface AdminErrorLog {
+  id: number
+  ts: string
+  source: string
+  path?: string | null
+  message: string
+  stack?: string | null
+}
+
 // ==================== API（对齐 web/js/api.js） ====================
 
 export const api = {
@@ -250,6 +335,51 @@ export const api = {
   gisPackage: (name: string) => get<unknown>('/gis/packages/' + name),
   gisValidate: (packageName: string) =>
     post<{ file: string; total: number; fails: number; warns: number; passes: number; results: Array<{ level: string; check: string; detail: string }> }>('/gis/validate', { package_name: packageName }),
+  // ==================== 剧本管理（ScenAdminController） ====================
+  scenDetail: (id: string) => get<{ file: string; doc: Record<string, unknown> }>('/scenadmin/' + id),
+  scenSave: (id: string, doc: unknown, validateOnly = false) =>
+    put<{ ok: boolean; errors: string[]; file?: string; backup?: string | null; saved_at?: string }>(
+      '/scenadmin/' + id + (validateOnly ? '?validateOnly=1' : ''), doc),
+  feedbackList: () => get<{ feedback: FeedbackEntry[] }>('/scenadmin/feedback'),
+  feedbackAdd: (body: { scenario: string; kind: string; detail: string; contact?: string }) =>
+    post<{ ok: boolean; entry: FeedbackEntry }>('/scenadmin/feedback', body),
+  feedbackRemove: (fid: string) => del<{ ok: boolean }>('/scenadmin/feedback/' + fid),
+  // ==================== 系统管理（仅超级管理员） ====================
+  adminUsers: () => get<{ users: AdminUser[] }>('/admin/users'),
+  adminCreateUser: (b: { username: string; password: string; display_name?: string; role: string }) =>
+    post<{ ok: boolean }>('/admin/users', b),
+  adminUpdateUser: (id: number, b: { display_name?: string; role?: string; status?: string; password?: string }) =>
+    put<{ ok: boolean }>('/admin/users/' + id, b),
+  adminDeleteUser: (id: number) => del<{ ok: boolean }>('/admin/users/' + id),
+  adminRoles: () => get<{ roles: AdminRole[] }>('/admin/roles'),
+  adminCreateRole: (b: { code: string; name: string; description?: string }) => post<{ ok: boolean }>('/admin/roles', b),
+  adminUpdateRole: (code: string, b: { name: string; description?: string }) =>
+    put<{ ok: boolean }>('/admin/roles/' + code, b),
+  adminDeleteRole: (code: string) => del<{ ok: boolean }>('/admin/roles/' + code),
+  adminSetRoleMenus: (code: string, menus: string[]) =>
+    put<{ ok: boolean }>('/admin/roles/' + code + '/menus', { menus }),
+  adminMenus: () => get<{ menus: AdminMenu[]; role_menus: RoleMenuRow[] }>('/admin/menus'),
+  adminCreateMenu: (b: { code: string; name: string; path?: string; sort?: number; visible?: boolean }) =>
+    post<{ ok: boolean }>('/admin/menus', b),
+  adminUpdateMenu: (id: number, b: { name: string; path?: string; sort?: number; visible?: boolean }) =>
+    put<{ ok: boolean }>('/admin/menus/' + id, b),
+  adminDeleteMenu: (id: number) => del<{ ok: boolean }>('/admin/menus/' + id),
+  adminLoginLogs: (limit = 100, username?: string) =>
+    get<{ logs: AdminLoginLog[] }>('/admin/logs/login?limit=' + limit + (username ? '&username=' + encodeURIComponent(username) : '')),
+  adminQueryLogs: (limit = 200, path?: string) =>
+    get<{ logs: AdminQueryLog[] }>('/admin/logs/query?limit=' + limit + (path ? '&path=' + encodeURIComponent(path) : '')),
+  adminErrorLogs: (limit = 100) => get<{ logs: AdminErrorLog[] }>('/admin/logs/error?limit=' + limit),
+}
+
+/** 剧本内容错误反馈条目（data/scenario_feedback.json） */
+export interface FeedbackEntry {
+  id: string
+  scenario: string
+  kind: string
+  detail: string
+  contact?: string
+  status: string
+  created_at: string
 }
 
 export default apiClient

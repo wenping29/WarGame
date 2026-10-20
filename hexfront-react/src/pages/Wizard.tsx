@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, netError, type CreateInstanceBody, type GisCapabilities, type GisJob, type GisPlan, type ValidateResult } from '../services/api'
+import { api, netError, type CreateInstanceBody, type GisCapabilities, type GisJob, type GisPlan, type ScenarioInfo, type ValidateResult } from '../services/api'
 import { loadMeta, useMeta, type UnitTypeDef } from '../room/useUnitFull'
 import GeoMapView, { type BBox } from '../components/GeoMapView'
 import { toast } from '../components/Toast'
@@ -128,16 +128,65 @@ function rowToOob(row: OOBRow): Record<string, unknown> | null {
   return out
 }
 
-/// 剧本 environment → 表单初值（范围框按中心 ±0.95/±0.55° 起算）
-function envDefaults(scn: { environment?: Record<string, unknown> } | null) {
-  const e = (scn?.environment || {}) as Record<string, unknown>
-  const center = e.center_lonlat as [number, number] | undefined
-  const cellKm = e.cell_km != null ? String(e.cell_km) : ''
-  if (!center) return { cell_km: cellKm, lon: '', lat: '', w: '', s: '', e: '', n: '' }
-  const fmt = (v: number) => String(Math.round(v * 1000) / 1000)
+/// 剧本卡片点击：剧本内数据整体回填到向导各步表单
+/// （剧本、副本名称、战场环境、部队编制、天气、日夜交替、模式开关）
+function scenarioToState(s: ScenarioInfo, prev: WizardState): WizardState {
+  const str = (v: unknown) => (v == null ? '' : String(v))
+  const fmt = (v: unknown) => (typeof v === 'number' ? String(Math.round(v * 1000) / 1000) : '')
+  const env = (s.environment || {}) as Record<string, unknown>
+  const center = env.center_lonlat as [number, number] | undefined
+  const flagsIn = (s.flags || {}) as Record<string, unknown>
+  const wx = (s.weather || {}) as Record<string, unknown>
+  const ck = (s.clock || {}) as Record<string, unknown>
+  const rules = (s.rules || {}) as Record<string, unknown>
+  const schedule = Array.isArray(wx.schedule)
+    ? (wx.schedule as Array<Record<string, unknown>>).map(p => ({
+        from: str(p.from), to: str(p.to), weather: str(p.weather),
+      }))
+    : []
+  const sideCfg = (side: 'red' | 'blue') => {
+    const raw = ((s.sides || {}) as Record<string, Record<string, unknown>>)[side] || {}
+    const oob = Array.isArray(raw.oob) ? (raw.oob as Array<Record<string, unknown>>) : []
+    const rows: OOBRow[] = oob.map(e => {
+      const at = Array.isArray(e.at) ? (e.at as unknown[]) : []
+      const cmd = (e.commander || {}) as Record<string, unknown>
+      return {
+        type: str(e.type), qty: str(e.qty ?? 1),
+        q: str(at[0]), r: str(at[1]),
+        training: str(e.training), experience: str(e.experience),
+        cname: str(cmd.name), cquality: str(cmd.quality),
+      }
+    })
+    return { oob: rows, budget: str(raw.points_budget) }
+  }
+  const red = sideCfg('red'), blue = sideCfg('blue')
   return {
-    cell_km: cellKm, lon: fmt(center[0]), lat: fmt(center[1]),
-    w: fmt(center[0] - 0.95), e: fmt(center[0] + 0.95), s: fmt(center[1] - 0.55), n: fmt(center[1] + 0.55),
+    ...prev,
+    scenarioId: s.id || s.file,
+    name: s.name || '',
+    env: {
+      width: str(env.width), height: str(env.height),
+      cell_km: str(env.cell_km), lon: fmt(center?.[0]), lat: fmt(center?.[1]),
+    },
+    gis: {
+      ...prev.gis,
+      mode: 'existing',
+      pkg: s.gis_package || '',
+      genPkg: '',
+      bbox: center
+        ? { w: fmt(center[0] - 0.95), e: fmt(center[0] + 0.95), s: fmt(center[1] - 0.55), n: fmt(center[1] + 0.55) }
+        : prev.gis.bbox,
+    },
+    flags: Object.fromEntries(FLAGS.map(([k]) => [
+      k, typeof flagsIn[k] === 'boolean' ? (flagsIn[k] ? 'on' : 'off') : 'default',
+    ])),
+    weather: { initial: str(wx.initial), mode: str(wx.mode), schedule },
+    clock: {
+      start_hour: str(ck.start_hour),
+      turn_hours: str(rules.turn_hours),
+      night_from: str(ck.night_from), night_to: str(ck.night_to),
+    },
+    sides: { red, blue },
   }
 }
 
@@ -178,20 +227,28 @@ export default function Wizard() {
     ai: { red: false, blue: false },
   })
 
-  // meta 到达后用第一个剧本初始化
+  // meta 到达后用第一个剧本整体回填
   useEffect(() => {
     if (!meta || state.scenarioId) return
     const s = meta.scenarios[0]
     if (!s) return
-    const ed = envDefaults(s)
-    setState(prev => ({
-      ...prev,
-      scenarioId: s.id || s.file,
-      name: s.name || '',
-      env: { ...prev.env, cell_km: prev.env.cell_km || ed.cell_km, lon: ed.lon, lat: ed.lat },
-      gis: { ...prev.gis, bbox: { w: ed.w, s: ed.s, e: ed.e, n: ed.n } },
-    }))
+    setState(prev => scenarioToState(s, prev))
+    setOobDirty({
+      red: ((s.sides as Record<string, Record<string, unknown>> | null)?.red?.oob as unknown[] | undefined)?.length ? true : false,
+      blue: ((s.sides as Record<string, Record<string, unknown>> | null)?.blue?.oob as unknown[] | undefined)?.length ? true : false,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta, state.scenarioId])
+
+  // 点击剧本卡片：整体回填 + 标记 OOB 已装载（所见即所得）
+  const applyScenario = (s: ScenarioInfo) => {
+    setState(prev => scenarioToState(s, prev))
+    setOobDirty({
+      red: ((s.sides as Record<string, Record<string, unknown>> | null)?.red?.oob as unknown[] | undefined)?.length ? true : false,
+      blue: ((s.sides as Record<string, Record<string, unknown>> | null)?.blue?.oob as unknown[] | undefined)?.length ? true : false,
+    })
+    toast(`已载入剧本「${s.name || s.id}」：环境/编制/天气已回填`)
+  }
 
   const u = (updates: Partial<WizardState> | ((prev: WizardState) => Partial<WizardState>)) =>
     setState(prev => ({ ...prev, ...(typeof updates === 'function' ? updates(prev) : updates) }))
@@ -414,50 +471,75 @@ export default function Wizard() {
           {step === 0 && (
             <div>
               <h2>第 1 步 · 剧本与名称/种子</h2>
-              <div className="row">
-                <label>
-                  <span>剧本</span>
-                  <select
-                    value={state.scenarioId}
-                    onChange={e => {
-                      const s = (meta?.scenarios || []).find(x => (x.id || x.file) === e.target.value)
-                      const ed = envDefaults(s ?? null)
-                      u({
-                        scenarioId: e.target.value,
-                        name: s?.name || state.name,
-                        env: { ...state.env, lon: ed.lon, lat: ed.lat, cell_km: ed.cell_km },
-                        gis: { ...state.gis, genPkg: '', bbox: { w: ed.w, s: ed.s, e: ed.e, n: ed.n } },
-                      })
-                    }}
-                  >
-                    {(() => {
-                      // 按战争分期（era）分组展示，保持服务端组内顺序
-                      const groups = new Map<string, Array<{ id?: string; file?: string; name?: string; era?: string }>>()
-                      for (const s of meta?.scenarios || []) {
-                        const era = s.era || '其他'
-                        if (!groups.has(era)) groups.set(era, [])
-                        groups.get(era)!.push(s)
-                      }
-                      return [...groups.entries()].map(([era, list]) => (
-                        <optgroup key={era} label={era}>
-                          {list.map(s => (
-                            <option key={s.id || s.file} value={s.id || s.file}>{s.name || s.id}</option>
-                          ))}
-                        </optgroup>
-                      ))
-                    })()}
-                  </select>
-                </label>
-                <label>
-                  <span>副本名称</span>
-                  <input value={state.name} placeholder="继承剧本名称" onChange={e => u({ name: e.target.value })} />
-                </label>
-                <label>
-                  <span>随机种子</span>
-                  <input value={state.seed} placeholder="留空 = 每局随机" onChange={e => u({ seed: e.target.value })} />
-                </label>
+
+              {/* 上栏：名称与选中剧本 */}
+              <div className="scn-top">
+                <div className="row">
+                  <label>
+                    <span>副本名称</span>
+                    <input value={state.name} placeholder="继承剧本名称" onChange={e => u({ name: e.target.value })} />
+                  </label>
+                  <label>
+                    <span>随机种子</span>
+                    <input value={state.seed} placeholder="留空 = 每局随机" onChange={e => u({ seed: e.target.value })} />
+                  </label>
+                </div>
+                {(() => {
+                  const cur = (meta?.scenarios || []).find(x => (x.id || x.file) === state.scenarioId)
+                  if (!cur) return <p className="muted small">尚未选择剧本：请在下方卡片中点选。</p>
+                  return (
+                    <div className="card scn-current">
+                      <div className="scn-current-head">
+                        <b>{cur.name || cur.id}</b>
+                        {cur.era && <span className="tag">{cur.era}</span>}
+                        {cur.scale && <span className="tag">{cur.scale}</span>}
+                      </div>
+                      {cur.description && <p className="muted small scn-desc">{cur.description}</p>}
+                      <div className="row scn-current-meta">
+                        <span className="mini">回合 {cur.max_turns ?? '?'}</span>
+                        <span className="mini">单位 {cur.unit_count ?? '?'}</span>
+                        {cur.gis_package && <span className="mini">数据包 {cur.gis_package}</span>}
+                      </div>
+                    </div>
+                  )
+                })()}
+                <p className="muted small">
+                  点击下方卡片即载入该剧本：副本名称、战场环境、部队编制、天气与日夜交替一并按剧本数据回填；之后在各步可继续调整。
+                </p>
               </div>
-              <p className="muted small">不填写的字段不会覆盖剧本默认，服务端以 deepMerge 合并。</p>
+
+              {/* 下栏：已知剧本卡片墙（按战争分期分组） */}
+              <h3 style={{ marginTop: 10 }}>可选剧本</h3>
+              {[...(() => {
+                const groups = new Map<string, ScenarioInfo[]>()
+                for (const s of meta?.scenarios || []) {
+                  const era = s.era || '其他'
+                  if (!groups.has(era)) groups.set(era, [])
+                  groups.get(era)!.push(s)
+                }
+                return [...groups.entries()]
+              })()].map(([era, list]) => (
+                <div key={era} style={{ marginBottom: '10px' }}>
+                  <div className="scn-era">{era}</div>
+                  <div className="scn-cards">
+                    {list.map(s => {
+                      const sel = (s.id || s.file) === state.scenarioId
+                      return (
+                        <button key={s.id || s.file} type="button"
+                          className={`scn-card${sel ? ' on' : ''}`}
+                          title={s.description || s.name}
+                          onClick={() => applyScenario(s)}>
+                          <b className="scn-card-name">{s.name || s.id}</b>
+                          <span className="scn-card-meta">
+                            {s.scale ? s.scale + ' · ' : ''}回合 {s.max_turns ?? '?'} · 单位 {s.unit_count ?? '?'}
+                          </span>
+                          {s.description && <span className="scn-card-desc">{s.description}</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -901,7 +983,7 @@ function Step3Weather({ state, updateState, weatherList }: {
               {weatherList.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
             </select>
           </label>
-          <button className="btn btn-sm" onClick={() => setSched(sched.filter((_, j) => j !== i))}>删除</button>
+          <button className="btn btn-sm" onClick={() => setSched(prev => prev.filter((_, j) => j !== i))}>删除</button>
         </div>
       ))}
       <div className="toolbar" style={{ marginTop: 6 }}>

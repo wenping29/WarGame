@@ -8,7 +8,7 @@ import { play } from '../services/sound'
 interface ToastMessage {
   id: number
   text: string
-  type?: 'info' | 'warn' | 'err'
+  type?: 'info' | 'warn' | 'err' | 'ok'
 }
 
 let nextId = 0

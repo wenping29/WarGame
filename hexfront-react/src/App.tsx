@@ -1,10 +1,14 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import Home from './pages/Home'
 import Lobby from './pages/Lobby'
+import ScenManager from './pages/ScenManager'
 import Wizard from './pages/Wizard'
 import GridManager from './pages/GridManager'
 import RoomPage from './pages/RoomPage'
+import Admin from './pages/Admin'
+import Login from './pages/Login'
 import Layout from './components/Layout'
+import { AuthProvider } from './components/Auth'
 import ToastContainer from './components/Toast'
 
 // 404 兜底：未知路径此前整页空白（只有顶栏），给出明确去向
@@ -25,19 +29,24 @@ function NotFound() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/lobby" element={<Lobby />} />
-          <Route path="/new" element={<Wizard />} />
-          <Route path="/grid" element={<GridManager />} />
-          <Route path="/room/:code/:role" element={<RoomPage />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Layout>
-      <ToastContainer />
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/lobby" element={<Lobby />} />
+            <Route path="/scenarios" element={<ScenManager />} />
+            <Route path="/new" element={<Wizard />} />
+            <Route path="/grid" element={<GridManager />} />
+            <Route path="/room/:code/:role" element={<RoomPage />} />
+            <Route path="/admin" element={<Admin />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Layout>
+        <ToastContainer />
+      </BrowserRouter>
+    </AuthProvider>
   )
 }
 

@@ -21,16 +21,20 @@ public class GameController : ControllerBase
 {
     private readonly RoomService _rooms;
     private readonly ILogger<GameController> _logger;
+    private readonly OpsLogService _ops;
+    private readonly AppDbService _db;
 
     private static readonly JsonSerializerOptions LibJson = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
     };
 
-    public GameController(RoomService rooms, ILogger<GameController> logger)
+    public GameController(RoomService rooms, ILogger<GameController> logger, OpsLogService ops, AppDbService db)
     {
         _rooms = rooms;
         _logger = logger;
+        _ops = ops;
+        _db = db;
     }
 
     // ==================== GET /api/scenarios (meta aggregate) ====================
@@ -160,13 +164,22 @@ public class GameController : ControllerBase
 
         try
         {
-            StoreService.WriteInit(g, name, Str(body, "description"), _rooms.SaveDirectory,
+            var initMeta = StoreService.WriteInit(g, name, Str(body, "description"), _rooms.SaveDirectory,
                 BodyOverrides(body));
+            // 应用库：开局副本目录 upsert
+            _db.UpsertSave(new StoreSaveMeta(initMeta.Instance, initMeta.Name, initMeta.Scenario,
+                initMeta.Seed, initMeta.LastTurn, initMeta.MaxTurns,
+                initMeta.CreatedAt.ToString("o"), initMeta.UpdatedAt.ToString("o"), "init"));
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "initial save failed for room {Code}", code);
         }
+
+        // SQLite 操作流水：建局登记
+        _ops.LogInstance(g.InstanceId, g.ScenarioId, name ?? g.Name, (int?)null, "create");
+        _ops.Log(g.InstanceId, "room_opened", "system", g.Turn,
+            new Dictionary<string, object?> { ["room"] = code, ["seed"] = g.Seed, ["name"] = name });
 
         return Ok(new Dictionary<string, object?>
         {
@@ -206,6 +219,16 @@ public class GameController : ControllerBase
             _logger.LogWarning("存档 {Instance} 重放指纹不一致：{Detail}", id, string.Join("; ", loaded.FingerprintMismatches));
 
         var code = _rooms.CreateRoomFromState(g);
+
+        // SQLite 操作流水：载入存档登记（同一实例可被多次续局）
+        _ops.LogInstance(g.InstanceId, g.ScenarioId, g.Name, (int?)g.Seed, "load");
+        _ops.Log(g.InstanceId, "room_opened", "system", g.Turn,
+            new Dictionary<string, object?>
+            {
+                ["room"] = code, ["source"] = "load", ["resumed_turn"] = g.Turn,
+                ["replayed_turns"] = loaded.ReplayedTurns,
+            });
+
         return Ok(new Dictionary<string, object?>
         {
             ["code"] = code,
@@ -244,8 +267,12 @@ public class GameController : ControllerBase
                     ["environment"] = m.TryGetProperty("environment", out var env) ? env.Clone() : null,
                     ["max_turns"] = m.TryGetProperty("max_turns", out var mt) ? mt.GetInt32() : (int?)null,
                     ["sides"] = m.TryGetProperty("sides", out var sides) && sides.ValueKind == JsonValueKind.Object
-                        ? sides.EnumerateObject().Select(p => p.Name).ToList()
+                        ? sides.Clone()
                         : null,
+                    ["flags"] = m.TryGetProperty("flags", out var fl) && fl.ValueKind == JsonValueKind.Object ? fl.Clone() : null,
+                    ["weather"] = m.TryGetProperty("weather", out var wx) && wx.ValueKind == JsonValueKind.Object ? wx.Clone() : null,
+                    ["clock"] = m.TryGetProperty("clock", out var ck) && ck.ValueKind == JsonValueKind.Object ? ck.Clone() : null,
+                    ["rules"] = m.TryGetProperty("rules", out var ru) && ru.ValueKind == JsonValueKind.Object ? ru.Clone() : null,
                     ["unit_count"] = OobUnitCount(m),
                 });
             }

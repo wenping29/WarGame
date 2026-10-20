@@ -14,7 +14,6 @@ import { gisFromPackage, type GisData, type PackageJson } from '../gis/hexgen'
 const SQRT3 = Math.sqrt(3)
 const LS_KEY = 'hexfront.gridmgr.v1'
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
-const key = (col: number, row: number) => `${col},${row}`
 const parseKey = (k: string): [number, number] => {
   const [a, b] = k.split(',')
   return [Number(a), Number(b)]
@@ -249,7 +248,7 @@ export default function GridManager() {
 
   /* ---------- 地图交互回调 ---------- */
   const onPick = (lng: number, lat: number) => {
-    updGeom({ west: lng, south: lat })
+    updGeom({ west: String(lng), south: String(lat) })
     setMode('pan')
     toast(`已拾取锚点 ${lng.toFixed(4)}°E, ${lat.toFixed(4)}°N`)
   }

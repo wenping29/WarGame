@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadMeta } from '../room/useUnitFull'
-import type { GisData, GisLine } from '../gis/hexgen'
+import type { GisData } from '../gis/hexgen'
 
 const E = 20037508.342789244 // EPSG:3857 半周长（米）
 const SQRT3 = Math.sqrt(3)
@@ -496,11 +496,11 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
             const gy = southM + 1.5 * o.size * hr
             const cx = (gx - v.cx) * v.scale + W / 2
             const cy = H / 2 - (gy - v.cy) * v.scale
-            ctx.beginPath()
-            hexPath(ctx, cx, cy, r)
+            const hp = new Path2D()
+            hexPath(hp, cx, cy, r)
             ctx.strokeStyle = 'rgba(240,220,140,.95)'
             ctx.lineWidth = 2.5
-            ctx.stroke()
+            ctx.stroke(hp)
           }
         }
       }

@@ -26,19 +26,25 @@ public sealed class RoomService
 
     private readonly ConcurrentDictionary<string, Room> _rooms = new();
     private readonly ILogger<RoomService> _logger;
+    private readonly OpsLogService _ops;
+    private readonly AppDbService _db;
     private readonly string _scenarioDir;
     private readonly string _saveDir;
     private readonly string _gisDir;
+    private readonly string _dataDir;
 
-    public RoomService(ILogger<RoomService> logger)
+    public RoomService(ILogger<RoomService> logger, OpsLogService ops, AppDbService db)
     {
         _logger = logger;
+        _ops = ops;
+        _db = db;
         var root = GetRepoRoot();
+        _dataDir = Path.Combine(root, "data");
         _scenarioDir = Environment.GetEnvironmentVariable("HF_SCENARIO_DIR")
-            ?? Path.Combine(root, "data", "scenarios");
+            ?? Path.Combine(_dataDir, "scenarios");
         _saveDir = Environment.GetEnvironmentVariable("HF_SAVE_DIR")
-            ?? Path.Combine(root, "data", "saves"); // §12.1：副本存档落在 data/saves/<实例>/
-        _gisDir = Path.Combine(root, "data", "gis");
+            ?? Path.Combine(_dataDir, "saves"); // §12.1：副本存档落在 data/saves/<实例>/
+        _gisDir = Path.Combine(_dataDir, "gis");
     }
 
     // ==================== Public API for REST controller ====================
@@ -46,6 +52,8 @@ public sealed class RoomService
     public string ScenarioDirectory => _scenarioDir;
     public string SaveDirectory => _saveDir;
     public string GisDirectory => _gisDir;
+    /// <summary>仓库 data 目录（剧本备份、内容反馈等管理类文件落这里）。</summary>
+    public string DataDirectory => _dataDir;
 
     /// <summary>Create a room from an existing game state (REST instance creation / save resume).</summary>
     public string CreateRoomFromState(GameState game, string? instanceName = null, bool aiRed = false, bool aiBlue = false)
@@ -78,6 +86,9 @@ public sealed class RoomService
         }
 
         _rooms[code] = room;
+        // 应用库：房间目录登记
+        _db.UpsertRoom(code, game.InstanceId, game.ScenarioId,
+            instanceName ?? (string.IsNullOrEmpty(game.Name) ? game.ScenarioName : game.Name), game.Turn);
         _logger.LogInformation("room {Code} opened for instance {Scenario} turn {Turn}", code, game.ScenarioId, game.Turn);
         return code;
     }
@@ -419,6 +430,7 @@ public sealed class RoomService
             }
         }
 
+        int turnNow;
         lock (room.GameLock)
         {
             var list = room.Drafts[side];
@@ -426,6 +438,7 @@ public sealed class RoomService
             list.AddRange(cmds);
             var draft = list.Select(c => c.Clone()).ToList();
             var errors = CommandValidator.ValidateOrders(room.Game, side, draft);
+            turnNow = room.Game.Turn;
             // Dart submitOrders：新指令到达即撤销本方准备态
             room.Ready[side] = false;
             room.LastErrors[side] = errors.Select(e => new Dictionary<string, object?>
@@ -435,6 +448,9 @@ public sealed class RoomService
                 ["message"] = e.Message,
             }).ToList();
         }
+
+        // SQLite 操作流水：提交指令阶段（含 replace 语义与被拒条数）
+        _ops.LogOrders(room.Game.InstanceId, side, turnNow, replace, cmds, room.LastErrors[side].Count);
 
         await BroadcastAll(room);
     }
@@ -446,11 +462,14 @@ public sealed class RoomService
             await conn.SendAsync(ErrorPayload("无权操作"));
             return;
         }
+        int turnNow;
         lock (room.GameLock)
         {
             room.Drafts[conn.Role].Clear();
             room.Ready[conn.Role] = false;
+            turnNow = room.Game.Turn;
         }
+        _ops.Log(room.Game.InstanceId, OpsLogService.StageClearOrders, conn.Role, turnNow, null);
         await BroadcastAll(room);
     }
 
@@ -464,8 +483,10 @@ public sealed class RoomService
         var value = GetBool(root, "value", true);
         string? reject = null;
         bool bothReady;
+        int turnNow = 0;
         lock (room.GameLock)
         {
+            turnNow = room.Game.Turn;
             // room.dart setReady：置就绪前先校验草案，有非法指令则报错并保持未就绪
             if (value)
             {
@@ -491,9 +512,13 @@ public sealed class RoomService
 
         if (reject != null)
         {
+            _ops.Log(room.Game.InstanceId, OpsLogService.StageReady, conn.Role, turnNow,
+                new Dictionary<string, object?> { ["value"] = value, ["accepted"] = false, ["reject"] = reject });
             await conn.SendAsync(ErrorPayload(reject));
             return;
         }
+        _ops.Log(room.Game.InstanceId, OpsLogService.StageReady, conn.Role, turnNow,
+            new Dictionary<string, object?> { ["value"] = value, ["accepted"] = value });
         await BroadcastAll(room);
         // AI 代管方视为已就绪，否则人类玩家点就绪后会永久等待
         if (bothReady) ScheduleAutoResolve(room, "auto");
@@ -614,6 +639,7 @@ public sealed class RoomService
         Dictionary<string, List<Command>> orders, TurnResolver.TurnReport report)
     {
         var resolvedTurn = room.Game.Turn - 1;
+        StoreService.SaveMetadata? snapMeta = null;
         try
         {
             StoreService.AppendTurn(room.Game.InstanceId, new StoreService.TurnRecord
@@ -630,12 +656,30 @@ public sealed class RoomService
             }, _saveDir);
 
             if (StoreService.ShouldSnapshot(resolvedTurn, room.Game.Over))
-                StoreService.WriteSnapshot(room.Game, _saveDir, room.InstanceName);
+                snapMeta = StoreService.WriteSnapshot(room.Game, _saveDir, room.InstanceName);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "回合 {Turn} 落盘失败（副本 {Instance}）", resolvedTurn, room.Game.InstanceId);
         }
+
+        if (snapMeta != null)
+        {
+            // 应用库：自动快照副本目录 upsert
+            _db.UpsertSave(new StoreSaveMeta(snapMeta.Instance, snapMeta.Name, snapMeta.Scenario,
+                snapMeta.Seed, snapMeta.LastTurn, snapMeta.MaxTurns,
+                snapMeta.CreatedAt.ToString("o"), snapMeta.UpdatedAt.ToString("o"), "snapshot"));
+        }
+
+        // SQLite 操作流水：回合结算阶段（双方最终指令 + 随机源 + 指纹，供复盘/审计）
+        _ops.LogTurnResolved(room.Game.InstanceId, resolvedTurn, byRole, rngAtResolve,
+            new Dictionary<string, IReadOnlyList<Command>>
+            {
+                ["red"] = orders["red"],
+                ["blue"] = orders["blue"],
+            },
+            report.Rejected.Count, report.FingerprintBefore, report.FingerprintAfter,
+            room.Game.Over, room.Game.Winner);
     }
 
     private async Task HandleSave(Room room, WsConn conn, JsonElement root)
@@ -651,6 +695,15 @@ public sealed class RoomService
                 meta = StoreService.WriteSnapshot(room.Game, _saveDir,
                     name ?? room.InstanceName, desc);
             }
+            _ops.Log(room.Game.InstanceId, OpsLogService.StageSave, conn.Role, meta.LastTurn,
+                new Dictionary<string, object?>
+                {
+                    ["instance"] = meta.Instance, ["name"] = meta.Name, ["turn"] = meta.LastTurn,
+                });
+            // 应用库：手动存档副本目录 upsert
+            _db.UpsertSave(new StoreSaveMeta(meta.Instance, meta.Name, meta.Scenario,
+                meta.Seed, meta.LastTurn, meta.MaxTurns,
+                meta.CreatedAt.ToString("o"), meta.UpdatedAt.ToString("o"), "manual"));
             await BroadcastAll(room, new Dictionary<string, object?>
             {
                 ["type"] = "saved",
@@ -686,6 +739,9 @@ public sealed class RoomService
         var action = GetStr(root, "action") ?? "";
         var newEvents = new List<WarEvent>();
         bool recheckBarrier = false;
+
+        // SQLite 操作流水：导演导调阶段（记录原始指令，成败与否都留痕）
+        _ops.Log(room.Game.InstanceId, OpsLogService.StageDirectorCmd, "director", room.Game.Turn, root);
 
         switch (action)
         {

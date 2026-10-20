@@ -7,6 +7,8 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddSingleton<RoomService>();
 builder.Services.AddSingleton<GisService>();
+builder.Services.AddSingleton<OpsLogService>();
+builder.Services.AddSingleton<AppDbService>();
 
 // 开发期 React 走 vite 同源代理（/api、/ws），不需要 CORS；
 // 只有把 React 构建产物部署到别的源（或直连 :5018）时才用得上，所以是白名单而不是通配。
@@ -17,6 +19,11 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.WithOrigins(allowedOrigins).WithMethods("GET", "POST", "OPTIONS").AllowAnyHeader()));
 
 var app = builder.Build();
+
+// 统一应用库启动初始化：种子数据（角色/菜单/管理员）→ 历史库迁移（ops_log.db、
+// scenario_feedback.json）→ 剧本目录同步。失败不阻断启动。
+app.Services.GetRequiredService<AppDbService>()
+    .Initialize(app.Services.GetRequiredService<RoomService>().ScenarioDirectory);
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -31,6 +38,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
+
+// 查询日志 / 错误日志中间件：每个 /api 请求一条（含耗时、登录用户），异常与 5xx 另记错误日志
+app.UseAuditLog();
 
 // 单进程部署：Dart 版直接 serve ../web，C# 版对应把 React 构建产物放 wwwroot。
 // 目录不存在时整段跳过，只提供 API 的部署方式不受影响。
