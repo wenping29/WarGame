@@ -143,22 +143,17 @@ export default function GridManager() {
   }, [])
   useEffect(refreshSrv, [refreshSrv])
 
-  // 查看：拉全文 → 以覆盖层画在地图上并定位；任何本地编辑动作会退出查看态
-  const viewSrv = async (m: HexGridMeta) => {
-    try {
-      const r = await api.hexgridGet(m.id)
-      setSrvView({
-        west: r.grid.west, south: r.grid.south, rows: r.grid.rows, cols: r.grid.cols,
-        size: r.grid.flat_to_flat / SQRT3, holes: r.grid.holes, terrains: r.grid.terrains, preview: false,
-      })
-      const [w, s, e, n] = r.bbox
-      fitGrid({ west: w, south: s, east: e, north: n })
-    } catch (err) {
-      toast('读取网格包失败：' + netError(err), 'err')
-    }
+  // 查看已下载的服务器包：直接用本地副本渲染，不再请求服务器
+  const viewLocal = (dl: GridDoc) => {
+    const b = dl.bbox ?? deriveBBox(107, 33, dl.rows, dl.cols, dl.flatToFlat)
+    setSrvView({
+      west: b.west, south: b.south, rows: dl.rows, cols: dl.cols,
+      size: dl.flatToFlat / SQRT3, holes: dl.holes, terrains: dl.terrains, preview: false,
+    })
+    fitGrid(b)
   }
 
-  // 载入到本地编辑器：转成本地网格文档（保留挖格与涂装），可继续涂刷/修改
+  // 下载：把服务器网格包取回并转成本地网格文档（保留挖格与涂装），标记 srvId 供合并列表判重
   const loadSrvToLocal = async (m: HexGridMeta) => {
     try {
       const r = await api.hexgridGet(m.id)
@@ -168,13 +163,14 @@ export default function GridManager() {
           { west: w, south: s, east: r.bbox[2], north: r.bbox[3] }),
         holes: r.grid.holes || [],
         terrains: r.grid.terrains || {},
+        srvId: m.id,
       })
       setGrids(list => [...list, d])
       setSrvView(null)
       openGrid(d)
-      toast(`已载入「${d.name}」到本地编辑器`, 'ok')
+      toast(`已下载「${d.name}」到本地`, 'ok')
     } catch (err) {
-      toast('载入失败：' + netError(err), 'err')
+      toast('下载失败：' + netError(err), 'err')
     }
   }
 
@@ -485,13 +481,14 @@ export default function GridManager() {
       <div className="gm-col">
         <div className="panel gm-list-panel">
           <div className="panel-header">
-            <h3>网格列表（{grids.length}）</h3>
+            <h3>网格列表（{grids.length} 本地 · {srvList.length} 服务器）</h3>
+            <button className="btn btn-sm" title="刷新服务器列表" onClick={refreshSrv}>↻</button>
           </div>
           <div className="gm-list">
             {grids.map((g) => (
               <div key={g.id} className={`gm-item${g.id === editingId ? ' on' : ''}`} onClick={() => openGrid(g)}>
                 <div className="gm-item-main">
-                  <b>{g.name}</b>
+                  <b>{g.name}{g.srvId && <span className="tag on" style={{ marginLeft: 6 }}>服务器</span>}</b>
                   <span className="muted small">{g.rows} 行 × {g.cols} 列 · 对边距 {g.flatToFlat}</span>
                 </div>
                 <div className="gm-item-ops">
@@ -499,11 +496,45 @@ export default function GridManager() {
                   {confirmDel === g.id ? (
                     <button className="btn btn-sm btn-red" onClick={(e) => { e.stopPropagation(); deleteGrid(g.id) }}>确认</button>
                   ) : (
-                    <button className="btn btn-sm" title="删除" onClick={(e) => { e.stopPropagation(); setConfirmDel(g.id); setTimeout(() => setConfirmDel((c) => (c === g.id ? null : c)), 3000) }}>删</button>
+                    <button className="btn btn-sm" title="删除本地网格" onClick={(e) => { e.stopPropagation(); setConfirmDel(g.id); setTimeout(() => setConfirmDel((c) => (c === g.id ? null : c)), 3000) }}>删</button>
                   )}
                 </div>
               </div>
             ))}
+            {srvList.map((m) => {
+              const dl = grids.find((g) => g.srvId === m.id)
+              return (
+                <div key={'srv-' + m.id} className="gm-item" style={{ cursor: 'pointer' }}
+                  title={dl ? '点击在地图上查看' : '未下载：请先下载后查看'}
+                  onClick={() => (dl ? viewLocal(dl) : toast('请先下载后查看', 'warn'))}>
+                  <div className="gm-item-main">
+                    <b>{m.name} <span className={'tag' + (dl ? ' on' : '')} style={{ marginLeft: 4 }}>{dl ? '已下载' : '未下载'}</span></b>
+                    <span className="muted small">
+                      服务器包 · {m.rows} 行 × {m.cols} 列 · 对边距 {m.flat_to_flat} · {m.id}
+                      {m.used_by.length ? ` · 被 ${m.used_by.length} 个剧本引用` : ''}
+                    </span>
+                  </div>
+                  <div className="gm-item-ops">
+                    {!dl && (
+                      <button className="btn btn-sm" title="下载到本地（下载后才能查看）"
+                        onClick={(e) => { e.stopPropagation(); void loadSrvToLocal(m) }}>下载</button>
+                    )}
+                    <button className="btn btn-sm" title={dl ? '在地图上查看' : '请先下载后查看'} disabled={!dl}
+                      onClick={(e) => { e.stopPropagation(); if (dl) viewLocal(dl) }}>看</button>
+                    {dl && (
+                      <button className="btn btn-sm" title="打开本地副本编辑"
+                        onClick={(e) => { e.stopPropagation(); openGrid(dl) }}>编辑</button>
+                    )}
+                    {srvConfirmDel === m.id ? (
+                      <button className="btn btn-sm btn-red" title="确认删除服务器包" onClick={(e) => { e.stopPropagation(); void deleteSrv(m) }}>确认</button>
+                    ) : (
+                      <button className="btn btn-sm" title="删除服务器包（不影响已下载的本地副本）"
+                        onClick={(e) => { e.stopPropagation(); setSrvConfirmDel(m.id); setTimeout(() => setSrvConfirmDel((c) => (c === m.id ? null : c)), 3000) }}>删</button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
         <details className="gm-sec">
@@ -513,36 +544,6 @@ export default function GridManager() {
             <button className="btn" onClick={() => fileRef.current?.click()}>导入 JSON</button>
           </div>
           <input ref={fileRef} type="file" accept=".json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importDoc(f); e.target.value = '' }} />
-        </details>
-        <details className="gm-sec">
-          <summary>服务器网格包（{srvList.length}）</summary>
-          <div className="gm-sec-head">
-            <span className="muted small">剧本管理页「战场环境」生成的六角格网络（zip 存服务器，剧本只引用 id）</span>
-            <button className="btn btn-sm" title="刷新" onClick={refreshSrv}>↻</button>
-          </div>
-          <div className="gm-list">
-            {srvList.length === 0 && <div className="muted small">暂无服务器网格包</div>}
-            {srvList.map((m) => (
-              <div key={m.id} className="gm-item" onClick={() => void viewSrv(m)} style={{ cursor: 'pointer' }}>
-                <div className="gm-item-main">
-                  <b>{m.name}</b>
-                  <span className="muted small">
-                    {m.rows} 行 × {m.cols} 列 · 对边距 {m.flat_to_flat} · {m.id}
-                    {m.used_by.length ? ` · 被 ${m.used_by.length} 个剧本引用` : ''}
-                  </span>
-                </div>
-                <div className="gm-item-ops">
-                  <button className="btn btn-sm" title="查看" onClick={(e) => { e.stopPropagation(); void viewSrv(m) }}>看</button>
-                  <button className="btn btn-sm" title="载入到本地编辑" onClick={(e) => { e.stopPropagation(); void loadSrvToLocal(m) }}>载入</button>
-                  {srvConfirmDel === m.id ? (
-                    <button className="btn btn-sm btn-red" title="确认删除" onClick={(e) => { e.stopPropagation(); void deleteSrv(m) }}>确认</button>
-                  ) : (
-                    <button className="btn btn-sm" title="删除" onClick={(e) => { e.stopPropagation(); setSrvConfirmDel(m.id); setTimeout(() => setSrvConfirmDel((c) => (c === m.id ? null : c)), 3000) }}>删</button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
         </details>
         {active && (
           <details className="gm-sec">
