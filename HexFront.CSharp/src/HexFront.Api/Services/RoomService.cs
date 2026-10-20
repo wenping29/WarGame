@@ -45,6 +45,8 @@ public sealed class RoomService
         _saveDir = Environment.GetEnvironmentVariable("HF_SAVE_DIR")
             ?? Path.Combine(_dataDir, "saves"); // §12.1：副本存档落在 data/saves/<实例>/
         _gisDir = Path.Combine(_dataDir, "gis");
+        Directory.CreateDirectory(_gisDir);
+        Directory.CreateDirectory(HexGridDirectory); // 六角格网络包目录（剧本只存 id，包在这里）
     }
 
     // ==================== Public API for REST controller ====================
@@ -52,6 +54,8 @@ public sealed class RoomService
     public string ScenarioDirectory => _scenarioDir;
     public string SaveDirectory => _saveDir;
     public string GisDirectory => _gisDir;
+    /// <summary>服务器六角格网络包目录（data/hexgrids，每网格一个 zip，剧本只存 id）。</summary>
+    public string HexGridDirectory => Path.Combine(_dataDir, "hexgrids");
     /// <summary>仓库 data 目录（剧本备份、内容反馈等管理类文件落这里）。</summary>
     public string DataDirectory => _dataDir;
 

@@ -858,6 +858,12 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .scm-oob{margin-top:4px}
 .scm-oob-head{display:flex; align-items:center; gap:12px; margin:6px 0}
 .scm-oob-head .btn{margin-left:auto}
+/* 六角格网络包（战场环境内创建/绑定） */
+.scm-hex{margin-top:10px; border-top:1px dashed var(--line); padding-top:10px; display:flex; flex-direction:column; gap:8px}
+.scm-hex-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap}
+.scm-hex-head b{font-size:13px}
+.scm-hex-bind{display:flex; align-items:center; gap:10px; font-size:13px; flex-wrap:wrap}
+.scm-hex-bind code{background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:2px 6px}
 .scm-oob-scroll{overflow-x:auto}
 .scm-json{
   width:100%; background:var(--bg); color:var(--fg); border:1px solid var(--line);

@@ -33,6 +33,9 @@ public static class ScenarioService
         public TerrainSpec? Terrain { get; init; }
         public Dictionary<string, object>? Flags { get; init; }
         public string? GisPackage { get; init; }
+        /// <summary>服务器六角格网络包 id（data/hexgrids/&lt;id&gt;.zip）；优先级高于 gis_package 与 environment。</summary>
+        [System.Text.Json.Serialization.JsonPropertyName("hexgrid")]
+        public string? HexGridId { get; init; }
         public EnvSpec? Environment { get; init; }
         public WeatherCfg? Weather { get; init; }
         public ClockCfg? Clock { get; init; }
@@ -223,9 +226,11 @@ public static class ScenarioService
 
     /// <summary>Create a GameState from scenario config. gisDir enables loading the referenced hex package.</summary>
     public static GameState CreateGameState(ScenarioConfig config, string? gisDir = null,
-        uint seed = 42, string? instanceId = null)
+        uint seed = 42, string? instanceId = null, string? hexGridDir = null)
     {
-        var (grid, cells) = LoadGisCells(config.GisPackage, gisDir)
+        // 棋盘来源优先级：剧本绑定的六角格包（hexgrid）> GIS 数据包（gis_package）> environment 程序化地形
+        var (grid, cells) = LoadHexGridCells(config.HexGridId, hexGridDir)
+            ?? LoadGisCells(config.GisPackage, gisDir)
             ?? BuildProceduralGrid(config.Environment ?? new EnvSpec());
 
         var g = new GameState
@@ -376,6 +381,23 @@ public static class ScenarioService
 
         var grid = new HexGrid(ox, oy, radius, width, height, cellKm, scale);
         return (grid, cells);
+    }
+
+    /// <summary>剧本绑定的六角格包（hexgrid id）→ 引擎棋盘；包缺失/损坏返回 null 走下一优先级。</summary>
+    private static (HexGrid, Dictionary<string, Cell>)? LoadHexGridCells(string? hexGridId, string? dir)
+    {
+        if (string.IsNullOrWhiteSpace(hexGridId) || string.IsNullOrWhiteSpace(dir)) return null;
+        HexGridDoc? doc;
+        try
+        {
+            doc = HexGridPackageService.Read(dir, hexGridId);
+        }
+        catch (ArgumentException)
+        {
+            return null; // 非法 id 直接按未绑定处理
+        }
+        if (doc == null) return null;
+        return HexGridPackageService.Build(doc);
     }
 
     /// <summary>Self-contained procedural terrain when no GIS package is available.</summary>

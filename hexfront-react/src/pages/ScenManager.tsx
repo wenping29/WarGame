@@ -6,8 +6,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, netError, type FeedbackEntry, type ScenarioInfo } from '../services/api'
+import { api, netError, type FeedbackEntry, type HexGridMeta, type ScenarioInfo } from '../services/api'
 import { useMeta } from '../room/useUnitFull'
+import { TERRAINS } from '../components/GeoMapView'
 import { toast } from '../components/Toast'
 
 const ERAS = ['', '抗日战争', '解放战争', '抗美援朝', '第二次世界大战', '其他']
@@ -57,6 +58,9 @@ function normalizeDoc(d: Doc) {
   env.center_lonlat[1] = toFloat(env.center_lonlat[1])
   if (env.height_seed === '' || env.height_seed == null) delete env.height_seed
   else env.height_seed = toInt(env.height_seed)
+  // 六角格网络包引用：剧本内只保留 id 字符串
+  if (d.hexgrid == null || d.hexgrid === '') delete d.hexgrid
+  else d.hexgrid = String(d.hexgrid)
   d.max_turns = toInt(d.max_turns, 12)
 
   const ck = (d.clock ??= {})
@@ -133,6 +137,47 @@ export default function ScenManager() {
     api.feedbackList().then(r => setFbAll(r.feedback || [])).catch(() => {})
   }, [])
   useEffect(refreshFeedback, [refreshFeedback])
+
+  /* ---------- 六角格网络包（战场环境内创建，剧本只存 hexgrid id） ---------- */
+  const [hgList, setHgList] = useState<HexGridMeta[]>([])
+  const [hgBusy, setHgBusy] = useState(false)
+  const [hgPick, setHgPick] = useState('')
+  const [hgForm, setHgForm] = useState({ name: '', rows: '10', cols: '14', ftf: '2500', west: '107', south: '33', terrain: 'clear' })
+
+  const refreshHexgrids = useCallback(() => {
+    api.hexgrids().then(r => setHgList(r.grids || [])).catch(() => {})
+  }, [])
+  useEffect(refreshHexgrids, [refreshHexgrids])
+
+  // 生成六角格包（zip 落服务器 data/hexgrids/）并把 id 绑进剧本，保存时落盘
+  const hgCreate = async () => {
+    const f = hgForm
+    const rows = Math.round(+f.rows), cols = Math.round(+f.cols), ftf = +f.ftf
+    const west = +f.west, south = +f.south
+    if (!(rows >= 1 && rows <= 200) || !(cols >= 1 && cols <= 200)) return toast('行列需在 1–200 之间', 'err')
+    if (!(ftf >= 10 && ftf <= 1000000)) return toast('对边距需在 10–1000000 米之间', 'err')
+    if (!Number.isFinite(west) || !Number.isFinite(south)) return toast('锚点经纬度无效', 'err')
+    setHgBusy(true)
+    try {
+      const r = await api.hexgridCreate({
+        name: f.name.trim() || undefined, rows, cols, flat_to_flat: ftf, west, south,
+        default_terrain: f.terrain || undefined, source: 'scenmgr',
+      })
+      toast(`已生成六角格包 ${r.grid.id}（${rows} 行 × ${cols} 列）`, 'ok')
+      refreshHexgrids()
+      upd(d => { d.hexgrid = r.grid.id })
+    } catch (e) {
+      toast('生成失败：' + netError(e), 'err')
+    } finally {
+      setHgBusy(false)
+    }
+  }
+
+  const hgBind = (id: string) => {
+    if (!id) return
+    upd(d => { d.hexgrid = id })
+    toast('已绑定网格包 ' + id + '，记得保存剧本')
+  }
 
   // 默认选中第一个剧本
   useEffect(() => {
@@ -435,6 +480,81 @@ export default function ScenManager() {
                   <Text label="中心经度" path="environment.center_lonlat.0" />
                   <Text label="中心纬度" path="environment.center_lonlat.1" />
                   <Text label="高程种子" path="environment.height_seed" />
+                </div>
+
+                <div className="scm-hex">
+                  <div className="scm-hex-head">
+                    <b>六角格网络包</b>
+                    <span className="muted small">
+                      数据以 zip 存服务器，剧本只引用 id；绑定后优先于上方 environment 与 gis_package
+                    </span>
+                  </div>
+
+                  <div className="scm-hex-bind">
+                    <span>当前绑定：</span>
+                    {doc.hexgrid ? (
+                      <>
+                        <code className="mono">{String(doc.hexgrid)}</code>
+                        <span className="muted small">{hgList.find(g => g.id === doc.hexgrid)?.name || ''}</span>
+                        <button className="btn btn-sm danger" disabled={hgBusy}
+                          onClick={() => upd(d => { delete d.hexgrid })}>解除绑定</button>
+                      </>
+                    ) : (
+                      <span className="muted small">未绑定（用 environment 程序化地形或 gis_package）</span>
+                    )}
+                  </div>
+
+                  {hgList.length > 0 && (
+                    <div className="scm-hex-bind">
+                      <select value={hgPick} onChange={e => setHgPick(e.target.value)} style={{ maxWidth: 260 }}>
+                        <option value="">选择已有网格包…</option>
+                        {hgList.map(g => (
+                          <option key={g.id} value={g.id}>
+                            {g.name}（{g.rows}×{g.cols} · {g.id}{g.used_by.length ? ' · 已被引用' : ''}）
+                          </option>
+                        ))}
+                      </select>
+                      <button className="btn btn-sm" disabled={!hgPick || hgBusy} onClick={() => { hgBind(hgPick); setHgPick('') }}>
+                        绑定所选
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="scm-grid">
+                    <label className="scm-f"><span>网格名称</span>
+                      <input value={hgForm.name} placeholder="留空自动命名"
+                        onChange={e => setHgForm({ ...hgForm, name: e.target.value })} />
+                    </label>
+                    <label className="scm-f"><span>行数</span>
+                      <input type="number" min={1} max={200} value={hgForm.rows}
+                        onChange={e => setHgForm({ ...hgForm, rows: e.target.value })} />
+                    </label>
+                    <label className="scm-f"><span>列数</span>
+                      <input type="number" min={1} max={200} value={hgForm.cols}
+                        onChange={e => setHgForm({ ...hgForm, cols: e.target.value })} />
+                    </label>
+                    <label className="scm-f"><span>对边距（米）</span>
+                      <input type="number" min={10} value={hgForm.ftf}
+                        onChange={e => setHgForm({ ...hgForm, ftf: e.target.value })} />
+                    </label>
+                    <label className="scm-f"><span>锚点西经</span>
+                      <input type="number" step="0.0001" value={hgForm.west}
+                        onChange={e => setHgForm({ ...hgForm, west: e.target.value })} />
+                    </label>
+                    <label className="scm-f"><span>锚点南纬</span>
+                      <input type="number" step="0.0001" value={hgForm.south}
+                        onChange={e => setHgForm({ ...hgForm, south: e.target.value })} />
+                    </label>
+                    <label className="scm-f"><span>默认地形</span>
+                      <select value={hgForm.terrain}
+                        onChange={e => setHgForm({ ...hgForm, terrain: e.target.value })}>
+                        {TERRAINS.map(([k, n]) => <option key={k} value={k}>{n}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <button className="btn btn-sm primary" disabled={hgBusy} onClick={hgCreate}>
+                    {hgBusy ? '生成中…' : '⚙ 生成六角格包并绑定'}
+                  </button>
                 </div>
               </fieldset>
 

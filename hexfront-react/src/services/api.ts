@@ -93,6 +93,42 @@ export interface SaveInfo {
   description?: string
 }
 
+/** 服务器六角格网络包清单项（GET /api/hexgrids） */
+export interface HexGridMeta {
+  id: string
+  name: string
+  rows: number
+  cols: number
+  flat_to_flat: number
+  west: number
+  south: number
+  bbox: [number, number, number, number]
+  default_terrain: string
+  holes_count: number
+  terrains_count: number
+  created_at: string
+  updated_at: string
+  source: string
+  used_by: string[]
+}
+
+/** 服务器六角格网络包全文（GET /api/hexgrids/{id} 的 grid 字段） */
+export interface HexGridDoc {
+  id: string
+  name: string
+  rows: number
+  cols: number
+  flat_to_flat: number
+  west: number
+  south: number
+  default_terrain: string
+  holes: string[]
+  terrains: Record<string, string>
+  created_at: string
+  updated_at: string
+  source: string
+}
+
 export interface RoomInfo {
   code: string
   instance: string
@@ -328,6 +364,17 @@ export const api = {
   deleteSave: (instance: string) =>
     del<{ instance: string; deleted: boolean; db_rows?: number; error?: string }>(
       '/saves/' + encodeURIComponent(instance)),
+  // ==================== 服务器六角格网络包（剧本只存 hexgrid id） ====================
+  hexgrids: () => get<{ grids: HexGridMeta[]; count: number }>('/hexgrids'),
+  hexgridGet: (id: string) => get<{ grid: HexGridDoc; bbox: [number, number, number, number] }>(
+    '/hexgrids/' + encodeURIComponent(id)),
+  hexgridCreate: (body: {
+    name?: string; rows: number; cols: number; flat_to_flat: number;
+    west: number; south: number; default_terrain?: string; source?: string;
+  }) => post<{ grid: HexGridDoc; bbox: [number, number, number, number]; error?: string }>('/hexgrids', body),
+  hexgridDelete: (id: string) =>
+    del<{ id: string; deleted: boolean; error?: string; used_by?: string[] }>(
+      '/hexgrids/' + encodeURIComponent(id)),
   gisCapabilities: () => get<GisCapabilities>('/gis/capabilities'),
   gisPlan: (bbox: [number, number, number, number], cellKm?: number) =>
     get<GisPlan>('/gis/plan?w=' + bbox[0] + '&s=' + bbox[1] + '&e=' + bbox[2] + '&n=' + bbox[3] +

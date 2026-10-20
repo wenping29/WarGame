@@ -5,14 +5,14 @@ import { quickStart, saveList } from './lobby.js';
 
 export async function renderHome(root) {
   clear(root);
-  const saves = (await getMeta()).saves || [];
+  const saves = (await getMeta(true)).saves || [];
   const list = el('div', { class: 'home-list' });
 
   const tile = (title, hint, onclick) => el('button', { class: 'home-tile', onclick }, [
     el('b', {}, title), el('span', { class: 'hint' }, hint),
   ]);
   const showSaves = async () => {
-    const m = await getMeta();
+    const m = await getMeta(true); // force：删除副本后回调刷新，须绕过 metaCache
     list.replaceChildren(saveList(m.saves || [], showSaves));
   };
   const toggleSaves = () => { if (list.firstChild) clear(list); else showSaves(); };

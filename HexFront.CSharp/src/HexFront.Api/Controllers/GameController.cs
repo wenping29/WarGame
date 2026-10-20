@@ -148,7 +148,7 @@ public class GameController : ControllerBase
         GameState g;
         try
         {
-            g = ScenarioService.CreateGameState(cfg, _rooms.GisDirectory, seed);
+            g = ScenarioService.CreateGameState(cfg, _rooms.GisDirectory, seed, hexGridDir: _rooms.HexGridDirectory);
         }
         catch (Exception ex)
         {

@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from '../components/Toast'
 import GeoMapView, { type BBox, type HexOverlay, type MapMode, TERRAINS, lngToMx, latToMy, mxToLng, myToLat } from '../components/GeoMapView'
-import { api, netError } from '../services/api'
+import { api, netError, type HexGridMeta } from '../services/api'
 import { gisFromPackage, type GisData, type PackageJson } from '../gis/hexgen'
 
 const SQRT3 = Math.sqrt(3)
@@ -124,8 +124,66 @@ export default function GridManager() {
   const [rangeBox, setRangeBox] = useState<BBox | null>(null)
   /** GIS 分析进行中的阶段提示（null = 空闲） */
   const [gisBusy, setGisBusy] = useState<string | null>(null)
+  /* ---------- 服务器六角格网络包（剧本管理页生成的 zip 包） ---------- */
+  const [srvList, setSrvList] = useState<HexGridMeta[]>([])
+  const [srvView, setSrvView] = useState<HexOverlay | null>(null)
+  const [srvConfirmDel, setSrvConfirmDel] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
+
+  const refreshSrv = useCallback(() => {
+    api.hexgrids().then(r => setSrvList(r.grids || [])).catch(() => {})
+  }, [])
+  useEffect(refreshSrv, [refreshSrv])
+
+  // 查看：拉全文 → 以覆盖层画在地图上并定位；任何本地编辑动作会退出查看态
+  const viewSrv = async (m: HexGridMeta) => {
+    try {
+      const r = await api.hexgridGet(m.id)
+      setSrvView({
+        west: r.grid.west, south: r.grid.south, rows: r.grid.rows, cols: r.grid.cols,
+        size: r.grid.flat_to_flat / SQRT3, holes: r.grid.holes, terrains: r.grid.terrains, preview: false,
+      })
+      const [w, s, e, n] = r.bbox
+      fitGrid({ west: w, south: s, east: e, north: n })
+    } catch (err) {
+      toast('读取网格包失败：' + netError(err), 'err')
+    }
+  }
+
+  // 载入到本地编辑器：转成本地网格文档（保留挖格与涂装），可继续涂刷/修改
+  const loadSrvToLocal = async (m: HexGridMeta) => {
+    try {
+      const r = await api.hexgridGet(m.id)
+      const [w, s] = r.bbox
+      const d = pruneDoc({
+        ...makeGrid(r.grid.name || m.id, r.grid.rows, r.grid.cols, r.grid.flat_to_flat,
+          { west: w, south: s, east: r.bbox[2], north: r.bbox[3] }),
+        holes: r.grid.holes || [],
+        terrains: r.grid.terrains || {},
+      })
+      setGrids(list => [...list, d])
+      setSrvView(null)
+      openGrid(d)
+      toast(`已载入「${d.name}」到本地编辑器`, 'ok')
+    } catch (err) {
+      toast('载入失败：' + netError(err), 'err')
+    }
+  }
+
+  const deleteSrv = async (m: HexGridMeta) => {
+    try {
+      await api.hexgridDelete(m.id)
+      toast('已删除网格包 ' + m.id)
+      if (srvView) setSrvView(null)
+      refreshSrv()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast(/409|引用/.test(msg) ? `删除被拒：${m.id} 正被剧本引用，先在剧本管理页解除绑定` : '删除失败：' + msg, 'err')
+    } finally {
+      setSrvConfirmDel(null)
+    }
+  }
 
   const active = useMemo(() => grids.find((g) => g.id === editingId) ?? null, [grids, editingId])
 
@@ -205,6 +263,7 @@ export default function GridManager() {
   /* ---------- 草稿字段更新：锚点/行列/对边距 → 重新推导东/北边界 ---------- */
   const updGeom = (p: Partial<{ rows: string; cols: string; flatToFlat: string; west: string; south: string }>) => {
     setRangeBox(null) // 手动修改字段后，原框选矩形不再对应表单
+    setSrvView(null) // 退出服务器包查看态
     setDraft((prev) => {
       const rows = Math.round(Number(p.rows ?? prev.rows))
       const cols = Math.round(Number(p.cols ?? prev.cols))
@@ -233,6 +292,7 @@ export default function GridManager() {
   const updEdge = (isEast: boolean, v: string) => {
     const num = Number(v)
     setRangeBox(null) // 手动修改边界后，原框选矩形不再对应表单
+    setSrvView(null) // 退出服务器包查看态
     setDraft((prev) => {
       if (!Number.isFinite(num) || !geom) return { ...prev, [isEast ? 'east' : 'north']: v }
       if (isEast) {
@@ -255,6 +315,7 @@ export default function GridManager() {
 
   const onFrame = (b: BBox) => {
     if (!geom) return toast('请先填写有效的对边距', 'err')
+    setSrvView(null) // 退出服务器包查看态
     // 范围以用户框选的矩形为准（不整格外扩）；对边距保持不变；行列号由范围 + 对边距重新计算（向上取整覆盖整个范围）
     const size = geom.ftf / SQRT3
     const C = clamp(Math.ceil((lngToMx(b.east) - lngToMx(b.west)) / (SQRT3 * size)), 1, 200)
@@ -274,6 +335,7 @@ export default function GridManager() {
 
   const onCellClick = (k: string | null) => {
     if (!k) return
+    if (srvView) setSrvView(null) // 退出服务器包查看态，落到本地网格编辑
     if (!active) return toast('先创建/选中一个网格，才能涂刷编辑', 'err')
     const holeSet = new Set(active.holes)
     if (mode === 'paint') {
@@ -430,6 +492,38 @@ export default function GridManager() {
           </div>
           <input ref={fileRef} type="file" accept=".json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importDoc(f); e.target.value = '' }} />
         </div>
+        <div className="panel">
+          <div className="panel-header">
+            <h3>服务器网格包（{srvList.length}）</h3>
+            <button className="btn btn-sm" title="刷新" onClick={refreshSrv}>↻</button>
+          </div>
+          <div className="muted small" style={{ marginBottom: 6 }}>
+            剧本管理页「战场环境」生成的六角格网络（zip 存服务器，剧本只引用 id）
+          </div>
+          <div className="gm-list">
+            {srvList.length === 0 && <div className="muted small">暂无服务器网格包</div>}
+            {srvList.map((m) => (
+              <div key={m.id} className="gm-item" onClick={() => void viewSrv(m)} style={{ cursor: 'pointer' }}>
+                <div className="gm-item-main">
+                  <b>{m.name}</b>
+                  <span className="muted small">
+                    {m.rows} 行 × {m.cols} 列 · 对边距 {m.flat_to_flat} · {m.id}
+                    {m.used_by.length ? ` · 被 ${m.used_by.length} 个剧本引用` : ''}
+                  </span>
+                </div>
+                <div className="gm-item-ops">
+                  <button className="btn btn-sm" title="查看" onClick={(e) => { e.stopPropagation(); void viewSrv(m) }}>看</button>
+                  <button className="btn btn-sm" title="载入到本地编辑" onClick={(e) => { e.stopPropagation(); void loadSrvToLocal(m) }}>载入</button>
+                  {srvConfirmDel === m.id ? (
+                    <button className="btn btn-sm btn-red" title="确认删除" onClick={(e) => { e.stopPropagation(); void deleteSrv(m) }}>确认</button>
+                  ) : (
+                    <button className="btn btn-sm" title="删除" onClick={(e) => { e.stopPropagation(); setSrvConfirmDel(m.id); setTimeout(() => setSrvConfirmDel((c) => (c === m.id ? null : c)), 3000) }}>删</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
         {active && (
           <div className="panel">
             <div className="panel-header">
@@ -466,7 +560,7 @@ export default function GridManager() {
           </span>
         </div>
         <div className="gm-canvas-wrap">
-          <GeoMapView mode={mode} overlay={overlay} onFrame={onFrame} onPick={onPick} onCellClick={onCellClick} fit={fit} range={rangeBox} gis={active?.gis ?? null} />
+          <GeoMapView mode={mode} overlay={srvView ?? overlay} onFrame={onFrame} onPick={onPick} onCellClick={onCellClick} fit={fit} range={rangeBox} gis={active?.gis ?? null} />
         </div>
       </div>
 

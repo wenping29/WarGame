@@ -7,7 +7,7 @@ const ROLES = [['director', '导演部'], ['red', '红方'], ['blue', '蓝方'],
 
 export async function renderLobby(root) {
   clear(root);
-  const meta = await getMeta();
+  const meta = await getMeta(true); // force：删除副本后由回调整页重渲，须绕过 metaCache 才能看到新列表
   const page = el('div', { class: 'page' });
 
   // 顶部一键区

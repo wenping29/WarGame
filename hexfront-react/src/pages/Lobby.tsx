@@ -120,7 +120,7 @@ export default function Lobby() {
       const res = await api.deleteSave(s.instance)
       if (res.deleted) {
         toast('已删除副本 ' + s.instance)
-        const meta = await loadMeta()
+        const meta = await loadMeta(true) // force：绕过模块缓存，否则列表仍显示已删条目
         setSaves(meta.saves || [])
       } else {
         toast(res.error || '删除失败', 'err')
