@@ -22,7 +22,9 @@
   },
   "clock": {
     "start_hour": 7,
-    "season": "\u51AC"
+    "season": "\u51AC",
+    "night_from": 19,
+    "night_to": 7
   },
   "weather": {
     "initial": "overcast",
@@ -132,7 +134,10 @@
           "at": [
             9,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -140,7 +145,10 @@
           "at": [
             9,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -148,7 +156,10 @@
           "at": [
             10,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -156,7 +167,10 @@
           "at": [
             9,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -164,7 +178,10 @@
           "at": [
             7,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "aa",
@@ -172,7 +189,10 @@
           "at": [
             10,
             7
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     },
@@ -245,7 +265,10 @@
           "at": [
             11,
             4
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -253,7 +276,10 @@
           "at": [
             12,
             3
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -261,7 +287,10 @@
           "at": [
             11,
             3
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -269,7 +298,10 @@
           "at": [
             12,
             4
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -277,7 +309,10 @@
           "at": [
             12,
             2
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     }

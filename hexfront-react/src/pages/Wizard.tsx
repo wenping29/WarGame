@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, netError, type CreateInstanceBody, type GisCapabilities, type GisJob, type GisPlan, type ScenarioInfo, type ValidateResult } from '../services/api'
+import { api, netError, type CreateInstanceBody, type GisCapabilities, type GisJob, type GisPlan, type HexGridMeta, type ScenarioInfo, type ValidateResult } from '../services/api'
 import { loadMeta, useMeta, type UnitTypeDef } from '../room/useUnitFull'
 import GeoMapView, { type BBox } from '../components/GeoMapView'
 import { toast } from '../components/Toast'
@@ -83,8 +83,13 @@ interface WizardState {
   seed: string
   env: { width: string; height: string; cell_km: string; lon: string; lat: string }
   gis: {
-    mode: 'existing' | 'generate'
+    /** hexgrid = 绑定服务器六角格网络包（优先级最高） */
+    mode: 'existing' | 'generate' | 'hexgrid'
     pkg: string
+    /** hexgrid 模式下选中的服务器网络包 id（overrides.hexgrid） */
+    hexPkg: string
+    /** 已生成数据包的实际格距 km（作业完成时从 meta.cell_km 记录；用于检测"改了方案但没重新生成"） */
+    pkgCellKm: string
     /** generate 模式作业完成后的产物包名：进入 overrides.gis_package */
     genPkg: string
     bbox: { w: string; s: string; e: string; n: string }
@@ -170,8 +175,10 @@ function scenarioToState(s: ScenarioInfo, prev: WizardState): WizardState {
     },
     gis: {
       ...prev.gis,
-      mode: 'existing',
+      mode: s.hexgrid ? 'hexgrid' : 'existing',
+      hexPkg: s.hexgrid || '',
       pkg: s.gis_package || '',
+      pkgCellKm: '',
       genPkg: '',
       bbox: center
         ? { w: fmt(center[0] - 0.95), e: fmt(center[0] + 0.95), s: fmt(center[1] - 0.55), n: fmt(center[1] + 0.55) }
@@ -213,7 +220,7 @@ export default function Wizard() {
     seed: '',
     env: { width: '', height: '', cell_km: '', lon: '', lat: '' },
     gis: {
-      mode: 'existing', pkg: '', genPkg: '',
+      mode: 'existing', pkg: '', hexPkg: '', pkgCellKm: '', genPkg: '',
       bbox: { w: '', s: '', e: '', n: '' },
       cell_km: '', dem: 'auto', landuse: 'auto',
       roads: true, water: true, network: true, features: true, name: '',
@@ -295,9 +302,9 @@ export default function Wizard() {
       }
       setGen(prev => ({ ...prev, job: j, jobErr: '' }))
       if (j.status === 'done') {
-        // 新包要进 /api/scenarios 的 gis 列表，也要成为本局的 gis_package
+        // 新包要进 /api/scenarios 的 gis 列表，也要成为本局的 gis_package；格距一并记录供一致性校验
         await loadMeta(true).catch(() => {})
-        setState(prev => ({ ...prev, gis: { ...prev.gis, pkg: j.name, genPkg: j.name } }))
+        setState(prev => ({ ...prev, gis: { ...prev.gis, pkg: j.name, genPkg: j.name, pkgCellKm: String(j.meta?.cell_km ?? '') } }))
         toast(`六角格数据包已生成：${j.name}（${j.meta?.width ?? '?'}×${j.meta?.height ?? '?'} 格）`)
       } else if (j.status === 'failed') {
         toast('生成失败：' + (j.error || '见日志'), 'err')
@@ -359,17 +366,31 @@ export default function Wizard() {
   // 与 web wizard 的 buildOverrides 同语义，但接受显式 state（避免 setState 异步下读到旧值）
   function buildOverridesFor(st: WizardState): Record<string, unknown> & { __invalid?: string } {
     const ov: Record<string, unknown> = {}
-    const pkg = st.gis.mode === 'existing' ? st.gis.pkg : st.gis.genPkg
-    if (st.gis.mode === 'generate' && !pkg) {
-      return { __invalid: '战场数据尚未生成：请先在「战场环境」里点「生成六角格网格」并等待完成' }
-    }
-    if (pkg) ov.gis_package = pkg
     const env: Record<string, unknown> = {}
-    if (!pkg) {
-      if (num(st.env.width) !== null) env.width = num(st.env.width)
-      if (num(st.env.height) !== null) env.height = num(st.env.height)
-      if (num(st.env.cell_km) !== null) env.cell_km = num(st.env.cell_km)
-      if (num(st.env.lon) !== null && num(st.env.lat) !== null) env.center_lonlat = [num(st.env.lon), num(st.env.lat)]
+    if (st.gis.mode === 'hexgrid') {
+      // 服务器网络包模式：overrides.hexgrid，引擎棋盘优先级最高（> gis_package > environment）
+      if (!st.gis.hexPkg) return { __invalid: '请选择服务器六角格网络包' }
+      ov.hexgrid = st.gis.hexPkg
+    } else {
+      const pkg = st.gis.mode === 'existing' ? st.gis.pkg : st.gis.genPkg
+      if (st.gis.mode === 'generate' && !pkg) {
+        return { __invalid: '战场数据尚未生成：请先在「战场环境」里点「生成六角格网格」并等待完成' }
+      }
+      if (pkg) ov.gis_package = pkg
+      // 一致性校验：已生成数据包的格距必须与当前选择的方案一致，否则副本仍按旧格距生成
+      if (st.gis.mode === 'generate' && pkg) {
+        const wantKm = num(st.gis.cell_km) ?? (gen.plan?.recommended.cell_km ?? null)
+        const gotKm = num(st.gis.pkgCellKm)
+        if (wantKm !== null && gotKm !== null && Math.abs(wantKm - gotKm) > 1e-6) {
+          return { __invalid: `已生成的数据包是 ${gotKm} km 格距，与当前选择的 ${wantKm} km 不一致：请回到「战场环境」重新点「生成六角格网格」` }
+        }
+      }
+      if (!pkg) {
+        if (num(st.env.width) !== null) env.width = num(st.env.width)
+        if (num(st.env.height) !== null) env.height = num(st.env.height)
+        if (num(st.env.cell_km) !== null) env.cell_km = num(st.env.cell_km)
+        if (num(st.env.lon) !== null && num(st.env.lat) !== null) env.center_lonlat = [num(st.env.lon), num(st.env.lat)]
+      }
     }
     if (Object.keys(env).length) ov.environment = env
     const flags: Record<string, boolean> = {}
@@ -582,6 +603,10 @@ function Step2Environment({ state, updateState, gen, onStart }: {
   const meta = useMeta()
   const packages = (meta?.gis || []) as Array<{ name: string; cell_km?: number; width?: number; height?: number; cells?: number }>
   const g = state.gis
+  const [hgList, setHgList] = useState<HexGridMeta[]>([])
+  useEffect(() => {
+    api.hexgrids().then(r => setHgList(r.grids || [])).catch(() => {})
+  }, [])
 
   return (
     <div>
@@ -590,10 +615,16 @@ function Step2Environment({ state, updateState, gen, onStart }: {
       <div className="gis-box">
         <h3>战场数据与六角格网络</h3>
         <p className="muted small">
-          六角格由真实栅格按范围现场生成，也可复用已生成的数据包。
+          可绑定服务器网络包、复用已生成的数据包，或按范围现场生成；服务器网络包优先级最高。
         </p>
 
         <div className="row">
+          <button
+            className={`btn btn-sm${g.mode === 'hexgrid' ? ' btn-1' : ''}`}
+            onClick={() => updateState({ gis: { ...g, mode: 'hexgrid' } })}
+          >
+            服务器网络包
+          </button>
           <button
             className={`btn btn-sm${g.mode === 'existing' ? ' btn-1' : ''}`}
             onClick={() => updateState({ gis: { ...g, mode: 'existing' } })}
@@ -608,7 +639,39 @@ function Step2Environment({ state, updateState, gen, onStart }: {
           </button>
         </div>
 
-        {g.mode === 'existing' ? (
+        {g.mode === 'hexgrid' ? (
+          <div style={{ marginTop: '10px' }}>
+            <div className="row">
+              <label>
+                <span>服务器网络包</span>
+                <select value={g.hexPkg} onChange={e => updateState({ gis: { ...g, hexPkg: e.target.value } })}>
+                  <option value="">（选择服务器网络包…）</option>
+                  {hgList.map(h => (
+                    <option key={h.id} value={h.id}>
+                      {h.name}（{h.rows}×{h.cols} · 对边距 {h.flat_to_flat}m · {h.id}{h.used_by.length ? ' · 已被引用' : ''}）
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {g.hexPkg && (() => {
+              const h = hgList.find(x => x.id === g.hexPkg)
+              return (
+                <div className="card pkg-card" style={{ marginTop: '8px' }}>
+                  <div className="kv">
+                    <span>格网</span><b>{h ? `${h.rows}×${h.cols} 格` : g.hexPkg}</b>
+                  </div>
+                  {h && (
+                    <>
+                      <div className="kv"><span>对边距</span><b>{h.flat_to_flat} m</b></div>
+                      <div className="kv"><span>挖格 / 涂装</span><b>{h.holes_count} / {h.terrains_count}</b></div>
+                    </>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
+        ) : g.mode === 'existing' ? (
           <div style={{ marginTop: '10px' }}>
             <div className="row">
               <label>
@@ -681,7 +744,7 @@ function Step2Environment({ state, updateState, gen, onStart }: {
       </details>
 
       <p className="muted small">
-        六角格几何（原点、半径、行列数）始终取自所选数据包，与在线天地图瓦片同一墨卡托框架；对边距按实地公里计。
+        六角格几何（原点、半径、行列数）取自所绑定的服务器网络包；未绑定时取自所选数据包，与在线天地图瓦片同一墨卡托框架；对边距按实地公里计。
       </p>
     </div>
   )
@@ -700,6 +763,9 @@ function GeneratePanel({ state, updateState, gen, onStart }: {
   const running = gen.job != null && (gen.job.status === 'queued' || gen.job.status === 'running')
   const caps = gen.caps
   const notes = capsNotes(caps, g)
+  // 已生成包格距 vs 当前选择：不一致时警告（副本会按旧包格距生成）
+  const pkgKm = num(g.pkgCellKm)
+  const kmMismatch = !running && !!g.genPkg && pkgKm !== null && activeKm != null && Math.abs(pkgKm - activeKm) > 1e-6
 
   /* ── 地图选取弹窗：在在线地图上框选范围回填四至 ── */
   const [pickOpen, setPickOpen] = useState(false)
@@ -761,6 +827,13 @@ function GeneratePanel({ state, updateState, gen, onStart }: {
           用推荐对边距
         </button>
       </div>
+
+      {kmMismatch && (
+        <p className="warn small">
+          ⚠ 已生成的数据包是 <b>{pkgKm} km</b> 格距，与当前选择的 <b>{activeKm} km</b> 不一致——
+          请修改后重新点下方「生成六角格网格」，否则创建的副本仍按 {pkgKm} km 六角格生成。
+        </p>
+      )}
 
       <PlanCard gen={gen} activeKm={activeKm ?? null} customKm={customKm} onPick={km => setGis({ cell_km: String(km) })} />
 

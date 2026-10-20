@@ -67,6 +67,8 @@ export interface ScenarioInfo {
   scale?: string
   description?: string
   gis_package?: string | null
+  /** 服务器六角格网络包 id（data/hexgrids/<id>.zip），优先级高于 gis_package 与 environment */
+  hexgrid?: string | null
   environment?: Record<string, unknown>
   max_turns?: number
   /** 完整 sides（含 oob 明细），供向导卡片一键回填部队编制 */

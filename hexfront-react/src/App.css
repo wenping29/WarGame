@@ -143,6 +143,10 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
   padding:7px 14px; border-radius:4px;
 }
 .btn:hover{border-color:var(--accent)}
+/* 选中态：btn-1 用于方案/模式切换按钮的选中标记（模式切换、对边距档位等） */
+.btn-1{background:rgba(127,176,105,.16); border-color:var(--accent); color:var(--accent); font-weight:600}
+.btn-1:hover{background:rgba(127,176,105,.26); border-color:var(--accent)}
+.chip.btn-1{box-shadow:inset 0 0 0 1px var(--accent)}
 .btn-primary{background:#2f4d3a; border-color:#437050; color:#cfe9d6; font-weight:600}
 .btn-primary:hover{background:#38603f}
 .btn-warn{background:#4a3d20; border-color:#6e5a2e; color:#f0d9a5}
@@ -760,7 +764,12 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .chip{
   font-family:var(--mono); font-size:11px; padding:4px 7px; white-space:nowrap;
 }
-.chip.rec{border-color:var(--accent); color:var(--accent);}
+/* 推荐档位：虚线边 + 前缀「荐」，与选中态明确区分 */
+.chip.rec{border-style:dashed; border-color:rgba(127,176,105,.55); color:rgba(127,176,105,.8)}
+.chip.rec::before{content:'荐 '; font-size:10px; opacity:.85}
+/* 当前选中档位：实心绿底（同 btn-primary 视觉层级），一目了然 */
+.chip.btn-1{background:#2f4d3a; border-color:#437050; color:#cfe9d6; font-weight:700;
+  box-shadow:0 0 0 1px rgba(127,176,105,.45)}
 .plan-card .why{margin:0 0 0 16px; line-height:1.6;}
 
 .job-log{
