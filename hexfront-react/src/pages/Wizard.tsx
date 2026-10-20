@@ -11,6 +11,8 @@ import { useNavigate } from 'react-router-dom'
 import { api, type CreateInstanceBody, type GisPlan, type HexGridMeta, type ScenarioInfo, type ValidateResult } from '../services/api'
 import { loadMeta, useMeta, type UnitTypeDef } from '../room/useUnitFull'
 import HexGenPanel from '../components/HexGenPanel'
+import { lngToMx, latToMy } from '../components/GeoMapView'
+import { SQRT3, metersToHex } from '../map/hex'
 import { toast } from '../components/Toast'
 
 const STEP_TITLES = ['剧本与名称', '战场环境', '天气', '部队编成', '审阅并创建']
@@ -46,10 +48,45 @@ interface OOBRow {
   qty: string
   q: string
   r: string
+  /** 初始经纬度（度）：创建时换算成网格坐标写入 at，Q/R 直填优先 */
+  lon: string
+  lat: string
   training: string
   experience: string
   cname: string
   cquality: string
+}
+
+const emptyOobRow = (type = ''): OOBRow =>
+  ({ type, qty: '1', q: '', r: '', lon: '', lat: '', training: '', experience: '', cname: '', cquality: '' })
+
+/** 绑定网格包的几何（经纬度 → 网格坐标换算用）；ox/oy 口径与后端 HexGridPackageService.Build 一致 */
+interface HexGeo {
+  ox: number
+  oy: number
+  radius: number
+  rows: number
+  cols: number
+  holes: Set<string>
+}
+
+/** 部队行初始位置：Q/R 直填优先；否则经纬度换算（需已绑定网格包）。越界/挖除格返回 error。 */
+function resolveAt(row: OOBRow, geo: HexGeo | null): { at: [number, number] | null; error?: string } {
+  const q = num(row.q), r = num(row.r)
+  if (q !== null || r !== null) {
+    if (q === null || r === null) return { at: null, error: 'Q/R 需成对填写' }
+    return { at: [q, r] }
+  }
+  const lon = num(row.lon), lat = num(row.lat)
+  if (lon === null && lat === null) return { at: null }
+  if (lon === null || lat === null) return { at: null, error: '经纬度需成对填写' }
+  if (!geo) return { at: null, error: '未绑定网格包，无法换算经纬度' }
+  const [cq, cr] = metersToHex({ ox: geo.ox, oy: geo.oy, radius: geo.radius }, lngToMx(lon), latToMy(lat))
+  if (cq < 0 || cq >= geo.cols || cr < 0 || cr >= geo.rows)
+    return { at: null, error: `经纬度（${lon}, ${lat}）换算为 ${cq},${cr}，落在网格之外` }
+  if (geo.holes.has(`${cq},${cr}`))
+    return { at: null, error: `经纬度（${lon}, ${lat}）落在挖除格 ${cq},${cr}` }
+  return { at: [cq, cr] }
 }
 
 interface WizardState {
@@ -89,12 +126,13 @@ interface WizardState {
   ai: { red: boolean; blue: boolean }
 }
 
-function rowToOob(row: OOBRow): Record<string, unknown> | null {
-  if (!row.type) return null
+function rowToOob(row: OOBRow, geo: HexGeo | null): { entry: Record<string, unknown> | null; error?: string } {
+  if (!row.type) return { entry: null }
+  const res = resolveAt(row, geo)
+  if (res.error) return { entry: null, error: res.error }
   const out: Record<string, unknown> = { type: row.type }
   if (num(row.qty) !== null) out.qty = num(row.qty)
-  const q = num(row.q), r = num(row.r)
-  if (q !== null && r !== null) out.at = [q, r]
+  if (res.at) out.at = res.at
   if (num(row.training) !== null) out.training = num(row.training)
   if (num(row.experience) !== null) out.experience = num(row.experience)
   if (row.cname && row.cname.trim()) {
@@ -102,7 +140,7 @@ function rowToOob(row: OOBRow): Record<string, unknown> | null {
     if (num(row.cquality) !== null) commander.quality = num(row.cquality)
     out.commander = commander
   }
-  return out
+  return { entry: out }
 }
 
 /// 剧本卡片点击：剧本内数据整体回填到向导各步表单
@@ -129,7 +167,7 @@ function scenarioToState(s: ScenarioInfo, prev: WizardState): WizardState {
       const cmd = (e.commander || {}) as Record<string, unknown>
       return {
         type: str(e.type), qty: str(e.qty ?? 1),
-        q: str(at[0]), r: str(at[1]),
+        q: str(at[0]), r: str(at[1]), lon: '', lat: '',
         training: str(e.training), experience: str(e.experience),
         cname: str(cmd.name), cquality: str(cmd.quality),
       }
@@ -230,6 +268,29 @@ export default function Wizard() {
   // 这里只保留推荐方案引用，供创建前的一致性校验使用
   const [genPlan, setGenPlan] = useState<GisPlan | null>(null)
 
+  // ── 绑定网格包几何：部队编成经纬度 → 网格坐标换算（与后端 Build 同口径） ──
+  const [hexGeo, setHexGeo] = useState<HexGeo | null>(null)
+  useEffect(() => {
+    let dead = false
+    setHexGeo(null)
+    if (!state.gis.hexPkg) return
+    api.hexgridGet(state.gis.hexPkg)
+      .then(({ grid }) => {
+        if (dead) return
+        const radius = grid.flat_to_flat / SQRT3
+        setHexGeo({
+          ox: lngToMx(grid.west) + (SQRT3 / 2) * radius,
+          oy: latToMy(grid.south) + radius,
+          radius,
+          rows: grid.rows,
+          cols: grid.cols,
+          holes: new Set(grid.holes || []),
+        })
+      })
+      .catch(() => { if (!dead) setHexGeo(null) })
+    return () => { dead = true }
+  }, [state.gis.hexPkg])
+
   const types: UnitTypeDef[] = useMemo(
     () => {
       const raw = meta?.unit_types as unknown
@@ -307,7 +368,13 @@ export default function Wizard() {
       const b = num(st.sides[side].budget)
       if (b !== null) cfg.points_budget = b
       if (oobDirty[side]) {
-        const oob = st.sides[side].oob.map(rowToOob).filter(Boolean)
+        const sideName = side === 'red' ? '红方' : '蓝方'
+        const oob: Record<string, unknown>[] = []
+        for (let i = 0; i < st.sides[side].oob.length; i++) {
+          const { entry, error } = rowToOob(st.sides[side].oob[i], hexGeo)
+          if (error) return { __invalid: `${sideName}部队第 ${i + 1} 行：${error}` }
+          if (entry) oob.push(entry)
+        }
         if (!oob.length) return { __invalid: `阵营 ${side} 的 OOB 为空（若要保留默认请不要提交该字段）` }
         cfg.oob = oob
       }
@@ -360,7 +427,7 @@ export default function Wizard() {
     if (step >= 1 && state.scenarioId) doValidate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.weather.initial, state.weather.mode, state.weather.schedule, state.clock, state.gis.hexPkg, state.flags,
-      state.sides, state.typeRows, state.typeAttrs, state.scenarioId, oobDirty])
+      state.sides, state.typeRows, state.typeAttrs, state.scenarioId, oobDirty, hexGeo])
 
   return (
     <div className="page wizard-page" style={{ paddingBottom: 0 }}>
@@ -458,6 +525,7 @@ export default function Wizard() {
               types={types}
               firstType={firstType}
               setOobDirty={setOobDirty}
+              geo={hexGeo}
             />
           )}
           {step === 4 && <Step5Review state={state} overrides={buildOverridesFor(state)} onCreate={create} onBack={() => setStep(0)} />}
@@ -698,12 +766,13 @@ function Step3Weather({ state, updateState, weatherList }: {
 }
 
 // Step 4: OOB + 兵种属性覆盖
-function Step4OOB({ state, updateState, types, firstType, setOobDirty }: {
+function Step4OOB({ state, updateState, types, firstType, setOobDirty, geo }: {
   state: WizardState
   updateState: (u: Partial<WizardState>) => void
   types: UnitTypeDef[]
   firstType: () => string
   setOobDirty: Dispatch<SetStateAction<Record<string, boolean>>>
+  geo: HexGeo | null
 }) {
   const patchSide = (side: 'red' | 'blue', rows: OOBRow[]) =>
     updateState({ sides: { ...state.sides, [side]: { ...state.sides[side], oob: rows } } })
@@ -713,6 +782,7 @@ function Step4OOB({ state, updateState, types, firstType, setOobDirty }: {
       <h2>第 4 步 · 红蓝部队编成（OOB 与兵种属性）</h2>
       <p className="muted small">
         留空即继承剧本默认兵力。一旦增删行即整体替换该阵营 OOB（服务端按列表替换语义合并）。
+        初始位置可直填 Q/R，或填经纬度（度，WGS84）——创建时自动换算成网格坐标存入副本；两种都填时 Q/R 优先。
       </p>
 
       {(['red', 'blue'] as const).map(side => (
@@ -727,8 +797,7 @@ function Step4OOB({ state, updateState, types, firstType, setOobDirty }: {
             </label>
             <button className="btn btn-sm" onClick={() => {
               setOobDirty(prev => ({ ...prev, [side]: true }))
-              patchSide(side, [...state.sides[side].oob,
-                { type: firstType(), qty: '1', q: '', r: '', training: '', experience: '', cname: '', cquality: '' }])
+              patchSide(side, [...state.sides[side].oob, emptyOobRow(firstType())])
             }}>
               增一行
             </button>
@@ -738,47 +807,64 @@ function Step4OOB({ state, updateState, types, firstType, setOobDirty }: {
             <div style={{ overflow: 'auto' }}>
               <table className="oob-table">
                 <thead>
-                  <tr>{['兵种', '数量', 'Q', 'R', '训练', '经验', '指挥官', '素质', ''].map(h => <th key={h}>{h}</th>)}</tr>
+                  <tr>{['兵种', '数量', 'Q', 'R', '经度', '纬度', '初始格', '训练', '经验', '指挥官', '素质', ''].map(h => <th key={h}>{h}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {state.sides[side].oob.map((row, i) => (
+                  {state.sides[side].oob.map((row, i) => {
+                    const setRow = (patch: Partial<OOBRow>) => {
+                      const rows = [...state.sides[side].oob]
+                      rows[i] = { ...rows[i], ...patch }
+                      patchSide(side, rows)
+                    }
+                    const at = resolveAt(row, geo)
+                    return (
                     <tr key={i}>
                       <td>
                         <select value={row.type}
-                          onChange={e => {
-                            const rows = [...state.sides[side].oob]
-                            rows[i] = { ...rows[i], type: e.target.value }
-                            patchSide(side, rows)
-                          }}>
+                          onChange={e => setRow({ type: e.target.value })}>
                           {types.map(t => <option key={t.id} value={t.id}>{t.label}·{t.points ?? '?'}点</option>)}
                         </select>
                       </td>
-                      {(['qty', 'q', 'r', 'training', 'experience'] as const).map(f => (
+                      {(['qty', 'q', 'r'] as const).map(f => (
                         <td key={f}>
-                          <input className="num" type="number" placeholder={f === 'training' || f === 'experience' ? '-' : f}
+                          <input className="num" type="number" placeholder={f}
                             value={row[f]}
-                            onChange={e => {
-                              const rows = [...state.sides[side].oob]
-                              rows[i] = { ...rows[i], [f]: e.target.value }
-                              patchSide(side, rows)
-                            }} />
+                            onChange={e => setRow({ [f]: e.target.value } as Partial<OOBRow>)} />
+                        </td>
+                      ))}
+                      <td>
+                        <input className="num" type="number" step="0.0001" placeholder="经度" title="初始经度（度），创建时换算为网格坐标"
+                          value={row.lon}
+                          onChange={e => setRow({ lon: e.target.value })} />
+                      </td>
+                      <td>
+                        <input className="num" type="number" step="0.0001" placeholder="纬度" title="初始纬度（度），创建时换算为网格坐标"
+                          value={row.lat}
+                          onChange={e => setRow({ lat: e.target.value })} />
+                      </td>
+                      <td>
+                        {at.error ? (
+                          <span style={{ color: '#c85a54', whiteSpace: 'nowrap' }} title={at.error}>⚠ 无效</span>
+                        ) : at.at ? (
+                          <code className="mono small">{at.at[0]},{at.at[1]}</code>
+                        ) : (
+                          <span className="muted small">-</span>
+                        )}
+                      </td>
+                      {(['training', 'experience'] as const).map(f => (
+                        <td key={f}>
+                          <input className="num" type="number" placeholder="-"
+                            value={row[f]}
+                            onChange={e => setRow({ [f]: e.target.value } as Partial<OOBRow>)} />
                         </td>
                       ))}
                       <td>
                         <input type="text" placeholder="姓名" value={row.cname}
-                          onChange={e => {
-                            const rows = [...state.sides[side].oob]
-                            rows[i] = { ...rows[i], cname: e.target.value }
-                            patchSide(side, rows)
-                          }} />
+                          onChange={e => setRow({ cname: e.target.value })} />
                       </td>
                       <td>
                         <input className="num" type="number" step="0.05" placeholder="0-1" value={row.cquality}
-                          onChange={e => {
-                            const rows = [...state.sides[side].oob]
-                            rows[i] = { ...rows[i], cquality: e.target.value }
-                            patchSide(side, rows)
-                          }} />
+                          onChange={e => setRow({ cquality: e.target.value })} />
                       </td>
                       <td>
                         <span className="x" style={{ cursor: 'pointer', color: '#c85a54' }}
@@ -787,7 +873,8 @@ function Step4OOB({ state, updateState, types, firstType, setOobDirty }: {
                         </span>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
