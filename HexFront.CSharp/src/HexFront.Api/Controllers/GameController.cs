@@ -166,10 +166,19 @@ public class GameController : ControllerBase
         {
             var initMeta = StoreService.WriteInit(g, name, Str(body, "description"), _rooms.SaveDirectory,
                 BodyOverrides(body));
-            // 应用库：开局副本目录 upsert
+            // 应用库：开局副本目录 upsert + 内容同步进 save_docs
             _db.UpsertSave(new StoreSaveMeta(initMeta.Instance, initMeta.Name, initMeta.Scenario,
                 initMeta.Seed, initMeta.LastTurn, initMeta.MaxTurns,
                 initMeta.CreatedAt.ToString("o"), initMeta.UpdatedAt.ToString("o"), "init"));
+            try
+            {
+                _db.StoreSaveFile(_rooms.SaveDirectory, initMeta.Instance, "init", 0, "init.json", initMeta.UpdatedAt);
+                _db.StoreSaveFile(_rooms.SaveDirectory, initMeta.Instance, "meta", null, "meta.json", initMeta.UpdatedAt);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "开局副本内容同步入库失败（实例 {Instance}）", initMeta.Instance);
+            }
         }
         catch (Exception ex)
         {

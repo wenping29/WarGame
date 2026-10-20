@@ -247,5 +247,28 @@ public class AdminController : ControllerBase
     public IActionResult Saves([FromQuery] int limit = 200) =>
         Ok(new { saves = _db.ListSaves(Clamp(limit)) });
 
+    /// <summary>GET /api/admin/save_docs/{instance} — 某副本已入库的所有内容文件清单（不返回正文，避免大体积）。</summary>
+    [HttpGet("api/admin/save_docs/{instance}")]
+    public IActionResult SaveDocs(string instance) =>
+        Ok(new { instance, files = _db.ListSaveDocs(instance) });
+
+    /// <summary>GET /api/admin/save_doc/{instance}?kind=meta&turn=0 — 取单个存档文件原文（meta/init/turns 省略 turn）。</summary>
+    [HttpGet("api/admin/save_doc/{instance}")]
+    public IActionResult SaveDoc(string instance, [FromQuery] string kind = "meta", [FromQuery] int? turn = null)
+    {
+        var doc = _db.GetSaveDoc(instance, kind, turn);
+        if (doc == null) return NotFound(new { error = "未找到该存档内容（可能尚未同步）" });
+        return Content(doc, "application/json");
+    }
+
+    /// <summary>GET /api/admin/scenario_doc/{id} — 取剧本全文（与磁盘 JSON 一致）。</summary>
+    [HttpGet("api/admin/scenario_doc/{id}")]
+    public IActionResult ScenarioDoc(string id)
+    {
+        var doc = _db.GetScenarioDoc(id);
+        if (doc == null) return NotFound(new { error = "未找到该剧本文档（可能尚未同步）" });
+        return Content(doc, "application/json");
+    }
+
     private static int Clamp(int v) => Math.Clamp(v, 1, 1000);
 }

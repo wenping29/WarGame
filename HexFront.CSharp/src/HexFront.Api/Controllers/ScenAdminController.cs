@@ -92,8 +92,10 @@ public sealed class ScenAdminController : ControllerBase
             await System.IO.File.WriteAllTextAsync(path, text + "\n");
             result["file"] = Path.GetFileName(path);
             result["backup"] = backup is null ? null : Path.GetFileName(backup);
-            // 应用库：剧本目录同步（保存后刷新 catalog）
+            // 应用库：剧本目录同步（保存后刷新 catalog）+ 全文内容入库
             _db.SyncScenarios(_rooms.ScenarioDirectory);
+            try { _db.SyncScenarioDoc(path); }
+            catch (Exception ex) { _logger.LogWarning(ex, "剧本内容入库失败 {Id}", id); }
             result["saved_at"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
             _logger.LogInformation("scenario {Id} saved (backup: {Backup})", id, backup);
             return new JsonResult(result);

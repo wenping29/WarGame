@@ -21,9 +21,10 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
 var app = builder.Build();
 
 // 统一应用库启动初始化：种子数据（角色/菜单/管理员）→ 历史库迁移（ops_log.db、
-// scenario_feedback.json）→ 剧本目录同步。失败不阻断启动。
-app.Services.GetRequiredService<AppDbService>()
-    .Initialize(app.Services.GetRequiredService<RoomService>().ScenarioDirectory);
+// scenario_feedback.json）→ 剧本目录/内容同步 → 推演存档内容同步。失败不阻断启动。
+var appDb = app.Services.GetRequiredService<AppDbService>();
+var roomSvc = app.Services.GetRequiredService<RoomService>();
+appDb.Initialize(roomSvc.ScenarioDirectory, roomSvc.SaveDirectory);
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

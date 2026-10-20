@@ -671,6 +671,23 @@ public sealed class RoomService
                 snapMeta.CreatedAt.ToString("o"), snapMeta.UpdatedAt.ToString("o"), "snapshot"));
         }
 
+        // 应用库：把本回合落盘的内容（turns.jsonl + 新快照 + meta）同步进 save_docs，
+        // 使 SQLite 成为统一真源；失败只告警，不阻断已结算的回合。
+        try
+        {
+            _db.StoreSaveFile(_saveDir, room.Game.InstanceId, "turns", null, "turns.jsonl", DateTime.UtcNow);
+            if (snapMeta != null)
+            {
+                _db.StoreSaveFile(_saveDir, room.Game.InstanceId, "snapshot", resolvedTurn,
+                    $"snapshot_t{resolvedTurn}.json", snapMeta.UpdatedAt);
+                _db.StoreSaveFile(_saveDir, room.Game.InstanceId, "meta", null, "meta.json", snapMeta.UpdatedAt);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "副本内容同步入库失败（副本 {Instance}）", room.Game.InstanceId);
+        }
+
         // SQLite 操作流水：回合结算阶段（双方最终指令 + 随机源 + 指纹，供复盘/审计）
         _ops.LogTurnResolved(room.Game.InstanceId, resolvedTurn, byRole, rngAtResolve,
             new Dictionary<string, IReadOnlyList<Command>>
@@ -700,10 +717,20 @@ public sealed class RoomService
                 {
                     ["instance"] = meta.Instance, ["name"] = meta.Name, ["turn"] = meta.LastTurn,
                 });
-            // 应用库：手动存档副本目录 upsert
+            // 应用库：手动存档副本目录 upsert + 内容同步进 save_docs
             _db.UpsertSave(new StoreSaveMeta(meta.Instance, meta.Name, meta.Scenario,
                 meta.Seed, meta.LastTurn, meta.MaxTurns,
                 meta.CreatedAt.ToString("o"), meta.UpdatedAt.ToString("o"), "manual"));
+            try
+            {
+                _db.StoreSaveFile(_saveDir, meta.Instance, "snapshot", meta.SnapshotTurn,
+                    $"snapshot_t{meta.SnapshotTurn}.json", meta.UpdatedAt);
+                _db.StoreSaveFile(_saveDir, meta.Instance, "meta", null, "meta.json", meta.UpdatedAt);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "手动存档内容同步入库失败（副本 {Instance}）", meta.Instance);
+            }
             await BroadcastAll(room, new Dictionary<string, object?>
             {
                 ["type"] = "saved",

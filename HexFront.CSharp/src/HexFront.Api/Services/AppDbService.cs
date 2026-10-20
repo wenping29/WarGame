@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using HexFront.Core.Services;
 using Microsoft.Data.Sqlite;
 
 namespace HexFront.Api.Services;
@@ -209,15 +210,44 @@ public sealed class AppDbService : IDisposable
                 source TEXT                       -- init | snapshot | manual
             )
             """);
+        // 剧本完整内容（与 scenarios 目录表互补：目录表只存轻量 catalog，本表存全文 JSON）
+        Exec("""
+            CREATE TABLE IF NOT EXISTS scenario_docs (
+                id TEXT PRIMARY KEY,
+                doc_json TEXT NOT NULL,
+                bytes INTEGER,
+                file TEXT,
+                updated_at TEXT,
+                synced_at TEXT NOT NULL
+            )
+            """);
+        // 推演存档完整内容：每个实例多文件（meta/init/snapshot_tN/turns）→ 统一入库
+        Exec("""
+            CREATE TABLE IF NOT EXISTS save_docs (
+                instance TEXT NOT NULL,
+                kind TEXT NOT NULL,        -- meta | init | snapshot | turns
+                turn INTEGER,              -- snapshot 的回合号；其余为 NULL
+                doc_json TEXT NOT NULL,
+                bytes INTEGER,
+                updated_at TEXT,
+                PRIMARY KEY (instance, kind, turn)
+            )
+            """);
+        Exec("CREATE INDEX IF NOT EXISTS ix_save_docs_instance ON save_docs(instance)");
     }
 
-    /// <summary>启动初始化：种子数据 → 历史库迁移 → 剧本目录同步。幂等可重复调用。</summary>
-    public void Initialize(string? scenarioDir = null)
+    /// <summary>启动初始化：种子数据 → 历史库迁移 → 剧本目录/内容同步 → 推演存档内容同步。幂等可重复调用。</summary>
+    public void Initialize(string? scenarioDir = null, string? saveDir = null)
     {
         SeedDefaults();
         MigrateOpsLog();
         MigrateFeedbackFile();
-        if (scenarioDir != null) SyncScenarios(scenarioDir);
+        if (scenarioDir != null)
+        {
+            SyncScenarios(scenarioDir);
+            SyncScenarioDocs(scenarioDir);
+        }
+        if (saveDir != null) SyncSaveDocs(saveDir);
     }
 
     // ==================== 种子数据 ====================
@@ -551,6 +581,42 @@ public sealed class AppDbService : IDisposable
     public List<Dictionary<string, object?>> ListScenarios(int limit = 500) =>
         QueryList("SELECT * FROM scenarios ORDER BY era, id LIMIT $lim", ("$lim", limit));
 
+    /// <summary>扫描剧本目录，把全文 JSON 入库到 scenario_docs（幂等：INSERT OR REPLACE）。</summary>
+    public int SyncScenarioDocs(string scenarioDir)
+    {
+        if (!Directory.Exists(scenarioDir)) return 0;
+        var n = 0;
+        try
+        {
+            foreach (var file in Directory.GetFiles(scenarioDir, "*.json"))
+            {
+                try { if (SyncScenarioDoc(file)) n++; }
+                catch (Exception ex) { _logger.LogWarning(ex, "剧本内容入库失败: {File}", file); }
+            }
+            _logger.LogInformation("剧本完整内容同步完成: {N} 个", n);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "剧本目录不可读: {Dir}", scenarioDir); }
+        return n;
+    }
+
+    /// <summary>单个剧本文件 → scenario_docs（幂等）。</summary>
+    public bool SyncScenarioDoc(string path)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var d = doc.RootElement;
+        var id = d.TryGetProperty("id", out var v) && v.ValueKind == JsonValueKind.String
+            ? v.GetString()! : Path.GetFileNameWithoutExtension(path);
+        var json = File.ReadAllText(path);
+        ExecCmd("INSERT OR REPLACE INTO scenario_docs(id, doc_json, bytes, file, updated_at, synced_at) VALUES($id,$d,$b,$f,$u,$s)",
+            ("$id", id), ("$d", json), ("$b", json.Length), ("$f", path),
+            ("$u", File.GetLastWriteTimeUtc(path).ToString("o")), ("$s", Now()));
+        return true;
+    }
+
+    /// <summary>取剧本全文（供管理接口/回放；null 表示未入库）。</summary>
+    public string? GetScenarioDoc(string id) =>
+        (string?)QueryRow("SELECT doc_json FROM scenario_docs WHERE id=$id", ("$id", id))?["doc_json"];
+
     // ==================== 房间 / 副本 ====================
 
     public void UpsertRoom(string code, string instance, string? scenario, string? name, int turn) =>
@@ -569,6 +635,99 @@ public sealed class AppDbService : IDisposable
 
     public List<Dictionary<string, object?>> ListSaves(int limit = 200) =>
         QueryList("SELECT * FROM saves ORDER BY updated_at DESC LIMIT $lim", ("$lim", limit));
+
+    // ==================== 推演存档完整内容 ====================
+
+    /// <summary>扫描 data/saves，把每个实例的全部文件（meta/init/snapshot_tN/turns）入库到 save_docs，
+    /// 并回填 saves 目录表。幂等可重复调用（每次启动跑一次即可与磁盘对齐）。</summary>
+    public int SyncSaveDocs(string saveDir)
+    {
+        if (!Directory.Exists(saveDir)) return 0;
+        var n = 0;
+        var instances = 0;
+        foreach (var dir in Directory.GetDirectories(saveDir))
+        {
+            try
+            {
+                var files = SyncSaveInstance(saveDir, Path.GetFileName(dir));
+                if (files > 0) { n += files; instances++; }
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "副本内容同步跳过: {Dir}", dir); }
+        }
+        _logger.LogInformation("推演存档内容同步完成: {Files} 个文件（来自 {Instances} 个实例）", n, instances);
+        return n;
+    }
+
+    /// <summary>单个实例目录 → save_docs + saves 目录表（幂等）。</summary>
+    public int SyncSaveInstance(string saveDir, string instance)
+    {
+        var meta = StoreService.ReadMeta(instance, saveDir);
+        if (meta == null) return 0;
+        // 回填 saves 目录表（修复此前仅 live 写入、目录不全的缺口）
+        UpsertSave(new StoreSaveMeta(meta.Instance, meta.Name, meta.Scenario, meta.Seed,
+            meta.LastTurn, meta.MaxTurns, meta.CreatedAt.ToString("o"), meta.UpdatedAt.ToString("o"), "init"));
+        var dir = Path.Combine(saveDir, instance);
+        var n = 0;
+        StoreSaveFileIf(dir, instance, "meta", null, "meta.json", meta.UpdatedAt, ref n);
+        StoreSaveFileIf(dir, instance, "init", 0, "init.json", meta.UpdatedAt, ref n);
+        if (Directory.Exists(dir))
+            foreach (var f in Directory.GetFiles(dir, "snapshot_t*.json"))
+            {
+                var name = Path.GetFileNameWithoutExtension(f);
+                if (int.TryParse(name["snapshot_t".Length..], out var t))
+                    StoreSaveFileIf(dir, instance, "snapshot", t, Path.GetFileName(f), meta.UpdatedAt, ref n);
+            }
+        StoreSaveFileIf(dir, instance, "turns", null, "turns.jsonl", meta.UpdatedAt, ref n);
+        return n;
+    }
+
+    /// <summary>读一个磁盘文件并写入 save_docs（文件不存在则跳过）。供启动时批量回填与实时写入复用。</summary>
+    public void StoreSaveFile(string saveDir, string instance, string kind, int? turn, string fileName, DateTime updatedAt)
+    {
+        var path = Path.Combine(saveDir, instance, fileName);
+        if (!File.Exists(path)) return;
+        try
+        {
+            var json = File.ReadAllText(path);
+            StoreSaveDoc(instance, kind, turn, json, updatedAt.ToString("o"));
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "副本内容入库失败 {Instance}/{File}", instance, fileName); }
+    }
+
+    /// <summary>低层写入：一条 save_docs（幂等）。</summary>
+    public void StoreSaveDoc(string instance, string kind, int? turn, string docJson, string? updatedAt)
+    {
+        ExecCmd("INSERT OR REPLACE INTO save_docs(instance, kind, turn, doc_json, bytes, updated_at) VALUES($i,$k,$t,$d,$b,$u)",
+            ("$i", instance), ("$k", kind), ("$t", turn.HasValue ? turn.Value : DBNull.Value),
+            ("$d", docJson), ("$b", docJson.Length), ("$u", (object?)updatedAt ?? DBNull.Value));
+    }
+
+    private void StoreSaveFileIf(string dir, string instance, string kind, int? turn, string fileName, DateTime updatedAt, ref int n)
+    {
+        var path = Path.Combine(dir, fileName);
+        if (!File.Exists(path)) return;
+        try
+        {
+            var json = File.ReadAllText(path);
+            StoreSaveDoc(instance, kind, turn, json, updatedAt.ToString("o"));
+            n++;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "副本内容入库失败 {Instance}/{File}", instance, fileName); }
+    }
+
+    /// <summary>某实例所有已入库内容文件清单（kind/turn/bytes/updated_at）。</summary>
+    public List<Dictionary<string, object?>> ListSaveDocs(string instance) =>
+        QueryList("SELECT kind, turn, bytes, updated_at FROM save_docs WHERE instance=$i ORDER BY kind, turn", ("$i", instance));
+
+    /// <summary>取某个存档文件原文（meta/init/turns 传 turn=null；snapshot 传具体回合号）。</summary>
+    public string? GetSaveDoc(string instance, string kind, int? turn = null)
+    {
+        if (turn.HasValue)
+            return (string?)QueryRow("SELECT doc_json FROM save_docs WHERE instance=$i AND kind=$k AND turn=$t",
+                ("$i", instance), ("$k", kind), ("$t", turn.Value))?["doc_json"];
+        return (string?)QueryRow("SELECT doc_json FROM save_docs WHERE instance=$i AND kind=$k AND turn IS NULL",
+            ("$i", instance), ("$k", kind))?["doc_json"];
+    }
 
     // ==================== 推演操作流水（原 OpsLogService 职能） ====================
 
