@@ -112,9 +112,9 @@ public sealed class GameState
     public string Phase { get; set; } = "orders"; // orders/movement/combat/resolution
     public string? Weather { get; set; } = "clear";
     public string WeatherMode { get; set; } = "director"; // director/realistic/random
-    /// <summary>夜幕起始时刻（0–23，null = 出厂默认 20）。拂晓/黄昏窗口随夜幕自动推算。</summary>
+    /// <summary>夜幕起始时刻（0–23，null = 出厂默认 19）。拂晓/黄昏窗口随夜幕自动推算。</summary>
     public int? NightFrom { get; set; }
-    /// <summary>夜幕结束时刻（0–23，可小于 NightFrom 表示跨零点；null = 出厂默认 6）。</summary>
+    /// <summary>夜幕结束时刻（0–23，可小于 NightFrom 表示跨零点；null = 出厂默认 7）。</summary>
     public int? NightTo { get; set; }
     /// <summary>
     /// 天气计划（导演部专属）：回合区间 → 天气的预排列表。
@@ -195,8 +195,8 @@ public sealed class GameState
     /// </summary>
     public DayPhase DayPhaseOf()
     {
-        var nf = NightFrom ?? 20;
-        var nt = NightTo ?? 6;
+        var nf = NightFrom ?? 19;
+        var nt = NightTo ?? 7;
         var h = ((HourOfDay % 24) + 24) % 24;
 
         var nightLen = ((nf - nt) % 24 + 24) % 24;   // 夜长（小时）

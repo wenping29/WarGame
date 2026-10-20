@@ -118,7 +118,7 @@ interface WizardState {
     /** 天气计划：回合区间 → 天气；只预排，启动/暂停/删除归导演部 */
     schedule: Array<{ from: string; to: string; weather: string }>
   }
-  /** 日夜交替：留空即继承剧本默认（起 6 时 / 每回合 6 小时 / 夜幕 20–6） */
+  /** 日夜交替：留空即继承剧本默认（起 6 时 / 每回合 6 小时 / 夜幕 19–7） */
   clock: { start_hour: string; turn_hours: string; night_from: string; night_to: string }
   sides: { red: { oob: OOBRow[]; budget: string }; blue: { oob: OOBRow[]; budget: string } }
   typeRows: string[]
@@ -693,7 +693,7 @@ function Step3Weather({ state, updateState, weatherList }: {
   const nf = Number(clock.night_from), nt = Number(clock.night_to)
   const cycleHint = Number.isInteger(nf) && Number.isInteger(nt) && nf >= 0 && nf <= 23 && nt >= 0 && nt <= 23 && nf !== nt
     ? `夜幕 ${clock.night_from}–${clock.night_to} 时，其前后各约 3 小时为拂晓/黄昏，其余为昼间`
-    : '默认夜幕 20–6 时：拂晓 6–9 / 黄昏 17–20 / 夜间 20–6'
+    : '默认夜幕 19–7 时：拂晓 7–10 / 黄昏 16–19 / 夜间 19–7'
 
   return (
     <div>
@@ -762,12 +762,12 @@ function Step3Weather({ state, updateState, weatherList }: {
       <div className="row">
         <label>
           <span>夜幕开始（时）</span>
-          <input type="number" min={0} max={23} placeholder="20" value={clock.night_from}
+          <input type="number" min={0} max={23} placeholder="19" value={clock.night_from}
             onChange={e => setClock({ night_from: e.target.value })} />
         </label>
         <label>
           <span>夜幕结束（时）</span>
-          <input type="number" min={0} max={23} placeholder="6" value={clock.night_to}
+          <input type="number" min={0} max={23} placeholder="7" value={clock.night_to}
             onChange={e => setClock({ night_to: e.target.value })} />
         </label>
       </div>

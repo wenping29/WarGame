@@ -1,9 +1,9 @@
 {
   "id": "mukden_1931",
-  "name": "九一八事变 1931",
-  "era": "抗日战争",
-  "scale": "战役级",
-  "description": "1931年9月18日夜间，沈阳北大营。蓝方自爆铁路后突袭北大营，红方驻地部队在「不抵抗」命令下仓促应对。剧本以夜战条件还原当晚交火。",
+  "name": "\u4E5D\u4E00\u516B\u4E8B\u53D8 1931",
+  "era": "\u6297\u65E5\u6218\u4E89",
+  "scale": "\u6218\u5F79\u7EA7",
+  "description": "1931\u5E749\u670818\u65E5\u591C\u95F4\uFF0C\u6C88\u9633\u5317\u5927\u8425\u3002\u84DD\u65B9\u81EA\u7206\u94C1\u8DEF\u540E\u7A81\u88AD\u5317\u5927\u8425\uFF0C\u7EA2\u65B9\u9A7B\u5730\u90E8\u961F\u5728\u300C\u4E0D\u62B5\u6297\u300D\u547D\u4EE4\u4E0B\u4ED3\u4FC3\u5E94\u5BF9\u3002\u5267\u672C\u4EE5\u591C\u6218\u6761\u4EF6\u8FD8\u539F\u5F53\u665A\u4EA4\u706B\u3002",
   "environment": {
     "width": 22,
     "height": 18,
@@ -22,7 +22,9 @@
   },
   "clock": {
     "start_hour": 22,
-    "season": "秋"
+    "season": "\u79CB",
+    "night_from": 17,
+    "night_to": 7
   },
   "weather": {
     "initial": "clear",
@@ -31,7 +33,7 @@
   "max_turns": 12,
   "sides": {
     "red": {
-      "name": "北大营驻军",
+      "name": "\u5317\u5927\u8425\u9A7B\u519B",
       "points_budget": 155,
       "oob": [
         {
@@ -42,7 +44,7 @@
             10
           ],
           "commander": {
-            "name": "赵镇藩（第7旅参谋长·当夜主事）",
+            "name": "\u8D75\u9547\u85E9\uFF08\u7B2C7\u65C5\u53C2\u8C0B\u957F\u00B7\u5F53\u591C\u4E3B\u4E8B\uFF09",
             "quality": 0.62
           },
           "training": 48,
@@ -115,7 +117,10 @@
           "at": [
             15,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -123,7 +128,10 @@
           "at": [
             13,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -131,7 +139,10 @@
           "at": [
             14,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -139,7 +150,10 @@
           "at": [
             13,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -147,7 +161,10 @@
           "at": [
             11,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "aa",
@@ -155,12 +172,15 @@
           "at": [
             13,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     },
     "blue": {
-      "name": "日军独立守备队",
+      "name": "\u65E5\u519B\u72EC\u7ACB\u5B88\u5907\u961F",
       "points_budget": 145,
       "oob": [
         {
@@ -171,7 +191,7 @@
             5
           ],
           "commander": {
-            "name": "本庄繁（关东军司令官）",
+            "name": "\u672C\u5E84\u7E41\uFF08\u5173\u4E1C\u519B\u53F8\u4EE4\u5B98\uFF09",
             "quality": 0.65
           },
           "training": 48,
@@ -239,7 +259,10 @@
           "at": [
             13,
             6
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -247,7 +270,10 @@
           "at": [
             14,
             7
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -255,7 +281,10 @@
           "at": [
             12,
             6
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -263,7 +292,10 @@
           "at": [
             14,
             6
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -271,7 +303,10 @@
           "at": [
             15,
             6
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     }
@@ -291,5 +326,6 @@
       "amount": 0,
       "turns": 12
     }
-  ]
+  ],
+  "hexgrid": "hg_e9232443d4"
 }

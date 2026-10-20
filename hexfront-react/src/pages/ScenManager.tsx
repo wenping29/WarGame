@@ -199,17 +199,31 @@ export default function ScenManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta])
 
+  // 切换序号：丢弃切换后才返回的过期响应，避免快速切换时新旧数据交错
+  const openSeq = useRef(0)
+
   const openScenario = async (s: ScenarioInfo) => {
     const id = s.id || s.file
+    if (dirty && id !== selId && !window.confirm('当前剧本有未保存的修改，切换后将丢失，确认切换？')) return
+    const seq = ++openSeq.current
+    // 先清空当前数据再填充，避免切换瞬间残留上一个剧本的内容
+    setSelId(id)
+    setFile('')
+    setDoc(null)
+    setJsonText('')
+    setDirty(false)
+    setErrors([])
+    setHgPick('')
+    setGisOpen(false)
+    setGisForm(defaultGenForm)
     try {
       const r = await api.scenDetail(id)
-      setSelId(id)
+      if (seq !== openSeq.current) return
       setFile(r.file)
       setDoc(r.doc)
-      setDirty(false)
-      setErrors([])
       setJsonText(JSON.stringify(r.doc, null, 2))
     } catch (e) {
+      if (seq !== openSeq.current) return
       toast('载入剧本失败：' + netError(e), 'err')
     }
   }
@@ -579,8 +593,8 @@ export default function ScenManager() {
                   <Text label="起始时刻（时）" path="clock.start_hour" />
                   <Select label="季节" path="clock.season"
                     options={[['', '（默认）'], ['春', '春'], ['夏', '夏'], ['秋', '秋'], ['冬', '冬']]} />
-                  <Text label="夜幕开始（时）" path="clock.night_from" />
-                  <Text label="夜幕结束（时）" path="clock.night_to" />
+                  <Text label="夜幕开始（时）" path="clock.night_from" ph="默认 19" />
+                  <Text label="夜幕结束（时）" path="clock.night_to" ph="默认 7" />
                 </div>
               </details>
 

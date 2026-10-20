@@ -1,9 +1,9 @@
 {
   "id": "lugouqiao_1937",
-  "name": "七七事变 1937",
-  "era": "抗日战争",
-  "scale": "战役级",
-  "description": "1937年7月7日夜，北平西南卢沟桥。蓝方以演习失踪为借口进逼宛平城，红方第29军据桥死守，全面抗战由此爆发。",
+  "name": "\u4E03\u4E03\u4E8B\u53D8 1937",
+  "era": "\u6297\u65E5\u6218\u4E89",
+  "scale": "\u6218\u5F79\u7EA7",
+  "description": "1937\u5E747\u67087\u65E5\u591C\uFF0C\u5317\u5E73\u897F\u5357\u5362\u6C9F\u6865\u3002\u84DD\u65B9\u4EE5\u6F14\u4E60\u5931\u8E2A\u4E3A\u501F\u53E3\u8FDB\u903C\u5B9B\u5E73\u57CE\uFF0C\u7EA2\u65B9\u7B2C29\u519B\u636E\u6865\u6B7B\u5B88\uFF0C\u5168\u9762\u6297\u6218\u7531\u6B64\u7206\u53D1\u3002",
   "environment": {
     "width": 22,
     "height": 18,
@@ -22,7 +22,9 @@
   },
   "clock": {
     "start_hour": 21,
-    "season": "夏"
+    "season": "\u590F",
+    "night_from": 17,
+    "night_to": 7
   },
   "weather": {
     "initial": "clear",
@@ -31,7 +33,7 @@
   "max_turns": 12,
   "sides": {
     "red": {
-      "name": "第29军 · 卢沟桥守军",
+      "name": "\u7B2C29\u519B \u00B7 \u5362\u6C9F\u6865\u5B88\u519B",
       "points_budget": 155,
       "oob": [
         {
@@ -42,7 +44,7 @@
             9
           ],
           "commander": {
-            "name": "冯治安（第37师·卢沟桥当面）",
+            "name": "\u51AF\u6CBB\u5B89\uFF08\u7B2C37\u5E08\u00B7\u5362\u6C9F\u6865\u5F53\u9762\uFF09",
             "quality": 0.72
           },
           "training": 48,
@@ -115,7 +117,10 @@
           "at": [
             12,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -123,7 +128,10 @@
           "at": [
             11,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -131,7 +139,10 @@
           "at": [
             11,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -139,7 +150,10 @@
           "at": [
             11,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -147,7 +161,10 @@
           "at": [
             1,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "aa",
@@ -155,12 +172,15 @@
           "at": [
             12,
             8
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     },
     "blue": {
-      "name": "日军 · 丰台驻屯集群",
+      "name": "\u65E5\u519B \u00B7 \u4E30\u53F0\u9A7B\u5C6F\u96C6\u7FA4",
       "points_budget": 145,
       "oob": [
         {
@@ -171,7 +191,7 @@
             9
           ],
           "commander": {
-            "name": "河边正三（驻屯步兵旅团长）",
+            "name": "\u6CB3\u8FB9\u6B63\u4E09\uFF08\u9A7B\u5C6F\u6B65\u5175\u65C5\u56E2\u957F\uFF09",
             "quality": 0.68
           },
           "training": 48,
@@ -239,7 +259,10 @@
           "at": [
             17,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -247,7 +270,10 @@
           "at": [
             19,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -255,7 +281,10 @@
           "at": [
             16,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -263,7 +292,10 @@
           "at": [
             19,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -271,7 +303,10 @@
           "at": [
             20,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     }
@@ -291,5 +326,6 @@
       "amount": 0,
       "turns": 12
     }
-  ]
+  ],
+  "hexgrid": "hg_a2b451acfd"
 }

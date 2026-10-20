@@ -17,7 +17,7 @@
   "flags": {
     "fog": true,
     "air_superiority": true,
-    "strict_supply": false,
+    "strict_supply": true,
     "night": false
   },
   "clock": {

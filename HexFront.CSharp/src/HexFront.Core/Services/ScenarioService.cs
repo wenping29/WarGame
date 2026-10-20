@@ -84,9 +84,9 @@ public static class ScenarioService
     {
         public int StartHour { get; init; } = 6;
         public string Season { get; init; } = "夏";
-        /// <summary>夜幕起始时刻（0–23）；缺省 20，拂晓/黄昏窗口随之推算。</summary>
+        /// <summary>夜幕起始时刻（0–23）；缺省 19，拂晓/黄昏窗口随之推算。</summary>
         public int? NightFrom { get; init; }
-        /// <summary>夜幕结束时刻（0–23，可小于 NightFrom 表示跨零点）；缺省 6。</summary>
+        /// <summary>夜幕结束时刻（0–23，可小于 NightFrom 表示跨零点）；缺省 7。</summary>
         public int? NightTo { get; init; }
     }
 

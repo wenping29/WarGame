@@ -330,6 +330,7 @@ public class GameController : ControllerBase
                 ["scale"] = PropStr(m, "scale"),
                 ["description"] = PropStr(m, "description"),
                 ["gis_package"] = PropStr(m, "gis_package"),
+                ["hexgrid"] = PropStr(m, "hexgrid"),
                 ["environment"] = m.TryGetProperty("environment", out var env) ? env.Clone() : null,
                 ["max_turns"] = m.TryGetProperty("max_turns", out var mt) ? mt.GetInt32() : (int?)null,
                 ["sides"] = m.TryGetProperty("sides", out var sides) && sides.ValueKind == JsonValueKind.Object

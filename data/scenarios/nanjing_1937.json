@@ -1,9 +1,9 @@
 {
   "id": "nanjing_1937",
-  "name": "南京保卫战 1937",
-  "era": "抗日战争",
-  "scale": "战役级",
-  "description": "1937年12月，首都南京的外围与复廓阵地防御。红方以残破之师依托既设工事与城墙防守，蓝方多路合围。此役以红方撑满回合、迟滞蓝方为目标。",
+  "name": "\u5357\u4EAC\u4FDD\u536B\u6218 1937",
+  "era": "\u6297\u65E5\u6218\u4E89",
+  "scale": "\u6218\u5F79\u7EA7",
+  "description": "1937\u5E7412\u6708\uFF0C\u9996\u90FD\u5357\u4EAC\u7684\u5916\u56F4\u4E0E\u590D\u5ED3\u9635\u5730\u9632\u5FA1\u3002\u7EA2\u65B9\u4EE5\u6B8B\u7834\u4E4B\u5E08\u4F9D\u6258\u65E2\u8BBE\u5DE5\u4E8B\u4E0E\u57CE\u5899\u9632\u5B88\uFF0C\u84DD\u65B9\u591A\u8DEF\u5408\u56F4\u3002\u6B64\u5F79\u4EE5\u7EA2\u65B9\u6491\u6EE1\u56DE\u5408\u3001\u8FDF\u6EDE\u84DD\u65B9\u4E3A\u76EE\u6807\u3002",
   "environment": {
     "width": 24,
     "height": 20,
@@ -22,7 +22,9 @@
   },
   "clock": {
     "start_hour": 7,
-    "season": "冬"
+    "season": "\u51AC",
+    "night_from": 17,
+    "night_to": 7
   },
   "weather": {
     "initial": "overcast",
@@ -31,7 +33,7 @@
   "max_turns": 12,
   "sides": {
     "red": {
-      "name": "南京卫戍军",
+      "name": "\u5357\u4EAC\u536B\u620D\u519B",
       "points_budget": 155,
       "oob": [
         {
@@ -42,7 +44,7 @@
             10
           ],
           "commander": {
-            "name": "唐生智（卫戍军总司令）",
+            "name": "\u5510\u751F\u667A\uFF08\u536B\u620D\u519B\u603B\u53F8\u4EE4\uFF09",
             "quality": 0.55
           },
           "training": 48,
@@ -79,7 +81,10 @@
           "at": [
             8,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -87,7 +92,10 @@
           "at": [
             7,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -95,7 +103,10 @@
           "at": [
             9,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -103,7 +114,10 @@
           "at": [
             8,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -111,7 +125,10 @@
           "at": [
             1,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "aa",
@@ -119,12 +136,15 @@
           "at": [
             9,
             7
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     },
     "blue": {
-      "name": "日军 · 攻城集团",
+      "name": "\u65E5\u519B \u00B7 \u653B\u57CE\u96C6\u56E2",
       "points_budget": 145,
       "oob": [
         {
@@ -135,7 +155,7 @@
             10
           ],
           "commander": {
-            "name": "朝香宫鸠彦（上海派遣军司令官）",
+            "name": "\u671D\u9999\u5BAB\u9E20\u5F66\uFF08\u4E0A\u6D77\u6D3E\u9063\u519B\u53F8\u4EE4\u5B98\uFF09",
             "quality": 0.68
           },
           "training": 48,
@@ -192,7 +212,10 @@
           "at": [
             19,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -200,7 +223,10 @@
           "at": [
             20,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -208,7 +234,10 @@
           "at": [
             19,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -216,7 +245,10 @@
           "at": [
             21,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -224,7 +256,10 @@
           "at": [
             22,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     }
@@ -244,5 +279,6 @@
       "amount": 0,
       "turns": 12
     }
-  ]
+  ],
+  "hexgrid": "hg_57e23addfb"
 }

@@ -1,9 +1,9 @@
 {
   "id": "wuhan_1938",
-  "name": "武汉会战 1938",
-  "era": "抗日战争",
-  "scale": "战役级",
-  "description": "1938年6月至10月，武汉外围沿长江与大别山的纵深防御会战。红方层层设防逐次抵抗，蓝方溯江仰攻多路突贯。",
+  "name": "\u6B66\u6C49\u4F1A\u6218 1938",
+  "era": "\u6297\u65E5\u6218\u4E89",
+  "scale": "\u6218\u5F79\u7EA7",
+  "description": "1938\u5E746\u6708\u81F310\u6708\uFF0C\u6B66\u6C49\u5916\u56F4\u6CBF\u957F\u6C5F\u4E0E\u5927\u522B\u5C71\u7684\u7EB5\u6DF1\u9632\u5FA1\u4F1A\u6218\u3002\u7EA2\u65B9\u5C42\u5C42\u8BBE\u9632\u9010\u6B21\u62B5\u6297\uFF0C\u84DD\u65B9\u6EAF\u6C5F\u4EF0\u653B\u591A\u8DEF\u7A81\u8D2F\u3002",
   "environment": {
     "width": 26,
     "height": 20,
@@ -22,7 +22,9 @@
   },
   "clock": {
     "start_hour": 6,
-    "season": "夏"
+    "season": "\u590F",
+    "night_from": 19,
+    "night_to": 7
   },
   "weather": {
     "initial": "clear",
@@ -31,7 +33,7 @@
   "max_turns": 16,
   "sides": {
     "red": {
-      "name": "第九战区 · 环武汉防御",
+      "name": "\u7B2C\u4E5D\u6218\u533A \u00B7 \u73AF\u6B66\u6C49\u9632\u5FA1",
       "points_budget": 155,
       "oob": [
         {
@@ -42,7 +44,7 @@
             10
           ],
           "commander": {
-            "name": "陈诚（第九战区司令长官）",
+            "name": "\u9648\u8BDA\uFF08\u7B2C\u4E5D\u6218\u533A\u53F8\u4EE4\u957F\u5B98\uFF09",
             "quality": 0.72
           },
           "training": 48,
@@ -79,7 +81,10 @@
           "at": [
             8,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -87,7 +92,10 @@
           "at": [
             7,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -95,7 +103,10 @@
           "at": [
             9,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -103,7 +114,10 @@
           "at": [
             8,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -111,7 +125,10 @@
           "at": [
             1,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "aa",
@@ -119,12 +136,15 @@
           "at": [
             9,
             7
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     },
     "blue": {
-      "name": "日军 · 溯江进攻集群",
+      "name": "\u65E5\u519B \u00B7 \u6EAF\u6C5F\u8FDB\u653B\u96C6\u7FA4",
       "points_budget": 145,
       "oob": [
         {
@@ -135,7 +155,7 @@
             10
           ],
           "commander": {
-            "name": "冈村宁次（第11军司令官）",
+            "name": "\u5188\u6751\u5B81\u6B21\uFF08\u7B2C11\u519B\u53F8\u4EE4\u5B98\uFF09",
             "quality": 0.8
           },
           "training": 48,
@@ -192,7 +212,10 @@
           "at": [
             21,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "arty",
@@ -200,7 +223,10 @@
           "at": [
             22,
             9
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "engineer",
@@ -208,7 +234,10 @@
           "at": [
             20,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "signals",
@@ -216,7 +245,10 @@
           "at": [
             22,
             11
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         },
         {
           "type": "recy",
@@ -224,7 +256,10 @@
           "at": [
             23,
             10
-          ]
+          ],
+          "training": 60,
+          "experience": 60,
+          "morale": 80
         }
       ]
     }
@@ -244,5 +279,6 @@
       "amount": 0,
       "turns": 16
     }
-  ]
+  ],
+  "hexgrid": "hg_52beb70554"
 }
