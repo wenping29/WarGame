@@ -511,7 +511,8 @@ export class MapView {
       ctx.fillText('连接中…', 10, 20)
       return
     }
-    if (this.tk && this.tilesEnabled) this._tileStatus()
+    // 非底图模式（棋盘）下不做任何瓦片状态轮询，零网络/定时器开销
+    if (this.tk && this.tilesEnabled && this.display.showBasemap) this._tileStatus()
     const showTiles = this._tilesAllowed() && this.display.showBasemap
     if (showTiles) this._drawTiles()
     this._drawHexes(ctx, showTiles)

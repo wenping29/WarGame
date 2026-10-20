@@ -172,17 +172,22 @@ export default function Lobby() {
             {saves.length === 0 ? (
               <div className="lb-empty">暂无存档</div>
             ) : (
-              <div className="lb-scroll">
+              <div className="lb-cards lb-scroll">
                 {saves.map(s => (
-                  <div key={s.instance} className="lb-row">
-                    <span className="lb-row-main" title={s.scenario_name || s.scenario}>
-                      {s.name || s.instance}{' '}
-                      <span className="lb-dim">t{s.last_turn ?? '?'}</span>
-                    </span>
-                    <span className="lb-row-ops">
-                      <button className="btn btn-sm lb-del" onClick={() => removeSave(s)}>删除</button>
-                      <button className="btn btn-sm" onClick={() => loadSave(s)}>载入</button>
-                    </span>
+                  <div key={s.instance} className="lb-card">
+                    <div className="lb-card-title" title={s.name || s.instance}>
+                      {s.name || s.instance}
+                    </div>
+                    <div className="lb-card-sub lb-dim" title={s.scenario_name || s.scenario}>
+                      {s.scenario_name || s.scenario}
+                    </div>
+                    <div className="lb-card-foot">
+                      <span className="lb-dim">回合 {s.last_turn ?? '?'}</span>
+                      <span className="lb-card-ops">
+                        <button className="btn btn-sm lb-del" onClick={() => removeSave(s)}>删除</button>
+                        <button className="btn btn-sm" onClick={() => loadSave(s)}>载入</button>
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -258,21 +263,23 @@ export default function Lobby() {
             {scenarios.length === 0 ? (
               <div className="lb-empty">暂无可用剧本</div>
             ) : (
-              <div>
+              <div className="lb-cards lb-scroll">
                 {scenarios.map(scenario => (
                   <div
                     key={scenario.id || scenario.file}
-                    className="lb-row lb-scn"
+                    className="lb-card lb-scn"
                     title="点击以此剧本开局"
                     onClick={() => startScenario(scenario)}
                   >
-                    <span className="lb-row-main">
+                    <div className="lb-card-title">
                       {scenario.name || scenario.id}
-                      {scenario.description && (
-                        <span className="lb-dim lb-desc">{scenario.description}</span>
-                      )}
-                    </span>
-                    <span className="lb-meta">{scnMeta(scenario)}</span>
+                    </div>
+                    {scenario.description && (
+                      <div className="lb-card-desc lb-dim">{scenario.description}</div>
+                    )}
+                    <div className="lb-card-foot">
+                      <span className="lb-dim">{scnMeta(scenario)}</span>
+                    </div>
                   </div>
                 ))}
               </div>

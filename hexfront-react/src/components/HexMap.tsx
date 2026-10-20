@@ -110,10 +110,32 @@ export default function HexMap({
   const toggle = (k: keyof DisplayOptions) => setDisp((prev) => ({ ...prev, [k]: !prev[k] }))
   const onCount = DISPLAY_ITEMS.filter(([k]) => disp[k]).length
 
+  /** GIS（天地图在线底图）/ 非GIS（纯 canvas 棋盘）模式切换：与显示面板的「在线底图」同源 */
+  const gisMode = disp.showBasemap
+  const toggleGisMode = () =>
+    setDisp((prev) => ({
+      ...prev,
+      showBasemap: !prev.showBasemap,
+      // 切到非GIS棋盘时确保地形与格网可见，避免出现整片底色
+      showTerrain: !prev.showBasemap ? true : prev.showTerrain,
+      showGrid: !prev.showBasemap ? true : prev.showGrid,
+    }))
+
   return (
     <>
       <canvas ref={canvasRef} />
       <div className="mapzoom">
+        <button
+          onClick={toggleGisMode}
+          className={gisMode ? 'on' : ''}
+          title={
+            gisMode
+              ? '当前：GIS 在线地图（点击切换为非GIS棋盘模式，纯 canvas 渲染更流畅）'
+              : '当前：非GIS棋盘模式（点击切换回 GIS 在线地图）'
+          }
+        >
+          {gisMode ? 'GIS' : '非GIS'}
+        </button>
         <button onClick={() => setPanelOpen((v) => !v)} title="地图显示控制" className={panelOpen ? 'on' : ''}>
           ⚙
         </button>
