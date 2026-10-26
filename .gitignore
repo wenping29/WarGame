@@ -139,5 +139,6 @@ __pycache__/
 
 # ---- 兵棋运行期存档（每跑一局验证就新增/改写，不属于代码） ----
 server/data/
+deploy/out/
 
 # data/

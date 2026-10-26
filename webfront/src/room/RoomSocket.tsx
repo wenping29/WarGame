@@ -168,8 +168,17 @@ export function RoomProvider({
     // 重连首包不做差分，否则连接前的回合/敌情变化会被当成刚发生
     snapRef.current = null
 
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    let url = `${proto}://${location.host}/ws?room=${encodeURIComponent(code)}&role=${encodeURIComponent(role)}`
+    // WebSocket 地址：默认同源；若构建了 VITE_API_BASE_URL 为 http(s) 绝对地址，
+    // 则复用其 origin（双站分离部署时前端在静态站、后端在 .NET 站，避免连错域名）。
+    const apiBase = import.meta.env.VITE_API_BASE_URL || ''
+    let wsOrigin: string
+    if (/^https?:\/\//.test(apiBase)) {
+      const u = new URL(apiBase)
+      wsOrigin = `${u.protocol === 'https:' ? 'wss' : 'ws'}://${u.host}`
+    } else {
+      wsOrigin = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
+    }
+    let url = `${wsOrigin}/ws?room=${encodeURIComponent(code)}&role=${encodeURIComponent(role)}`
     if (name) url += '&name=' + encodeURIComponent(name)
     // 内存里没有就认localStorage 里上次握手拿到的令牌：刷新后凭它接回自己的阵营位
     const stored = tokenRef.current || readStoredToken(role)
