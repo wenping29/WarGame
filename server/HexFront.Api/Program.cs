@@ -2,6 +2,20 @@ using HexFront.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 监听地址优先级：--urls 命令行参数 > ASPNETCORE_URLS 环境变量 > appsettings.json 的 "Urls" 键。
+//
+// 为什么要显式接管：框架自带的顺序是反的 —— 配置文件里的 "Urls" 会盖过 ASPNETCORE_URLS。
+// 而运维的直觉与用途都要求环境变量优先：
+//   · 宝塔 .NET 站点面板的「端口」字段是靠 ASPNETCORE_URLS 传给进程的，让它被配置文件盖掉会让人以为没生效
+//   · 部署模板里用 ASPNETCORE_URLS=http://127.0.0.1:5018 避免后端直接暴露公网（被盖掉就会退回 0.0.0.0）
+//   · 端口的「默认值」放在 appsettings.json 里，改配置文件即可改端口（不重启服务、只改文件的诉求）
+// UseUrls 的优先级高于 urls 配置键、低于命令行参数，正好落在想要的位置。
+var urlsFromEnv = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+if (!string.IsNullOrWhiteSpace(urlsFromEnv))
+{
+    builder.WebHost.UseUrls(urlsFromEnv);
+}
+
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();

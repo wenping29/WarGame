@@ -110,15 +110,43 @@ sudo bash server-setup.sh /tmp/hexfront-deploy-*.tar.gz        # 默认装到 /s
 | `HF_DATA_DIR` | 覆盖 `server/data/` 位置（数据单独挂盘时用） |
 | `HF_APP_DB` | 覆盖应用库路径（默认 `<HF_REPO_ROOT>/server/HexFront.Api/app.db`） |
 | `ASPNETCORE_ENVIRONMENT` | `Production`（关闭 Swagger） |
-| `ASPNETCORE_URLS` | `http://0.0.0.0:5018` |
+| `ASPNETCORE_URLS` | 可选。**覆盖** `appsettings.json` 里的 `Urls` 键；不设时用配置文件里的默认端口 |
 | `HF_ALLOWED_ORIGINS` | 仅当浏览器直连 `:5018` 且不同源时需要（单进程同源可留空） |
 | `HEXGEN_PYTHON` | 指定 Python 解释器（真实栅格地形；缺省自动探测） |
 
 ---
 
+## 6.1 端口配置来源（appsettings.json 可配）
+
+后端监听地址可以**直接改配置文件**，不必碰环境变量：
+
+```jsonc
+// server/HexFront.Api/appsettings.json
+{
+  "Urls": "http://0.0.0.0:5018"   // ← 改这里即改端口
+}
+```
+
+优先级（高 → 低）：
+
+| 层级 | 来源 | 典型用途 |
+|---|---|---|
+| 1 | `--urls` 命令行参数 | 临时用别的端口起进程 |
+| 2 | `ASPNETCORE_URLS` 环境变量 | 宝塔 .NET 站点面板的「端口」字段、systemd 覆盖 |
+| 3 | `appsettings.json` 的 `Urls` 键 | **默认端口**，改配置文件即可 |
+| 4 | Kestrel 内置默认 | `http://localhost:5000`（本项目不用） |
+
+> ⚠️ 注意框架自带的顺序其实是「配置文件 `Urls` > `ASPNETCORE_URLS`」，与运维直觉相反。`Program.cs` 已显式接管（`builder.WebHost.UseUrls(env)`），把环境变量提到配置文件之前——否则：
+> - 宝塔 .NET 站点面板里填的端口会不生效；
+> - 部署模板里 `ASPNETCORE_URLS=http://127.0.0.1:5018`（本意是让后端只监听回环、避免直连公网）会被静默盖掉，后端退回监听 `0.0.0.0`。
+>
+> 该优先级由 `server/HexFront.Tests/src/Protocol/ListenAddressConfigTests.cs` 锁定（配置文件生效、环境变量可覆盖）。
+
+---
+
 ## 7. 排错
 
-- **端口 5018 被占用**：`lsof -i:5018`；或改 `hexfront.env` 的 `ASPNETCORE_URLS` 后 `systemctl restart hexfront`。
+- **端口 5018 被占用**：`lsof -i:5018`；改 `server/HexFront.Api/appsettings.json` 的 `Urls` 键，或改 `hexfront.env` 的 `ASPNETCORE_URLS`（环境变量优先），然后 `systemctl restart hexfront`。
 - **前端白屏 / 刷新 404**：确认 `publish/wwwroot/index.html` 存在（`Program.cs` 的 `MapFallbackToFile` 依赖它）。
 - **地图无地形**：检查 `server/data/dem/` 是否在包内；是否需要 `python3-gdal`（`server/tools/gis/hexgen.py`）。
 - **`data` 或 `app.db` 找不到（旧版目录层级坑）**：确认 `hexfront.env` 里 `HF_REPO_ROOT` 指向解包根，其下含 `server/`，`server/` 内含 `data/` 与 `HexFront.Api/`（例如 `/srv/hexfront/server/data`）。

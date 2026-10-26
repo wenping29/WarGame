@@ -55,6 +55,7 @@ cat > "$INSTALL_ROOT/hexfront.env" <<EOF
 # HEXFRONT 运行环境变量（由 server-setup.sh 生成）
 HF_REPO_ROOT=$INSTALL_ROOT
 ASPNETCORE_ENVIRONMENT=Production
+# 监听地址：端口也可改 publish/../appsettings.json 的 "Urls" 键，但本行存在时以本行为准
 ASPNETCORE_URLS=http://0.0.0.0:5018
 
 # —— 可选覆盖 ——
