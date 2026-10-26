@@ -53,6 +53,15 @@ API_BASE_URL="https://api.<后端域名>/api" bash deploy/build-release-zip.sh
 - **.ter 瓦片坐标换算是闭区间**：`col = clamp(floor((lon-west)/resLon), 0, cols-1)`，边界点归属最后一格。Python 生成端与 C# 读取端都要钳制，浮点在边界会算出越界值。
 - 天地图真实 token 在 `server/data/tianditu.json`，**不进版本库、不进部署包**，部署时单独放。
 
+## 天地图密钥：前后端两把，前端优先
+- 天地图按**请求 Referer（页面域名）**校验 token 白名单；底图瓦片是**浏览器直接**请求的，
+  **后端自己不发天地图请求**（只在 `/api/scenarios` 的 `tiles.tk` 里下发 key）。
+- ⇒ 后端那把 key 的白名单不含前端域名时，前端必须配**自己的** key（按前端域名注册）。
+- 来源与优先级：`VITE_TIANDITU_TK`（前端 env，构建期注入）> 后端 `data/tianditu.json` 下发。
+  解析集中在 `webfront/src/services/tianditu.ts` 的 `resolveTiandituTk()`。
+- 留空 env → 回退后端下发（**运行时可改**，改服务端文件重启即可，不用重新构建前端）。
+- 多把 key 用逗号分隔（分摊日配额）。
+
 ## 测试
 `dotnet test server/HexFront.Tests/HexFront.Tests.csproj --no-build`（Windows 上建议先 clean 再 build）。
 已知既有失败（与结构/部署无关，需 GDAL 产物或引擎逻辑）：ScenarioBuildP7、DayNightCycle、AiOfficerP3、SaveLoadProtocol。
