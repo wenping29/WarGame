@@ -73,7 +73,7 @@ function saveStore(list: GridDoc[]) {
 
 function makeGrid(name: string, rows: number, cols: number, flatToFlat: number, bbox?: BBox): GridDoc {
   return {
-    id: crypto.randomUUID(),
+    id: newGridId(),
     name,
     rows,
     cols,
@@ -92,6 +92,18 @@ function pruneDoc(d: GridDoc): GridDoc {
     return c >= 0 && c < d.cols && r >= 0 && r < d.rows
   }
   return { ...d, holes: d.holes.filter(inRange), terrains: Object.fromEntries(Object.entries(d.terrains).filter(([k]) => inRange(k))) }
+}
+
+/** crypto.randomUUID 只在安全上下文（https / localhost）存在，http://IP 访问时是 undefined */
+function newGridId(): string {
+  const c = globalThis.crypto
+  if (typeof c?.randomUUID === 'function') return c.randomUUID()
+  const b = new Uint8Array(16)
+  c.getRandomValues(b)                    // getRandomValues 在非安全上下文也可用
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }
 
 export default function GridManager() {
