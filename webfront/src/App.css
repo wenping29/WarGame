@@ -1096,3 +1096,34 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18); border-radius:4px; border:2px solid transparent; background-clip:padding-box}
 ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.34); border:2px solid transparent; background-clip:padding-box}
 ::-webkit-scrollbar-corner{background:transparent}
+
+/* ==================== 使用说明（gd-*） ==================== */
+.gd-head{display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:14px}
+.gd-head h1{margin:0 0 6px; font-size:19px; color:#eef3f7; letter-spacing:1px}
+.gd-head p{margin:0}
+.gd-head-actions{margin-left:auto; display:flex; gap:8px}
+.gd-grid{display:grid; grid-template-columns:150px 1fr; gap:16px; align-items:start}
+@media (max-width:860px){.gd-grid{grid-template-columns:1fr}}
+.gd-toc{position:sticky; top:8px; display:flex; flex-direction:column; gap:2px}
+.gd-toc a{font-size:12px; color:var(--dim); text-decoration:none; padding:5px 8px; border-left:2px solid transparent; border-radius:0 4px 4px 0}
+.gd-toc a:hover{color:var(--fg); background:var(--panel2)}
+.gd-toc a.on{color:var(--accent); border-left-color:var(--accent); background:var(--panel2)}
+.gd-ch{margin-bottom:22px}
+.gd-ch h2{font-size:15px; color:#eef3f7; margin:0 0 10px; padding-bottom:6px; border-bottom:1px solid var(--line); letter-spacing:.5px}
+.gd-card{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:11px 13px 13px; margin-bottom:10px}
+.gd-card h3{margin:0 0 6px; font-size:13px; color:var(--accent)}
+.gd-lead{margin:0 0 8px; font-size:12.5px; line-height:1.8; color:var(--fg)}
+.gd-steps{margin:0; padding-left:18px; display:flex; flex-direction:column; gap:7px}
+.gd-steps li{font-size:12.5px; line-height:1.7}
+.gd-steps b{color:#eef3f7; font-weight:600}
+.gd-note{display:block; color:var(--dim); font-size:12px; line-height:1.7}
+.gd-cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px; margin:2px 0 6px}
+.gd-cards div{background:var(--panel2); border:1px solid var(--line); border-radius:5px; padding:8px 10px}
+.gd-cards b{display:block; font-size:12.5px; color:#eef3f7; margin-bottom:3px}
+.gd-cards span{font-size:12px; color:var(--dim); line-height:1.7}
+.gd-keys{margin:2px 0 6px; display:flex; flex-direction:column; gap:5px}
+.gd-keys > div{display:grid; grid-template-columns:118px 1fr; gap:10px}
+.gd-keys dt{font-size:12px; color:var(--warn); font-weight:600}
+.gd-keys dd{margin:0; font-size:12px; color:var(--fg); line-height:1.7}
+.gd-tips{margin:6px 0 0; padding-left:16px; display:flex; flex-direction:column; gap:4px}
+.gd-tips li{font-size:12px; color:var(--dim); line-height:1.7}

@@ -8,14 +8,15 @@ interface LayoutProps {
   children: ReactNode
 }
 
-/** 导航项与菜单表的 code 对应；未登录时展示除系统管理外的全部入口 */
-const NAV = [
+/** 导航项与菜单表的 code 对应；未登录时展示除系统管理外的全部入口；always 项不受授权限制 */
+const NAV: Array<{ code: string; to: string; label: string; always?: boolean }> = [
   { code: 'lobby', to: '/lobby', label: '大厅' },
   { code: 'new_game', to: '/new', label: '创建副本' },
   { code: 'saves', to: '/saves', label: '副本管理' },
   { code: 'grid', to: '/grid', label: '六角格管理' },
   { code: 'scenarios', to: '/scenarios', label: '剧本管理' },
   { code: 'system', to: '/admin', label: '系统管理' },
+  { code: 'guide', to: '/guide', label: '使用说明', always: true },
 ]
 
 export default function Layout({ children }: LayoutProps) {
@@ -25,7 +26,7 @@ export default function Layout({ children }: LayoutProps) {
 
   const visible = NAV.filter((n) => {
     if (n.code === 'system') return !!user && user.role === 'super_admin'
-    if (!user) return true
+    if (n.always || !user) return true
     return user.menus.some((m) => m.code === n.code)
   })
 

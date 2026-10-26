@@ -57,7 +57,7 @@
           "type": "hq",
           "qty": 1,
           "at": [
-            9,
+            6,
             9
           ],
           "commander": {
@@ -73,7 +73,7 @@
           "qty": 1,
           "at": [
             11,
-            8
+            7
           ],
           "fort": 2,
           "training": 45,
@@ -85,7 +85,7 @@
           "qty": 1,
           "at": [
             10,
-            10
+            15
           ],
           "fort": 2,
           "training": 45,
@@ -108,8 +108,8 @@
           "type": "rifle",
           "qty": 2,
           "at": [
-            10,
-            11
+            23,
+            16
           ],
           "fort": 2,
           "training": 42,
@@ -120,8 +120,8 @@
           "type": "rifle",
           "qty": 2,
           "at": [
-            9,
-            11
+            11,
+            16
           ],
           "fort": 2,
           "training": 42,
@@ -132,8 +132,8 @@
           "type": "gun",
           "qty": 1,
           "at": [
-            9,
-            10
+            16,
+            11
           ],
           "training": 60,
           "experience": 60,
@@ -143,8 +143,8 @@
           "type": "arty",
           "qty": 1,
           "at": [
-            9,
-            9
+            19,
+            7
           ],
           "training": 60,
           "experience": 60,
@@ -154,8 +154,8 @@
           "type": "engineer",
           "qty": 1,
           "at": [
-            10,
-            9
+            11,
+            12
           ],
           "training": 60,
           "experience": 60,
@@ -165,8 +165,8 @@
           "type": "signals",
           "qty": 1,
           "at": [
-            9,
-            11
+            0,
+            16
           ],
           "training": 60,
           "experience": 60,
@@ -176,8 +176,8 @@
           "type": "recy",
           "qty": 1,
           "at": [
-            7,
-            10
+            18,
+            14
           ],
           "training": 60,
           "experience": 60,
@@ -204,8 +204,8 @@
           "type": "hq",
           "qty": 1,
           "at": [
-            12,
-            2
+            21,
+            0
           ],
           "commander": {
             "name": "\u963F\u5357\u60DF\u51E0\uFF08\u7B2C11\u519B\u53F8\u4EE4\u5B98\uFF09",
@@ -230,7 +230,7 @@
           "type": "light_inf",
           "qty": 3,
           "at": [
-            13,
+            5,
             5
           ],
           "training": 45,
@@ -274,8 +274,8 @@
           "type": "arty",
           "qty": 1,
           "at": [
-            12,
-            3
+            23,
+            0
           ],
           "training": 60,
           "experience": 60,
@@ -296,8 +296,8 @@
           "type": "signals",
           "qty": 1,
           "at": [
-            12,
-            4
+            20,
+            6
           ],
           "training": 60,
           "experience": 60,
@@ -307,8 +307,8 @@
           "type": "recy",
           "qty": 1,
           "at": [
-            12,
-            2
+            6,
+            6
           ],
           "training": 60,
           "experience": 60,

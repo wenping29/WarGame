@@ -78,9 +78,17 @@ export interface HexOverlay {
    * 缺省 false = 旧预览口径：行增大向北，锚点 = 包文档 west/south。
    */
   southward?: boolean
-  /** 单位标记：按格坐标画圆点（随 southward 口径定位）；dirty 画高亮外圈 */
-  markers?: Array<{ q: number; r: number; color: string; dirty?: boolean }>
+  /**
+   * 单位标记：按格坐标画圆点（随 southward 口径定位）；dirty 画高亮外圈。
+   * label/qty 齐备时在圆点右侧画兵种牌（缩到看不清格子的比例自动省略）；
+   * 同格多块按入列顺序纵向扇开，重叠的落位点也能分别点选与拖拽。
+   */
+  markers?: Array<{ q: number; r: number; color: string; dirty?: boolean; label?: string; qty?: number }>
 }
+
+type Marker = NonNullable<HexOverlay['markers']>[number]
+/** 圆点屏幕半径：随格子在屏幕上的大小夹在 3~8px */
+const markerRad = (hexPx: number) => Math.max(3, Math.min(8, hexPx * 0.3))
 
 interface Props {
   mode: MapMode
@@ -319,20 +327,39 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
     latToMy(o.south) + (o.southward ? -1.5 : 1.5) * o.size * row,
   ]
 
-  /** 屏幕点 → 命中的标记序号（后画的在上层，故倒序找；容差与绘制半径同式再 +4px） */
+  const ckeyOf = (m: Marker) => `${m.q},${m.r}`
+  /** 同格标记扇开用的组内序号/组大小（绘制与命中判定同式，保证点得到的就是画出来的位置） */
+  const markerSlots = (marks: Marker[]) => {
+    const total = new Map<string, number>()
+    for (const m of marks) total.set(ckeyOf(m), (total.get(ckeyOf(m)) || 0) + 1)
+    const used = new Map<string, number>()
+    return marks.map(m => {
+      const k = ckeyOf(m)
+      const idx = used.get(k) || 0
+      used.set(k, idx + 1)
+      return { idx, n: total.get(k) || 1 }
+    })
+  }
+
+  /** 标记的屏幕圆心：同格多块绕格中心纵向扇开（绘制/命中/拖拽共用） */
+  const markerCenterPx = (o: HexOverlay, m: Marker, idx: number, n: number): [number, number] => {
+    const [cx, cy] = toScreen(...cellCenterM(o, m.q, m.r))
+    if (n <= 1) return [cx, cy]
+    return [cx, cy + (idx - (n - 1) / 2) * (markerRad(o.size * viewRef.current.scale) * 2 + 5)]
+  }
+
+  /** 屏幕点 → 命中的标记序号（后画的在上层，故倒序找；容差与绘制半径同式再 +5px） */
   const hitMarker = (px: number, py: number): number | null => {
     const o = overlayRef.current
     const marks = o?.markers
     if (!o || !marks?.length) return null
-    const [mx, my] = toMeters(px, py)
-    const v = viewRef.current
-    const grabPx = Math.max(3, Math.min(8, o.size * v.scale * 0.3)) + 4
-    const grab = grabPx / v.scale
+    const grab = markerRad(o.size * viewRef.current.scale) + 5
+    const slots = markerSlots(marks)
     for (let i = marks.length - 1; i >= 0; i--) {
       const m = marks[i]
       if (!Number.isInteger(m.q) || !Number.isInteger(m.r) || m.q < 0 || m.q >= o.cols || m.r < 0 || m.r >= o.rows) continue
-      const [gx, gy] = cellCenterM(o, m.q, m.r)
-      if ((mx - gx) ** 2 + (my - gy) ** 2 <= grab * grab) return i
+      const [cx, cy] = markerCenterPx(o, m, slots[i].idx, slots[i].n)
+      if ((px - cx) ** 2 + (py - cy) ** 2 <= grab * grab) return i
     }
     return null
   }
@@ -592,18 +619,16 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
           }
         }
 
-        // 单位标记（屏幕空间圆点；overlay.markers 每次引用变化由 effect 重绘）
+        // 单位标记（屏幕空间圆点 + 兵种牌；overlay.markers 每次引用变化由 effect 重绘）
         const marks = o.markers
         if (marks?.length && r >= 2.2) {
-          const rowDir = o.southward ? -1.5 : 1.5
-          for (const m of marks) {
+          const slots = markerSlots(marks)
+          const rad = markerRad(r)
+          for (let i = 0; i < marks.length; i++) {
+            const m = marks[i]
             if (!Number.isInteger(m.q) || !Number.isInteger(m.r)
               || m.q < 0 || m.q >= o.cols || m.r < 0 || m.r >= o.rows) continue
-            const gx = westM + SQRT3 * o.size * (m.q + 0.5 * (m.r & 1))
-            const gy = southM + rowDir * o.size * m.r
-            const cx = (gx - v.cx) * v.scale + W / 2
-            const cy = H / 2 - (gy - v.cy) * v.scale
-            const rad = Math.max(3, Math.min(8, r * 0.3))
+            const [cx, cy] = markerCenterPx(o, m, slots[i].idx, slots[i].n)
             if (m.dirty) {
               ctx.beginPath()
               ctx.arc(cx, cy, rad + 2.5, 0, Math.PI * 2)
@@ -620,6 +645,21 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
             ctx.lineWidth = 1.2
             ctx.strokeStyle = 'rgba(10,14,18,.8)'
             ctx.stroke()
+            // 兵种牌：格子在屏幕上太小时只留圆点，避免文字糊成一片
+            if (m.label && r >= 7) {
+              const txt = m.qty && m.qty > 1 ? `${m.label}×${m.qty}` : m.label
+              ctx.font = '11px sans-serif'
+              ctx.textAlign = 'left'
+              const x0 = cx + rad + 3
+              const bw = ctx.measureText(txt).width + 8
+              ctx.fillStyle = m.dirty ? 'rgba(58,48,18,.9)' : 'rgba(10,16,22,.78)'
+              ctx.fillRect(x0, cy - 8, bw, 16)
+              ctx.strokeStyle = m.dirty ? 'rgba(240,220,140,.95)' : 'rgba(255,255,255,.16)'
+              ctx.lineWidth = 1
+              ctx.strokeRect(x0, cy - 8, bw, 16)
+              ctx.fillStyle = '#e8eef4'
+              ctx.fillText(txt, x0 + 4, cy + 4)
+            }
           }
         }
       }

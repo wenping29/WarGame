@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, netError, type FeedbackEntry, type HexGridDoc, type HexGridMeta, type ScenarioInfo } from '../services/api'
-import { useMeta } from '../room/useUnitFull'
+import { useMeta, useUnitTypes } from '../room/useUnitFull'
 import GeoMapView, { type HexOverlay, lngToMx, latToMy, mxToLng, myToLat } from '../components/GeoMapView'
 import HexGenPanel, { defaultGenForm, type GisGenForm } from '../components/HexGenPanel'
 import { toast } from '../components/Toast'
@@ -152,6 +152,7 @@ function OobDeployMap({ doc, upd, sel, onSelect }: {
   const pkg = pkgState?.id === hgId ? pkgState.grid : null
   const pkgErr = errState?.id === hgId ? errState.msg : ''
   const [warn, setWarn] = useState('')
+  const unitTypes = useUnitTypes()
 
   useEffect(() => {
     if (!hgId) return
@@ -201,23 +202,27 @@ function OobDeployMap({ doc, upd, sel, onSelect }: {
   }, [pkg, eW, eH, eKm, eLng, eLat])
 
   const marks = useMemo(() => {
-    const out: Array<{ q: number; r: number; color: string; dirty: boolean; k: string; text: string }> = []
+    const out: Array<{ q: number; r: number; color: string; dirty: boolean; k: string; label: string; qty: number; text: string }> = []
     for (const side of ['red', 'blue'] as const) {
       const list: Doc[] = doc.sides?.[side]?.oob || []
       list.forEach((e, i) => {
         const q = toInt(e.at?.[0], -1)
         const r = toInt(e.at?.[1], -1)
+        const id = String(e.type || 'rifle')
+        const label = unitTypes[id]?.label || id
+        const qty = toInt(e.qty, 1)
         out.push({
           q, r,
           color: SIDE_COLOR[side],
           dirty: sel === `${side}.${i}`,
           k: `${side}.${i}`,
-          text: `${sideLabel(side)} ${e.type || '?'} ×${toInt(e.qty, 1)} @ [${q}, ${r}]`,
+          label, qty,
+          text: `${sideLabel(side)} ${label}（${id}）×${qty} @ [${q}, ${r}]`,
         })
       })
     }
     return out
-  }, [doc, sel])
+  }, [doc, sel, unitTypes])
 
   const overlay: HexOverlay | null = useMemo(() => (geo ? {
     west: mxToLng(geo.ox),
@@ -228,7 +233,7 @@ function OobDeployMap({ doc, upd, sel, onSelect }: {
     holes: [...geo.holes],
     terrains: geo.terrains,
     southward: true,
-    markers: marks.map(m => ({ q: m.q, r: m.r, color: m.color, dirty: m.dirty })),
+    markers: marks.map(m => ({ q: m.q, r: m.r, color: m.color, dirty: m.dirty, label: m.label, qty: m.qty })),
   } : null), [geo, marks])
 
   const fit = useMemo(() => (geo ? {
@@ -277,7 +282,7 @@ function OobDeployMap({ doc, upd, sel, onSelect }: {
         <span><i style={{ background: SIDE_COLOR.red }} /> 红方</span>
         <span><i style={{ background: SIDE_COLOR.blue }} /> 蓝方</span>
         <span><i className="ring" /> 选中</span>
-        <span className="muted small">拖动圆点改落位 · 空白处拖动 = 平移 · 滚轮 = 缩放</span>
+        <span className="muted small">圆点旁标注兵种×数量 · 拖动圆点改落位（同格多块自动上下排开）· 空白处拖动 = 平移 · 滚轮 = 缩放</span>
       </div>
     </div>
   )
@@ -511,6 +516,7 @@ export default function ScenManager() {
     () => Object.keys(meta?.unit_types || ({} as Record<string, unknown>)),
     [meta],
   )
+  const unitTypes = useUnitTypes()
   const curFb = fbAll.filter(f => f.scenario === selId)
 
   // ==================== 编辑器小控件 ====================

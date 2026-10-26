@@ -7,6 +7,7 @@ import GridManager from './pages/GridManager'
 import SaveManager from './pages/SaveManager'
 import RoomPage from './pages/RoomPage'
 import Admin from './pages/Admin'
+import Guide from './pages/Guide'
 import Login from './pages/Login'
 import Layout from './components/Layout'
 import { AuthProvider } from './components/Auth'
@@ -42,6 +43,7 @@ function App() {
             <Route path="/grid" element={<GridManager />} />
             <Route path="/room/:code/:role" element={<RoomPage />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/guide" element={<Guide />} />
             <Route path="/login" element={<Login />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
