@@ -85,6 +85,24 @@ export default function HexMap({
   // 显示开关：挂载后同步一次（含首次），此后变化即下发并持久化
   const [disp, setDisp] = useState<DisplayOptions>(loadDisplay)
   const [panelOpen, setPanelOpen] = useState(false)
+
+  // 浏览器内全屏（页面铺满视口，非 Fullscreen API）：同一按钮切 normal/full 两态
+  const [full, setFull] = useState(false)
+  useEffect(() => {
+    const wrap = canvasRef.current?.parentElement
+    if (!wrap) return
+    // .mapwrap 是地图容器；加 .full 即铺满视口，尺寸变化会触发 MapView 的
+    // ResizeObserver 自动重绘，无需手动 refit
+    wrap.classList.toggle('full', full)
+  }, [full])
+  useEffect(() => {
+    if (!full) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFull(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [full])
   useEffect(() => {
     mapRef.current?.setDisplay(disp)
     try {
@@ -144,6 +162,13 @@ export default function HexMap({
         <button onClick={act(m => m.zoomBy(1.3))} title="放大">+</button>
         <button onClick={act(m => m.zoomBy(1 / 1.3))} title="缩小">−</button>
         <button onClick={act(m => { m.fit(); m.requestDraw() })} title="复位">⤢</button>
+        <button
+          onClick={() => setFull(v => !v)}
+          className={full ? 'on' : ''}
+          title={full ? '退出全屏（Esc）' : '把地图铺满整个浏览器窗口（Esc 退出）'}
+        >
+          {full ? '退出' : '全屏'}
+        </button>
         <select
           className="basemap-sel"
           value={basemap}

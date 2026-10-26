@@ -532,6 +532,11 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
   position:relative; flex:1 1 0; min-height:320px;
   background:#0d1114; border:1px solid var(--line); border-radius:6px; overflow:hidden;
 }
+/* 浏览器内全屏：页面铺满视口（非 Fullscreen API）。z-index 压在 toast/弹窗（100）之下，
+   免得全屏时弹出的东西被地图盖住；容器尺寸变化会触发 MapView 的 ResizeObserver 自动重绘 */
+.terminal .mapwrap.full{
+  position:fixed; inset:0; z-index:90; margin:0; border-radius:0;
+}
 .terminal canvas{
   position:absolute; inset:0; display:block; width:100%; height:100%; cursor:crosshair;
 }
