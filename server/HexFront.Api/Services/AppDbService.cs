@@ -12,7 +12,7 @@ using Microsoft.Data.Sqlite;
 namespace HexFront.Api.Services;
 
 /// <summary>
-/// 统一 SQLite 应用库（HexFront.CSharp/app.db，HF_APP_DB 可覆盖）：用户/角色/菜单/会话、
+/// 统一 SQLite 应用库（server/app.db，HF_APP_DB 可覆盖）：用户/角色/菜单/会话、
 /// 登录日志/查询日志/错误日志/用户反馈、推演操作流水、剧本目录、房间、已存副本。
 /// 全部管理类数据一个文件，写入失败只告警不打断主流程。
 /// </summary>
@@ -56,9 +56,9 @@ public sealed class AppDbService : IDisposable
     {
         var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
         var binDir = Path.GetDirectoryName(assemblyPath);
-        if (string.IsNullOrEmpty(binDir)) return Path.Combine("HexFront.CSharp", "app.db");
-        // HF_REPO_ROOT 覆盖根后，默认库路径 = <根>/HexFront.CSharp/app.db
-        return Path.Combine(RepoRoot(), "HexFront.CSharp", "app.db");
+        if (string.IsNullOrEmpty(binDir)) return Path.Combine("server", "app.db");
+        // HF_REPO_ROOT 覆盖根后，默认库路径 = <根>/server/app.db
+        return Path.Combine(RepoRoot(), "server", "app.db");
     }
 
     // ==================== Schema ====================

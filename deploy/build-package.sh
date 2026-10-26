@@ -4,9 +4,9 @@
 #
 # 产物：一个 tar.gz 部署包，内含
 #   hexfront/
-#     HexFront.CSharp/app.db                                 种子应用库（100MB）
-#     HexFront.CSharp/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish/  后端(linux-x64, 依赖运行时)
-#       └─ wwwroot/                                          React 构建产物（由 hexfront-react/dist 拷贝）
+#     server/app.db                                 种子应用库（100MB）
+#     server/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish/  后端(linux-x64, 依赖运行时)
+#       └─ wwwroot/                                          React 构建产物（由 webfront/dist 拷贝）
 #     data/                                                  地图数据（约 2.8G，已剔除备份与密钥）
 #     tools/                                                 Python 栅格生成工具（可选，真实地形用）
 #
@@ -16,7 +16,7 @@
 # 用法：
 #   bash scripts/deploy/build-package.sh
 # 可选环境变量（用于增量重试，跳过耗时的步骤）：
-#   SKIP_FRONTEND_BUILD=1   不重新 npm build（沿用已有 hexfront-react/dist）
+#   SKIP_FRONTEND_BUILD=1   不重新 npm build（沿用已有 webfront/dist）
 #   SKIP_BACKEND_PUBLISH=1  不重新 dotnet publish（沿用已有 publish 目录）
 #
 set -euo pipefail
@@ -27,7 +27,7 @@ export npm_config_yes=true
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-PUBLISH_DIR="$REPO/HexFront.CSharp/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish"
+PUBLISH_DIR="$REPO/server/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish"
 OUT_DIR="$REPO/scripts/deploy/out"
 mkdir -p "$OUT_DIR"
 OUT="$OUT_DIR/hexfront-deploy-$(date +%Y%m%d-%H%M%S).tar.gz"
@@ -38,8 +38,8 @@ echo "==> 仓库根: $REPO"
 if [ "${SKIP_FRONTEND_BUILD:-0}" = "1" ]; then
   echo "==> [跳过] 前端构建（SKIP_FRONTEND_BUILD=1）"
 else
-  echo "==> 1/3 构建前端 hexfront-react ..."
-  cd "$REPO/hexfront-react"
+  echo "==> 1/3 构建前端 webfront ..."
+  cd "$REPO/webfront"
   # node_modules 已存在且 lockfile 未变时跳过重装，避免 npm ci 的批量删除确认卡住；
   # 强制重装用 FORCE_NPM_INSTALL=1。
   if [ ! -d node_modules ] || [ "${FORCE_NPM_INSTALL:-0}" = "1" ]; then
@@ -52,11 +52,11 @@ else
 fi
 
 # ---------- 2) 把 dist 拷进后端 wwwroot（ASP.NET 单进程托管静态前端）----------
-echo "==> 2/3 同步 dist -> HexFront.CSharp/src/HexFront.Api/wwwroot ..."
-WWROOT="$REPO/HexFront.CSharp/src/HexFront.Api/wwwroot"
+echo "==> 2/3 同步 dist -> server/src/HexFront.Api/wwwroot ..."
+WWROOT="$REPO/server/src/HexFront.Api/wwwroot"
 rm -rf "$WWROOT"
 mkdir -p "$WWROOT"
-cp -r "$REPO/hexfront-react/dist/." "$WWROOT/"
+cp -r "$REPO/webfront/dist/." "$WWROOT/"
 echo "    wwwroot 大小：$(du -sh "$WWROOT" 2>/dev/null | cut -f1)"
 
 # ---------- 3) 后端 publish (linux-x64, framework-dependent) ----------
@@ -68,7 +68,7 @@ if [ "${SKIP_BACKEND_PUBLISH:-0}" = "1" ]; then
   fi
 else
   echo "==> 3/3 发布后端 (dotnet publish -c Release -r linux-x64 --no-self-contained) ..."
-  cd "$REPO/HexFront.CSharp"
+  cd "$REPO/server"
   dotnet publish src/HexFront.Api/HexFront.Api.csproj -c Release -r linux-x64 --no-self-contained -o "$PUBLISH_DIR"
 fi
 
@@ -98,8 +98,8 @@ tar -czf "$OUT" -C "$REPO" \
   --exclude='tools/gis/__pycache__' \
   --exclude='tools/gis/dem_cache_rhine.json' \
   --exclude='*/__pycache__' \
-  "HexFront.CSharp/app.db" \
-  "HexFront.CSharp/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish" \
+  "server/app.db" \
+  "server/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish" \
   "data" \
   "tools"
 

@@ -42,7 +42,7 @@ if [ -d "$INSTALL_ROOT/hexfront" ] && [ "$(ls -A "$INSTALL_ROOT" | wc -l)" -eq 1
   rmdir "$INSTALL_ROOT/hexfront"
 fi
 
-PUBLISH="$INSTALL_ROOT/HexFront.CSharp/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish"
+PUBLISH="$INSTALL_ROOT/server/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish"
 if [ ! -f "$PUBLISH/HexFront.Api.dll" ]; then
   echo "    错误：未找到 $PUBLISH/HexFront.Api.dll，包结构异常。" >&2
   exit 1

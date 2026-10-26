@@ -129,7 +129,7 @@ public sealed class ApiFixture : IAsyncLifetime
     /// <summary>Api 的独立输出目录（有 runtimeconfig/deps，才能 dotnet 直接跑 dll）；测试输出目录里的副本没有这些。</summary>
     private static string ApiAssemblyPath()
     {
-        // 测试输出 tests/HexFront.Tests/bin/Debug/net10.0 上溯 5 层到 HexFront.CSharp
+        // 测试输出 tests/HexFront.Tests/bin/Debug/net10.0 上溯 5 层到 server
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         var dll = Path.Combine(root, "src", "HexFront.Api", "bin", "Debug", "net10.0", "HexFront.Api.dll");
         if (!File.Exists(dll))

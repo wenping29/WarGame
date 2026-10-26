@@ -1255,7 +1255,7 @@ public sealed class RoomService
         var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
         var binDir = Path.GetDirectoryName(assemblyPath);
         if (string.IsNullOrEmpty(binDir)) return Directory.GetCurrentDirectory();
-        // bin/Debug/net10.0 → HexFront.Api → src → HexFront.CSharp → wargame
+        // bin/Debug/net10.0 → HexFront.Api → src → server → wargame
         return Path.GetFullPath(Path.Combine(binDir, "..", "..", "..", "..", "..", ".."));
     }
 
