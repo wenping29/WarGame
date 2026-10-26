@@ -26,4 +26,9 @@
     <ProjectReference Include="..\..\src\HexFront.Api\HexFront.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 地形瓦片 golden 固件：extract_terrain.py 生成，供 TerrainTileReader 回读校验 -->
+    <None Include="src\Gis\rhein.ter" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
