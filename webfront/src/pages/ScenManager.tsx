@@ -152,7 +152,16 @@ function OobDeployMap({ doc, upd, sel, onSelect }: {
   const pkg = pkgState?.id === hgId ? pkgState.grid : null
   const pkgErr = errState?.id === hgId ? errState.msg : ''
   const [warn, setWarn] = useState('')
+  const [full, setFull] = useState(false)
   const unitTypes = useUnitTypes()
+
+  // 全屏是页面内的铺满（不是浏览器 Fullscreen API），所以 Esc 自己接管
+  useEffect(() => {
+    if (!full) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFull(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [full])
 
   useEffect(() => {
     if (!hgId) return
@@ -236,6 +245,7 @@ function OobDeployMap({ doc, upd, sel, onSelect }: {
     markers: marks.map(m => ({ q: m.q, r: m.r, color: m.color, dirty: m.dirty, label: m.label, qty: m.qty })),
   } : null), [geo, marks])
 
+  // nonce 带上 full：进出全屏换了视口尺寸，靠它触发一次重新铺满，否则格子还是原来的大小，全屏就白切了
   const fit = useMemo(() => (geo ? {
     bbox: {
       west: mxToLng(geo.ox - (SQRT3 / 2) * geo.radius),
@@ -243,8 +253,8 @@ function OobDeployMap({ doc, upd, sel, onSelect }: {
       south: myToLat(geo.oy - geo.radius * (1.5 * geo.rows - 1)),
       north: myToLat(geo.oy + geo.radius),
     },
-    nonce: hgId ? 2 : 1,
-  } : null), [geo, hgId])
+    nonce: (hgId ? 2 : 1) + (full ? 1 : 0),
+  } : null), [geo, hgId, full])
 
   const moveTo = (idx: number, q: number, r: number) => {
     const m = marks[idx]
@@ -263,10 +273,17 @@ function OobDeployMap({ doc, upd, sel, onSelect }: {
   const selMark = marks.find(m => m.k === sel)
 
   return (
-    <div className="scm-oob-map">
+    <div className={full ? 'scm-oob-map full' : 'scm-oob-map'}>
       <GeoMapView mode="move" overlay={overlay} fit={fit}
         onMarkerClick={i => { const m = marks[i]; if (m) onSelect(m.k) }}
         onMarkerMove={moveTo} />
+      {/* 紧贴在 GeoMapView 的图层条下方：两种状态里位置一致，退出全屏也够得着 */}
+      <div className="scm-oob-tools">
+        <button className="btn btn-sm" onClick={() => setFull(v => !v)}
+          title={full ? '退出全屏（Esc）' : '把地图铺满浏览器窗口（Esc 退出）'}>
+          {full ? '退出全屏' : '全屏'}
+        </button>
+      </div>
       <div className="scm-oob-cap">
         <span className="muted small">
           {pkg
