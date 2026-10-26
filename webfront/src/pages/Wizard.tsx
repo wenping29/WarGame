@@ -551,7 +551,7 @@ export default function Wizard() {
 
 // Step 2: Environment
 function Step2Environment({ state, updateState, onPlanChange }: {
-  state: WizardState; updateState: (u: Partial<WizardState>) => void
+  state: WizardState; updateState: (u: Partial<WizardState> | ((prev: WizardState) => Partial<WizardState>)) => void
   onPlanChange: (p: GisPlan | null) => void
 }) {
   const g = state.gis

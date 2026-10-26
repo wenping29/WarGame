@@ -4,17 +4,17 @@
 #
 # 产物：一个 tar.gz 部署包，内含
 #   hexfront/
-#     server/HexFront.Api/app.db                                 种子应用库（100MB）
-#     server/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish/  后端(linux-x64, 依赖运行时)
+#     server/HexFront.Api/app.db                                 种子应用库
+#     server/HexFront.Api/bin/Release/net10.0/linux-x64/publish/  后端(linux-x64, 依赖运行时)
 #       └─ wwwroot/                                          React 构建产物（由 webfront/dist 拷贝）
-#     data/                                                  地图数据（约 2.8G，已剔除备份与密钥）
-#     tools/                                                 Python 栅格生成工具（可选，真实地形用）
+#     server/data/                                          地图数据（约 2.1G，已剔除备份与密钥）
+#     server/tools/                                         Python 栅格生成工具
 #
 # 服务器上解包到 /srv/hexfront 后，设置 HF_REPO_ROOT=/srv/hexfront 即可，
-# 不再依赖"向上6层"的目录层级假设（已在后端用 HF_REPO_ROOT/HF_DATA_DIR 支持）。
+# 不再依赖"向上6层"的目录层级假设（后端用 HF_REPO_ROOT/HF_DATA_DIR 支持）。
 #
 # 用法：
-#   bash scripts/deploy/build-package.sh
+#   bash deploy/build-package.sh
 # 可选环境变量（用于增量重试，跳过耗时的步骤）：
 #   SKIP_FRONTEND_BUILD=1   不重新 npm build（沿用已有 webfront/dist）
 #   SKIP_BACKEND_PUBLISH=1  不重新 dotnet publish（沿用已有 publish 目录）
@@ -25,10 +25,10 @@ set -euo pipefail
 export npm_config_yes=true
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-PUBLISH_DIR="$REPO/server/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish"
-OUT_DIR="$REPO/scripts/deploy/out"
+PUBLISH_DIR="$REPO/server/HexFront.Api/bin/Release/net10.0/linux-x64/publish"
+OUT_DIR="$REPO/deploy/out"
 mkdir -p "$OUT_DIR"
 OUT="$OUT_DIR/hexfront-deploy-$(date +%Y%m%d-%H%M%S).tar.gz"
 
@@ -52,8 +52,8 @@ else
 fi
 
 # ---------- 2) 把 dist 拷进后端 wwwroot（ASP.NET 单进程托管静态前端）----------
-echo "==> 2/3 同步 dist -> server/src/HexFront.Api/wwwroot ..."
-WWROOT="$REPO/server/src/HexFront.Api/wwwroot"
+echo "==> 2/3 同步 dist -> server/HexFront.Api/wwwroot ..."
+WWROOT="$REPO/server/HexFront.Api/wwwroot"
 rm -rf "$WWROOT"
 mkdir -p "$WWROOT"
 cp -r "$REPO/webfront/dist/." "$WWROOT/"
@@ -69,7 +69,7 @@ if [ "${SKIP_BACKEND_PUBLISH:-0}" = "1" ]; then
 else
   echo "==> 3/3 发布后端 (dotnet publish -c Release -r linux-x64 --no-self-contained) ..."
   cd "$REPO/server"
-  dotnet publish src/HexFront.Api/HexFront.Api.csproj -c Release -r linux-x64 --no-self-contained -o "$PUBLISH_DIR"
+  dotnet publish HexFront.Api/HexFront.Api.csproj -c Release -r linux-x64 --no-self-contained -o "$PUBLISH_DIR" --disable-build-servers
 fi
 
 # 校验 wwwroot 确实进了 publish 输出（否则静态前端不会生效）
@@ -79,29 +79,30 @@ else
   echo "    publish/wwwroot 大小：$(du -sh "$PUBLISH_DIR/wwwroot" 2>/dev/null | cut -f1)"
 fi
 
-# ---------- 4) 打包（直接 tar 源路径，避免 2.8G 二次拷贝）----------
+# ---------- 4) 打包（直接 tar 源路径，避免二次拷贝）----------
 echo "==> 4/4 打包为 $OUT ..."
 mkdir -p "$OUT_DIR"
 
-# 排除项说明：
-#   data/gis_axial_backup, data/scenarios_backup_20261019, data/scenario_backups  —— 开发期备份，非运行时数据
-#   data/tianditu.json                                                  —— 含真实天地图 token，禁止随包分发（见 DEPLOY.md 密钥处理）
-#   data/saves                                                         —— 运行时生成，初始为空
-#   tools/gis/__pycache__, dem_cache_rhine.json                        —— Python 缓存
+# 排除项说明（路径相对 $REPO）：
+#   server/data/gis_axial_backup, server/data/scenarios_backup_20261019, server/data/scenario_backups —— 开发期备份，非运行时数据
+#   server/data/saves                                                         —— 运行时生成，初始为空
+#   server/data/tianditu.json                                                 —— 含真实天地图 token，禁止随包分发（见 DEPLOY.md 密钥处理）
+#   server/tools/gis/__pycache__, dem_cache_rhine.json                       —— Python 缓存
 tar -czf "$OUT" -C "$REPO" \
   --transform 's,^,hexfront/,' \
-  --exclude='data/gis_axial_backup' \
-  --exclude='data/scenarios_backup_20261019' \
-  --exclude='data/scenario_backups' \
-  --exclude='data/saves' \
-  --exclude='data/tianditu.json' \
-  --exclude='tools/gis/__pycache__' \
-  --exclude='tools/gis/dem_cache_rhine.json' \
+  --exclude='server/data/gis_axial_backup' \
+  --exclude='server/data/scenarios_backup_20261019' \
+  --exclude='server/data/scenario_backups' \
+  --exclude='server/data/saves' \
+  --exclude='server/data/terrain_test' \
+  --exclude='server/data/tianditu.json' \
+  --exclude='server/tools/gis/__pycache__' \
+  --exclude='server/tools/gis/dem_cache_rhine.json' \
   --exclude='*/__pycache__' \
   "server/HexFront.Api/app.db" \
-  "server/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish" \
-  "data" \
-  "tools"
+  "server/HexFront.Api/bin/Release/net10.0/linux-x64/publish" \
+  "server/data" \
+  "server/tools"
 
 echo ""
 echo "==> 部署包已生成："
@@ -112,4 +113,4 @@ tar -tzf "$OUT" | sed 's#/.*##' | sort | uniq -c
 echo ""
 echo "==> 下一步：把该 tar.gz 传到 Linux 服务器，执行 server-setup.sh："
 echo "    scp $(basename "$OUT") user@server:/tmp/"
-echo "    ssh user@server 'bash server-setup.sh /tmp/$(basename "$OUT")'"
+echo "    ssh user@server 'sudo bash server-setup.sh /tmp/$(basename "$OUT")'"

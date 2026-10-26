@@ -22,13 +22,17 @@
   <ItemGroup>
     <!-- 协议回归要在测试进程里起真 Kestrel + 真 /ws，所以直接引 Api，不额外拉测试宿主包 -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <ProjectReference Include="..\..\src\HexFront.Core\HexFront.Core.csproj" />
-    <ProjectReference Include="..\..\src\HexFront.Api\HexFront.Api.csproj" />
+    <ProjectReference Include="..\HexFront.Core\HexFront.Core.csproj" />
+    <ProjectReference Include="..\HexFront.Api\HexFront.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 地形瓦片 golden 固件：extract_terrain.py 生成，供 TerrainTileReader 回读校验 -->
-    <None Include="src\Gis\rhein.ter" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 地形瓦片 golden 固件：extract_terrain.py 生成，供 TerrainTileReader 回读校验。
+         用 Link 平铺到输出根目录，避免被按 src\Gis\ 相对路径复制到子目录导致测试找不到。 -->
+    <None Include="src\Gis\rhein.ter">
+      <Link>rhein.ter</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

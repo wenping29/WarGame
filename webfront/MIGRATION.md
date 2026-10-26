@@ -62,7 +62,7 @@ css/app.css                   →  App.css + index.css
 
 ```bash
 # 终端 1：后端（端口 5018）
-cd ../server && dotnet run --project src/HexFront.Api --urls http://127.0.0.1:5018
+cd ../server && dotnet run --project HexFront.Api --urls http://127.0.0.1:5018
 # 终端 2：前端
 npm run dev        # http://localhost:5173，5173 被占则顺延到 5174
 ```

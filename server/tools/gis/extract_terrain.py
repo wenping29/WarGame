@@ -289,27 +289,40 @@ def run_region(args, dem, landcover):
     print(f"区域瓦片已生成：{os.path.join(args.out, args.name + '.ter')}")
 
 
+def iter_tiles(tile_deg):
+    """按 tile_deg（可为小数）把全球切成 [west,south,east,north] 瓦片边界序列。"""
+    EPS = 1e-9
+    n = 90.0
+    while n > -90.0 + EPS:
+        south = n - tile_deg
+        if south < -90.0:
+            south = -90.0
+        if n <= south + EPS:
+            n -= tile_deg
+            continue
+        w = -180.0
+        while w < 180.0 - EPS:
+            east = w + tile_deg
+            if east > 180.0:
+                east = 180.0
+            if east <= w + EPS:
+                w += tile_deg
+                continue
+            yield (w, south, east, n)
+            w += tile_deg
+        n -= tile_deg
+
+
 def run_global(args, dem, landcover):
     os.makedirs(args.out, exist_ok=True)
     td = args.tile_deg
     tiles = []
-    for n in range(90, -90, -td):
-        south = n - td
-        if south < -90:
-            south = -90
-        if n <= south:
-            continue
-        for w in range(-180, 180, td):
-            east = w + td
-            if east > 180:
-                east = 180
-            if east <= w:
-                continue
-            name = tile_name(w, n)
-            rec = make_tile(dem, landcover, w, south, east, n, args.out, name)
-            if rec:
-                tiles.append(rec)
-                print(f"  + {name}  ({rec['cols']}x{rec['rows']})")
+    for (w, south, east, n) in iter_tiles(td):
+        name = tile_name(w, n)
+        rec = make_tile(dem, landcover, w, south, east, n, args.out, name)
+        if rec:
+            tiles.append(rec)
+            print(f"  + {name}  ({rec['cols']}x{rec['rows']})")
     manifest = {"version": VERSION, "crs": 4326, "mode": "global",
                 "tileDeg": td, "tiles": tiles}
     with open(os.path.join(args.out, "terrain_manifest.json"), "w", encoding="utf-8") as f:

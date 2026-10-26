@@ -46,6 +46,13 @@ public class TerrainTileReaderTests
         var tile = TerrainTile.Load(TilePath());
 
         Assert.True(tile.Contains(lat, lon));
+
+        // 独立验证 reader 的行列换算（ElevationAt/LandcoverAt 内部使用同一 floor 公式）
+        int col = (int)((lon - tile.West) / tile.ResLon);
+        int row = (int)((tile.North - lat) / tile.ResLat);
+        Assert.Equal(expCol, col);
+        Assert.Equal(expRow, row);
+
         Assert.Equal(expElev, tile.ElevationAt(lat, lon));
         Assert.Equal(expLc, tile.LandcoverAt(lat, lon));
 

@@ -42,7 +42,7 @@ if [ -d "$INSTALL_ROOT/hexfront" ] && [ "$(ls -A "$INSTALL_ROOT" | wc -l)" -eq 1
   rmdir "$INSTALL_ROOT/hexfront"
 fi
 
-PUBLISH="$INSTALL_ROOT/server/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish"
+PUBLISH="$INSTALL_ROOT/server/HexFront.Api/bin/Release/net10.0/linux-x64/publish"
 if [ ! -f "$PUBLISH/HexFront.Api.dll" ]; then
   echo "    错误：未找到 $PUBLISH/HexFront.Api.dll，包结构异常。" >&2
   exit 1
@@ -50,7 +50,7 @@ fi
 
 # ---------- 2) 环境变量文件 ----------
 echo "==> 2/5 写入环境变量 $INSTALL_ROOT/hexfront.env ..."
-mkdir -p "$INSTALL_ROOT/data/saves"
+mkdir -p "$INSTALL_ROOT/server/data/saves"
 cat > "$INSTALL_ROOT/hexfront.env" <<EOF
 # HEXFRONT 运行环境变量（由 server-setup.sh 生成）
 HF_REPO_ROOT=$INSTALL_ROOT
@@ -131,7 +131,7 @@ echo ""
 echo "==> 访问地址： http://<本机IP>:5018   （单进程已同时托管前端 /api /ws）"
 echo ""
 echo "==> ⚠️ 密钥处理：把真实天地图 token 放到以下文件（包内已刻意剔除）："
-echo "      $INSTALL_ROOT/data/tianditu.json"
+echo "      $INSTALL_ROOT/server/data/tianditu.json"
 echo '      内容格式： { "tk": "你的真实token" }'
 echo "      放好后重启服务： systemctl restart hexfront"
 echo ""

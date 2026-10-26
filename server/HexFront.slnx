@@ -1,5 +1,5 @@
 <Solution>
-  <Folder Name="/src/">
+  <Folder Name="/server/">
     <Project Path="HexFront.Api/HexFront.Api.csproj" />
     <Project Path="HexFront.Core/HexFront.Core.csproj" />
   </Folder>

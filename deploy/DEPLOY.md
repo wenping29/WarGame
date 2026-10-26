@@ -1,7 +1,7 @@
 # HEXFRONT 部署指南（Linux）
 
 > 适用：把兵棋对抗系统 HEXFRONT-WEB 部署到 Linux 服务器。
-> 架构结论：**单进程部署** —— 一个 ASP.NET Core 进程同时托管 前端静态文件(`wwwroot`)、REST(`/api`)、WebSocket(`/ws`)，对外只暴露 5018 端口，无需 nginx。后端为 **.NET 10 依赖运行时** 包（服务器需装 .NET 10 运行时）。地图数据（约 2.8G）打进同一个部署包。
+> 架构结论：**单进程部署** —— 一个 ASP.NET Core 进程同时托管 前端静态文件(`wwwroot`)、REST(`/api`)、WebSocket(`/ws`)，对外只暴露 5018 端口，无需 nginx。后端为 **.NET 10 依赖运行时** 包（服务器需装 .NET 10 运行时）。地图数据（约 2.1G）打进同一个部署包。
 
 ---
 
@@ -9,15 +9,15 @@
 
 ```
 浏览器 ──http://host:5018──▶ ASP.NET Core (HexFront.Api, 单进程)
-                                ├─ wwwroot/        ← React 构建产物（同源 /api、/ws）
+                                ├─ server/HexFront.Api/wwwroot/  ← React 构建产物（同源 /api、/ws）
                                 ├─ /api/*          ← REST 控制器
                                 ├─ /ws             ← 原生 WebSocket 会话
-                                ├─ data/           ← 地图数据（运行时读取，含 dem/gis/hexgrids/scenarios…）
+                                ├─ server/data/    ← 地图数据（运行时读取，含 dem/gis/hexgrids/scenarios…）
                                 └─ server/HexFront.Api/app.db  ← 种子应用库（用户/角色/菜单，运行时写入）
 ```
 
-- 前端构建产物 `webfront/dist/` 在打包时被拷贝进 `server/src/HexFront.Api/wwwroot/`，`dotnet publish` 会把它带进发布输出；`Program.cs` 在 `wwwroot` 存在时启用静态托管与路径路由 fallback（`/room/XXXX/red` 刷新不 404）。
-- 后端用环境变量 `HF_REPO_ROOT` 定位 `data/` 与 `app.db`，**不再依赖"向上 6 层"的硬编码层级**（已在 `RoomService.GetRepoRoot` / `AppDbService.DefaultDbPath` 中支持 `HF_REPO_ROOT`、`HF_DATA_DIR`），因此包可解到任意目录。
+- 前端构建产物 `webfront/dist/` 在打包时被拷贝进 `server/HexFront.Api/wwwroot/`，`dotnet publish` 会把它带进发布输出；`Program.cs` 在 `wwwroot` 存在时启用静态托管与路径路由 fallback（`/room/XXXX/red` 刷新不 404）。
+- 后端用环境变量 `HF_REPO_ROOT` 定位 `server/`（进而 `data/` 与 `app.db`），**不再依赖"向上 6 层"的硬编码层级**（已在 `AppDbService.ServerRoot` / `AppDbService.DefaultDbPath` 中支持 `HF_REPO_ROOT`、`HF_DATA_DIR`），因此包可解到任意目录。
 
 ---
 
@@ -28,38 +28,38 @@
 | 路径 | 大小(约) | 说明 |
 |---|---|---|
 | `server/HexFront.Api/app.db` | 100 MB | 种子应用库（用户/角色/菜单/会话；运行时写入推演流水与存档索引） |
-| `server/.../publish/` | 数 MB | 后端发布输出（linux-x64，依赖运行时），内含 `wwwroot/` 前端 |
-| `data/dem/` | **2.6 GB** | 数字高程模型（地形），占数据绝大多数 |
-| `data/gis/` | 124 MB | GIS 数据包（真实栅格生成产出与缓存） |
-| `data/landcover/` | 25 MB | 土地覆盖 |
-| `data/water/` | 31 MB | 水体数据 |
-| `data/airports/` | 6.5 MB | 机场 |
-| `data/hexgrids/` | 1.2 MB | 六角格网络包（每网格一个 zip） |
-| `data/scenarios/` | 200 KB | 剧本（25 个 JSON） |
-| `data/tianditu.example.json` | 1 KB | 天地图 token 模板（**不含真实密钥**） |
-| `tools/` | — | Python 栅格生成工具 `tools/gis/hexgen.py` 等（真实地形用，可选） |
+| `server/HexFront.Api/bin/Release/net10.0/linux-x64/publish/` | 数 MB | 后端发布输出（linux-x64，依赖运行时），内含 `wwwroot/` 前端 |
+| `server/data/dem/` | **约 2.1 GB** | 数字高程模型（地形），占数据绝大多数 |
+| `server/data/gis/` | 124 MB | GIS 数据包（真实栅格生成产出与缓存） |
+| `server/data/landcover/` | 25 MB | 土地覆盖 |
+| `server/data/water/` | 31 MB | 水体数据 |
+| `server/data/airports/` | 6.5 MB | 机场 |
+| `server/data/hexgrids/` | 1.2 MB | 六角格网络包（每网格一个 zip） |
+| `server/data/scenarios/` | 200 KB | 剧本（25 个 JSON） |
+| `server/data/tianditu.example.json` | 1 KB | 天地图 token 模板（**不含真实密钥**） |
+| `server/tools/` | — | Python 栅格生成工具 `server/tools/gis/hexgen.py` 等（真实地形用，可选） |
 
 ### 2.2 刻意排除的内容（不要进包）
 
 | 路径 | 原因 |
 |---|---|
-| `data/tianditu.json` | **含真实天地图 token（密钥）**，禁止随包分发，需单独放到服务器 |
-| `data/gis_axial_backup/`、`data/scenarios_backup_20261019/`、`data/scenario_backups/` | 开发期磁盘备份，非运行时数据 |
-| `data/saves/` | 运行时生成的推演存档，初始为空，服务器会自动创建 |
-| `tools/gis/__pycache__/`、`tools/gis/dem_cache_rhine.json` | Python 缓存 |
-| `server/data/`、`node_modules/`、`**/bin/`、`**/obj/` | 仅测试产物 / 本地构建缓存（`server/data/` 只是测试 JSON，运行时用的是仓库根 `data/`） |
+| `server/data/tianditu.json` | **含真实天地图 token（密钥）**，禁止随包分发，需单独放到服务器 |
+| `server/data/gis_axial_backup/`、`server/data/scenarios_backup_20261019/`、`server/data/scenario_backups/` | 开发期磁盘备份，非运行时数据 |
+| `server/data/saves/` | 运行时生成的推演存档，初始为空，服务器会自动创建 |
+| `server/tools/gis/__pycache__/`、`server/tools/gis/dem_cache_rhine.json` | Python 缓存 |
+| `node_modules/`、`**/bin/`、`**/obj/` | 仅本地构建缓存 |
 
 ---
 
 ## 3. 密钥处理（重要）
 
-`data/tianditu.json` 里是真实的天地图访问 token，**打包脚本已刻意剔除**。部署后请手动放到服务器：
+`server/data/tianditu.json` 里是真实的天地图访问 token，**打包脚本已刻意剔除**。部署后请手动放到服务器：
 
 ```bash
-cat > /srv/hexfront/data/tianditu.json <<'JSON'
+cat > /srv/hexfront/server/data/tianditu.json <<'JSON'
 { "tk": "你的真实token" }
 JSON
-chown hexfront:hexfront /srv/hexfront/data/tianditu.json
+chown hexfront:hexfront /srv/hexfront/server/data/tianditu.json
 systemctl restart hexfront
 ```
 
@@ -72,13 +72,13 @@ systemctl restart hexfront
 要求本机有 `node`(构建前端) 与 `dotnet 10`(发布后端)，在 **Git Bash** 下运行：
 
 ```bash
-bash scripts/deploy/build-package.sh
+bash deploy/build-package.sh
 # 增量重试可跳过耗时步骤：
-#   SKIP_FRONTEND_BUILD=1 bash scripts/deploy/build-package.sh
-#   SKIP_BACKEND_PUBLISH=1 bash scripts/deploy/build-package.sh
+#   SKIP_FRONTEND_BUILD=1 bash deploy/build-package.sh
+#   SKIP_BACKEND_PUBLISH=1 bash deploy/build-package.sh
 ```
 
-产出：`scripts/deploy/out/hexfront-deploy-YYYYMMDD-HHMMSS.tar.gz`（约 2.8G）。
+产出：`deploy/out/hexfront-deploy-YYYYMMDD-HHMMSS.tar.gz`（约 2.1G）。
 
 > 注：因数据量大，`tar` 直接基于源路径打包（不做二次拷贝）。`npm ci` 与 `dotnet publish` 需要网络。
 
@@ -88,7 +88,7 @@ bash scripts/deploy/build-package.sh
 
 ```bash
 # 传包
-scp scripts/deploy/out/hexfront-deploy-*.tar.gz user@server:/tmp/
+scp deploy/out/hexfront-deploy-*.tar.gz user@server:/tmp/
 
 # 在服务器（root）执行
 ssh user@server
@@ -106,8 +106,8 @@ sudo bash server-setup.sh /tmp/hexfront-deploy-*.tar.gz        # 默认装到 /s
 
 | 变量 | 默认值/说明 |
 |---|---|
-| `HF_REPO_ROOT` | 解包根目录（如 `/srv/hexfront`）。后端据此定位 `data/` 与 `app.db` |
-| `HF_DATA_DIR` | 覆盖 `data/` 位置（数据单独挂盘时用） |
+| `HF_REPO_ROOT` | 解包根目录（如 `/srv/hexfront`）。后端据此定位 `server/`（内含 `data/` 与 `HexFront.Api/app.db`） |
+| `HF_DATA_DIR` | 覆盖 `server/data/` 位置（数据单独挂盘时用） |
 | `HF_APP_DB` | 覆盖应用库路径（默认 `<HF_REPO_ROOT>/server/HexFront.Api/app.db`） |
 | `ASPNETCORE_ENVIRONMENT` | `Production`（关闭 Swagger） |
 | `ASPNETCORE_URLS` | `http://0.0.0.0:5018` |
@@ -120,8 +120,8 @@ sudo bash server-setup.sh /tmp/hexfront-deploy-*.tar.gz        # 默认装到 /s
 
 - **端口 5018 被占用**：`lsof -i:5018`；或改 `hexfront.env` 的 `ASPNETCORE_URLS` 后 `systemctl restart hexfront`。
 - **前端白屏 / 刷新 404**：确认 `publish/wwwroot/index.html` 存在（`Program.cs` 的 `MapFallbackToFile` 依赖它）。
-- **地图无地形**：检查 `data/dem/` 是否在包内；是否需要 `python3-gdal`（`tools/gis/hexgen.py`）。
-- **`data` 或 `app.db` 找不到（旧版目录层级坑）**：确认 `hexfront.env` 里 `HF_REPO_ROOT` 指向解包根（含 `data/` 与 `server/` 同级的目录）。
+- **地图无地形**：检查 `server/data/dem/` 是否在包内；是否需要 `python3-gdal`（`server/tools/gis/hexgen.py`）。
+- **`data` 或 `app.db` 找不到（旧版目录层级坑）**：确认 `hexfront.env` 里 `HF_REPO_ROOT` 指向解包根，其下含 `server/`，`server/` 内含 `data/` 与 `HexFront.Api/`（例如 `/srv/hexfront/server/data`）。
 - **查看日志**：`journalctl -u hexfront -f`。
 
 ---
@@ -137,7 +137,7 @@ server {
     location /api/  { proxy_pass http://127.0.0.1:5018; proxy_set_header Host $host; }
     location /ws    { proxy_pass http://127.0.0.1:5018; proxy_http_version 1.1;
                       proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; }
-    location /      { root /srv/hexfront/server/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish/wwwroot;
+    location /      { root /srv/hexfront/server/HexFront.Api/bin/Release/net10.0/linux-x64/publish/wwwroot;
                       try_files $uri $uri/ /index.html; }
 }
 ```
