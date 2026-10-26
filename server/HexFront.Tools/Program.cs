@@ -5,7 +5,7 @@ var all = new[]
 {
     "hexgen", "extract-terrain", "rasters",
     "fetch-dem", "fetch-landcover", "fetch-water",
-    "update-scenarios", "pack-release",
+    "update-scenarios", "pack-release", "tiff2json",
 };
 
 if (args.Length == 0 || args[0] is "help" or "-h" or "--help" or "?")
@@ -22,6 +22,7 @@ if (args.Length == 0 || args[0] is "help" or "-h" or "--help" or "?")
     Console.WriteLine("  fetch-water        下载全球河流湖泊矢量（Natural Earth 10m -> gpkg）");
     Console.WriteLine("  update-scenarios   按 docs 修正批量更新 data/scenarios/*.json");
     Console.WriteLine("  pack-release       把前后端分离产物打成 ZIP64 发布包");
+    Console.WriteLine("  tiff2json          把 GeoTIFF 转成带地理参考的 JSON 栅格（便于生成流量/通行网格）");
     Console.WriteLine();
     Console.WriteLine("每个子命令加 -h 查看参数。环境变量 HF_REPO_ROOT 可指定 server/ 根目录。");
     return 0;
@@ -48,6 +49,7 @@ try
         "fetch-water" => FetchWaterCommand.Run(rest),
         "update-scenarios" => UpdateScenariosCommand.Run(rest),
         "pack-release" => PackReleaseCommand.Run(rest),
+        "tiff2json" => Tiff2JsonCommand.Run(rest),
         _ => Fail($"未知子命令: {cmd}（可用: {string.Join(", ", all)}）"),
     };
 }
@@ -77,6 +79,7 @@ void ShowCommandHelp(string c)
         "fetch-water" => FetchWaterCommand.Run(new[] { "-h" }),
         "update-scenarios" => UpdateScenariosCommand.Run(new[] { "-h" }),
         "pack-release" => PackReleaseCommand.Run(new[] { "-h" }),
+        "tiff2json" => Tiff2JsonCommand.Run(new[] { "-h" }),
         _ => Fail($"未知子命令: {c}"),
     };
     _ = rc;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using HexFront.Core.Geometry;
+using HexFront.Core.GisTools;
 
 namespace HexFront.Core.Services;
 
@@ -76,15 +77,19 @@ public static class HexGenService
     /// <summary>
     /// Generate complete hex package with terrain and features.
     /// </summary>
-    public static Models.HexPackage Generate(GenSpec spec)
+    /// <summary>
+    /// 生成完整六角格地形包。sampler 为非 null 且配置为真实 DEM 时，逐格心采样 .ter 瓦片的高程/土地覆盖；
+    /// 否则（离线 / 未配置 / 采样失败）降级为确定性合成 DEM，保证既有调用与测试零回归。
+    /// </summary>
+    public static Models.HexPackage Generate(GenSpec spec, TerrainSampler? sampler = null)
     {
         var grid = BuildGrid(spec);
-        var elev = SampleElevation(grid, spec);
+        var (elev, lc, fromRealTiles) = SampleElevation(grid, spec, sampler);
         var slopes = CalculateSlopes(grid, elev);
         var relief = CalculateRelief(elev);
         var th = BuildThresholds(elev, relief);
-        
-        var (terr, aux) = ClassifyTerrain(grid, elev, slopes, relief, th, spec);
+
+        var (terr, aux) = ClassifyTerrain(grid, elev, slopes, relief, th, spec, lc);
         var riverBand = ExtractRiverBand(grid, elev, terr);
         var (road, bridges) = BuildRoads(grid, elev, terr, riverBand, spec.Seed);
         var cities = PlaceCities(grid, elev, terr, road, spec.Seed);
@@ -96,7 +101,7 @@ public static class HexGenService
         var hexes = BuildHexCells(grid, elev, slopes, terr, road, riverBand, bridges,
                                    cities, railway, powerGrid, airports, fuelStations);
         var meta = BuildMeta(grid, spec, elev, terr, road, riverBand, railway, powerGrid,
-                             airports, fuelStations);
+                             airports, fuelStations, fromRealTiles, lc);
         
         return new Models.HexPackage
         {
@@ -148,28 +153,44 @@ public static class HexGenService
         };
     }
     
-    /// <summary>Sample elevation from Open-Meteo API or generate synthetic DEM.</summary>
-    private static double[] SampleElevation(HexGridGeometry grid, GenSpec spec)
+    /// <summary>
+    /// 采样高程（与可选土地覆盖）。优先用真实 .ter 瓦片（GIS 数据驱动地形），失败 / 未配置 / 离线时降级合成 DEM。
+    /// 返回 (高程数组, 土地覆盖数组?, 是否来自真实 .ter 瓦片)。土地覆盖数组仅在瓦片确实含 LC 层时非 null。
+    /// </summary>
+    private static (double[] Elev, byte[]? Lc, bool FromRealTiles) SampleElevation(HexGridGeometry grid, GenSpec spec, TerrainSampler? sampler)
     {
-        if (spec.Offline || !spec.UseRealDem)
-            return GenerateSyntheticDem(grid, spec.Seed);
-        
-        try
+        var synth = GenerateSyntheticDem(grid, spec.Seed);
+
+        if (sampler != null && sampler.Available && !spec.Offline && spec.UseRealDem)
         {
-            return FetchOpenMeteoElevation(grid, spec);
+            try
+            {
+                var elev = (double[])synth.Clone();
+                byte[]? lc = sampler.HasLandcover ? new byte[grid.Width * grid.Height] : null;
+                for (var r = 0; r < grid.Height; r++)
+                {
+                    for (var q = 0; q < grid.Width; q++)
+                    {
+                        var idx = r * grid.Width + q;
+                        var (x, y) = Center(grid, q, r);
+                        var (lon, lat) = Mercator.MercatorToLonLat(x, y);
+                        if (sampler.Sample(lat, lon, out short e, out byte c))
+                        {
+                            // .ter 高程 nodata = -32768 ⇒ 保留合成值兜底
+                            elev[idx] = e == -32768 ? synth[idx] : e;
+                            if (lc != null) lc[idx] = c;
+                        }
+                    }
+                }
+                return (elev, lc, true);
+            }
+            catch
+            {
+                return (synth, null, false);
+            }
         }
-        catch
-        {
-            return GenerateSyntheticDem(grid, spec.Seed);
-        }
-    }
-    
-    /// <summary>Fetch real elevation from Open-Meteo API.</summary>
-    private static double[] FetchOpenMeteoElevation(HexGridGeometry grid, GenSpec spec)
-    {
-        // TODO: Implement HTTP client to call Open-Meteo Elevation API
-        // For now, fallback to synthetic
-        return GenerateSyntheticDem(grid, spec.Seed);
+
+        return (synth, null, false);
     }
     
     /// <summary>Generate deterministic synthetic DEM using value noise.</summary>
@@ -277,10 +298,10 @@ public static class HexGenService
         };
     }
     
-    /// <summary>Classify terrain type for each cell.</summary>
+    /// <summary>Classify terrain type for each cell. lc 为真实土地覆盖（ESA WorldCover 类码），null 表示无真实数据。</summary>
     private static (string[] Terrain, Dictionary<string, object> Aux) ClassifyTerrain(
-        HexGridGeometry grid, double[] elev, double[] slopes, 
-        (double Min, double Max, double Span) relief, TerrainThresholds th, GenSpec spec)
+        HexGridGeometry grid, double[] elev, double[] slopes,
+        (double Min, double Max, double Span) relief, TerrainThresholds th, GenSpec spec, byte[]? lc)
     {
         var terr = new string[grid.Width * grid.Height];
         var aux = new Dictionary<string, object>();
@@ -339,6 +360,21 @@ public static class HexGenService
                     else
                     {
                         terr[idx] = "clear";
+                    }
+
+                    // 真实土地覆盖（仅 UseRealDem 且瓦片含 LC 时）做保守覆盖：
+                    // 不改山地/丘陵判定，只在平地/粗糙地上据真实类别细化水/湿地/林地。
+                    if (lc != null)
+                    {
+                        var code = lc[idx];
+                        if (code == 80 && terr[idx] != "river")
+                            terr[idx] = "water";                                   // 永久水体
+                        else if ((code == 90 || code == 95) && e < th.ElevHills
+                                 && (terr[idx] == "clear" || terr[idx] == "rough"))
+                            terr[idx] = "swamp";                                   // 湿地 / 红树林（低地）
+                        else if (code == 10 && (terr[idx] == "clear" || terr[idx] == "rough")
+                                 && sl <= SlopeWoodsMaxDeg)
+                            terr[idx] = "woods";                                   // 树木覆盖
                     }
                 }
             }
@@ -794,7 +830,7 @@ public static class HexGenService
         double[] elev, string[] terr, HashSet<(int Q, int R)> road,
         List<(int Q, int R)> riverBand, RailwayNetwork railway,
         PowerGrid powerGrid, List<(int Q, int R, bool IsMajor)> airports,
-        List<(int Q, int R)> fuelStations)
+        List<(int Q, int R)> fuelStations, bool fromRealTiles, byte[]? lc)
     {
         var totalCells = grid.Width * grid.Height;
         var terrainCounts = terr.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count());
@@ -821,8 +857,8 @@ public static class HexGenService
         
         var layers = new Dictionary<string, object>
         {
-            ["elevation"] = spec.UseRealDem ? "open-meteo" : "synthetic",
-            ["landcover"] = "off",
+            ["elevation"] = fromRealTiles ? "local-ter" : spec.UseRealDem ? "open-meteo" : "synthetic",
+            ["landcover"] = lc != null ? "esa-worldcover" : "off",
             ["roads"] = spec.Features ? "generated" : "off",
             ["hydrology"] = "generated",
             ["settlements"] = "generated",
@@ -835,7 +871,7 @@ public static class HexGenService
         return new Models.PackageMeta
         {
             Name = spec.Name,
-            Source = spec.UseRealDem ? "open-meteo-elevation" : "synthetic-fallback",
+            Source = fromRealTiles ? "local-ter" : spec.UseRealDem ? "open-meteo-elevation" : "synthetic-fallback",
             Width = grid.Width,
             Height = grid.Height,
             RadiusM = grid.RadiusM,

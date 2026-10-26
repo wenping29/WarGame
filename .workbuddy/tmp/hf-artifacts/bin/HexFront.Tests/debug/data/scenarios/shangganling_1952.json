@@ -1,0 +1,249 @@
+{
+  "id": "shangganling_1952",
+  "name": "上甘岭战役 1952",
+  "era": "抗美援朝战争",
+  "scale": "战役级",
+  "description": "1952年10月至11月，五圣山前沿两个连支撑点的反复争夺。红方依托坑道体系昼失夜反，蓝方以持续火力与逐次进攻消耗。",
+  "environment": {
+    "width": 22,
+    "height": 18,
+    "cell_km": 2.5,
+    "center_lonlat": [
+      127.7,
+      38.4
+    ],
+    "height_seed": 5108
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": true,
+    "strict_supply": true,
+    "night": false
+  },
+  "clock": {
+    "start_hour": 6,
+    "season": "秋"
+  },
+  "weather": {
+    "initial": "clear",
+    "mode": "stochastic"
+  },
+  "max_turns": 16,
+  "sides": {
+    "red": {
+      "name": "志愿军 · 坑道防御集群",
+      "points_budget": 325,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            10,
+            9
+          ],
+          "commander": {
+            "name": "秦基伟（第15军军长）",
+            "quality": 0.85
+          },
+          "training": 62,
+          "experience": 70,
+          "morale": 85
+        },
+        {
+          "type": "light_inf",
+          "qty": 6,
+          "at": [
+            11,
+            9
+          ],
+          "training": 60,
+          "experience": 68,
+          "morale": 88
+        },
+        {
+          "type": "light_inf",
+          "qty": 4,
+          "at": [
+            12,
+            10
+          ],
+          "training": 55,
+          "experience": 62,
+          "morale": 82
+        },
+        {
+          "type": "rifle",
+          "qty": 3,
+          "at": [
+            10,
+            10
+          ],
+          "training": 55,
+          "experience": 58,
+          "morale": 80
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            9,
+            9
+          ],
+          "training": 50,
+          "experience": 45
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            11,
+            10
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            9,
+            10
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            8,
+            9
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "联合国军 · 攻势集群",
+      "points_budget": 170,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            20,
+            9
+          ],
+          "commander": {
+            "name": "范弗里特（美第8集团军司令官）",
+            "quality": 0.72
+          },
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "mec_inf",
+          "qty": 4,
+          "at": [
+            18,
+            9
+          ],
+          "fort": 2,
+          "training": 78,
+          "experience": 72,
+          "morale": 70
+        },
+        {
+          "type": "mec_inf",
+          "qty": 2,
+          "at": [
+            15,
+            11
+          ],
+          "fort": 1,
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "tank",
+          "qty": 2,
+          "at": [
+            19,
+            8
+          ],
+          "training": 78,
+          "experience": 72
+        },
+        {
+          "type": "gun",
+          "qty": 2,
+          "at": [
+            19,
+            10
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 2,
+          "at": [
+            18,
+            10
+          ],
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            18,
+            8
+          ]
+        },
+        {
+          "type": "radar",
+          "qty": 1,
+          "at": [
+            19,
+            11
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            20,
+            9
+          ]
+        },
+        {
+          "type": "fighter",
+          "qty": 1,
+          "at": [
+            20,
+            14
+          ]
+        },
+        {
+          "type": "recon_air",
+          "qty": 1,
+          "at": [
+            20,
+            3
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "blue",
+      "target": "5,9",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "red",
+      "target": null,
+      "amount": 0,
+      "turns": 16
+    }
+  ]
+}

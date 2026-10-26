@@ -1,0 +1,282 @@
+{
+  "id": "huaihai_1948",
+  "name": "淮海战役 1948",
+  "era": "解放战争",
+  "scale": "战役级",
+  "description": "1948年11月至1949年1月，以徐州为中心的战略决战。红方多路突击围歼据守要点的蓝方重兵集团，蓝方依托铁路交通线与据点工事固守待援。",
+  "environment": {
+    "width": 26,
+    "height": 20,
+    "cell_km": 5,
+    "center_lonlat": [
+      117.5,
+      34.3
+    ],
+    "height_seed": 4811
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": true,
+    "strict_supply": false,
+    "night": false
+  },
+  "clock": {
+    "start_hour": 6,
+    "season": "冬"
+  },
+  "weather": {
+    "initial": "snow",
+    "mode": "stochastic",
+    "schedule": [
+      {
+        "from": 1,
+        "to": 4,
+        "weather": "overcast"
+      },
+      {
+        "from": 9,
+        "to": 12,
+        "weather": "snow"
+      },
+      {
+        "from": 13,
+        "to": 15,
+        "weather": "clear"
+      }
+    ]
+  },
+  "max_turns": 16,
+  "sides": {
+    "red": {
+      "name": "华东野战军 · 攻击集团",
+      "points_budget": 215,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            2,
+            10
+          ],
+          "commander": {
+            "name": "粟裕（华野代司令员兼代政委）",
+            "quality": 0.9
+          },
+          "training": 60,
+          "experience": 62,
+          "morale": 85
+        },
+        {
+          "type": "rifle",
+          "qty": 5,
+          "at": [
+            6,
+            8
+          ],
+          "training": 58,
+          "experience": 60,
+          "morale": 85
+        },
+        {
+          "type": "light_inf",
+          "qty": 4,
+          "at": [
+            6,
+            12
+          ],
+          "training": 55,
+          "experience": 58,
+          "morale": 82
+        },
+        {
+          "type": "rifle_auto",
+          "qty": 2,
+          "at": [
+            8,
+            10
+          ],
+          "training": 52,
+          "experience": 50
+        },
+        {
+          "type": "arty",
+          "qty": 2,
+          "at": [
+            4,
+            9
+          ],
+          "training": 55,
+          "experience": 48
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            5,
+            12
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            5,
+            10
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            3,
+            11
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            1,
+            10
+          ]
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            5,
+            7
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "徐州剿总 · 守备集群",
+      "points_budget": 255,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            23,
+            10
+          ],
+          "commander": {
+            "name": "杜聿明（徐州剿总副总司令·前进指挥部主任）",
+            "quality": 0.68
+          },
+          "training": 58,
+          "experience": 55
+        },
+        {
+          "type": "rifle",
+          "qty": 4,
+          "at": [
+            18,
+            8
+          ],
+          "fort": 2,
+          "training": 55,
+          "experience": 50,
+          "morale": 55
+        },
+        {
+          "type": "rifle",
+          "qty": 3,
+          "at": [
+            18,
+            12
+          ],
+          "fort": 1,
+          "training": 50,
+          "experience": 45,
+          "morale": 50
+        },
+        {
+          "type": "rifle_auto",
+          "qty": 2,
+          "at": [
+            20,
+            10
+          ],
+          "training": 55,
+          "experience": 50
+        },
+        {
+          "type": "tank",
+          "qty": 1,
+          "at": [
+            21,
+            8
+          ]
+        },
+        {
+          "type": "gun",
+          "qty": 2,
+          "at": [
+            21,
+            12
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 2,
+          "at": [
+            23,
+            10
+          ],
+          "training": 55,
+          "experience": 50
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            21,
+            8
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            19,
+            10
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            24,
+            10
+          ]
+        },
+        {
+          "type": "fighter",
+          "qty": 1,
+          "at": [
+            24,
+            16
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "red",
+      "target": "18,10",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "blue",
+      "target": null,
+      "amount": 0,
+      "turns": 16
+    }
+  ]
+}

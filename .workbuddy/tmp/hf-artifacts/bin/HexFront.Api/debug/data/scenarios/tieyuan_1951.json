@@ -1,0 +1,249 @@
+{
+  "id": "tieyuan_1951",
+  "name": "铁原阻击战 1951",
+  "era": "抗美援朝战争",
+  "scale": "战役级",
+  "description": "1951年5月底至6月，铁原是志愿军全线的后勤枢纽。红方以不足之众在丘陵地带构筑多重阻击线死守十二个昼夜，蓝方机械化集群轮番突击。",
+  "environment": {
+    "width": 24,
+    "height": 18,
+    "cell_km": 2.5,
+    "center_lonlat": [
+      127.1,
+      38.3
+    ],
+    "height_seed": 5106
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": true,
+    "strict_supply": true,
+    "night": false
+  },
+  "clock": {
+    "start_hour": 6,
+    "season": "夏"
+  },
+  "weather": {
+    "initial": "rain",
+    "mode": "stochastic"
+  },
+  "max_turns": 14,
+  "sides": {
+    "red": {
+      "name": "志愿军第63军 · 阻击集群",
+      "points_budget": 325,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            8,
+            10
+          ],
+          "commander": {
+            "name": "傅崇碧（第63军军长）",
+            "quality": 0.82
+          },
+          "training": 62,
+          "experience": 70,
+          "morale": 85
+        },
+        {
+          "type": "light_inf",
+          "qty": 6,
+          "at": [
+            9,
+            10
+          ],
+          "training": 60,
+          "experience": 68,
+          "morale": 88
+        },
+        {
+          "type": "light_inf",
+          "qty": 4,
+          "at": [
+            10,
+            12
+          ],
+          "training": 55,
+          "experience": 62,
+          "morale": 82
+        },
+        {
+          "type": "rifle",
+          "qty": 3,
+          "at": [
+            10,
+            13
+          ],
+          "training": 55,
+          "experience": 58,
+          "morale": 80
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            8,
+            9
+          ],
+          "training": 50,
+          "experience": 45
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            9,
+            11
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            8,
+            11
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            7,
+            10
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "联合国军 · 突击集群",
+      "points_budget": 170,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            22,
+            9
+          ],
+          "commander": {
+            "name": "范弗里特（美第8集团军司令官）",
+            "quality": 0.75
+          },
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "mec_inf",
+          "qty": 4,
+          "at": [
+            19,
+            10
+          ],
+          "fort": 2,
+          "training": 78,
+          "experience": 72,
+          "morale": 70
+        },
+        {
+          "type": "mec_inf",
+          "qty": 2,
+          "at": [
+            17,
+            11
+          ],
+          "fort": 1,
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "tank",
+          "qty": 2,
+          "at": [
+            21,
+            9
+          ],
+          "training": 78,
+          "experience": 72
+        },
+        {
+          "type": "gun",
+          "qty": 2,
+          "at": [
+            21,
+            10
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 2,
+          "at": [
+            20,
+            8
+          ],
+          "training": 75,
+          "experience": 70
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            20,
+            10
+          ]
+        },
+        {
+          "type": "radar",
+          "qty": 1,
+          "at": [
+            21,
+            11
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 2,
+          "at": [
+            22,
+            9
+          ]
+        },
+        {
+          "type": "fighter",
+          "qty": 1,
+          "at": [
+            22,
+            14
+          ]
+        },
+        {
+          "type": "recon_air",
+          "qty": 1,
+          "at": [
+            22,
+            3
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "blue",
+      "target": "5,9",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "red",
+      "target": null,
+      "amount": 0,
+      "turns": 14
+    }
+  ]
+}

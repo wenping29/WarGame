@@ -1,0 +1,13 @@
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\bin\HexFront.Core\debug\HexFront.Core.deps.json
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\bin\HexFront.Core\debug\HexFront.Core.dll
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\bin\HexFront.Core\debug\HexFront.Core.pdb
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\obj\HexFront.Core\debug\HexFront.Core.csproj.AssemblyReference.cache
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\obj\HexFront.Core\debug\HexFront.Core.GeneratedMSBuildEditorConfig.editorconfig
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\obj\HexFront.Core\debug\HexFront.Core.AssemblyInfoInputs.cache
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\obj\HexFront.Core\debug\HexFront.Core.AssemblyInfo.cs
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\obj\HexFront.Core\debug\HexFront.Core.csproj.CoreCompileInputs.cache
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\obj\HexFront.Core\debug\HexFront.Core.sourcelink.json
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\obj\HexFront.Core\debug\HexFront.Core.dll
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\obj\HexFront.Core\debug\refint\HexFront.Core.dll
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\obj\HexFront.Core\debug\HexFront.Core.pdb
+D:\Project\wargame\.workbuddy\tmp\hf-artifacts\obj\HexFront.Core\debug\ref\HexFront.Core.dll

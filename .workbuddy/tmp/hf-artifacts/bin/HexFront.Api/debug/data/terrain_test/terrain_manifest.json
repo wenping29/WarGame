@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "crs": 4326,
+  "mode": "region",
+  "tileDeg": null,
+  "tiles": [
+    {
+      "name": "rhein",
+      "file": "rhein.ter",
+      "west": 4.0,
+      "south": 48.0,
+      "east": 9.0,
+      "north": 51.5,
+      "cols": 600,
+      "rows": 420,
+      "resLon": 0.008333333333333333,
+      "resLat": 0.008333333333333333,
+      "hasLandcover": true
+    }
+  ]
+}

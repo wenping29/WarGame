@@ -104,8 +104,7 @@ public sealed class GeoBand : IDisposable
             bool hasNoData = false; double noData = 0;
             if (tags.TryGetValue(42113, out var nd)) // GDAL_NODATA
             {
-                fs.Seek(nd.valueOffset, SeekOrigin.Begin);
-                var bytes = br.ReadBytes((int)Math.Min(nd.count, 32));
+                var bytes = ReadValueBytes(nd, br, le);
                 var s = System.Text.Encoding.ASCII.GetString(bytes).TrimEnd('\0', ' ');
                 if (double.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out var v))
                 { noData = v; hasNoData = true; }
@@ -132,8 +131,10 @@ public sealed class GeoBand : IDisposable
         if (tags.TryGetValue(34264, out var tr) && tr.count >= 16)
         {
             var m = ReadDoubles(br, tr.valueOffset, 16, le);
-            // X = m0 + col*m1 + row*m2 ; Y = m4 + col*m5 + row*m6
-            return new[] { m[0], m[1], m[2], m[4], m[5], m[6] };
+            // GeoTIFF 4x4 模型变换（行主序）：
+            //   X = m0*col + m1*row + m3 ; Y = m4*col + m5*row + m7
+            // 这里归一成 [constX, colX, rowX, constY, colY, rowY]。
+            return new[] { m[3], m[0], m[1], m[7], m[4], m[5] };
         }
         if (tags.TryGetValue(33922, out var tp) && tags.TryGetValue(33550, out var ps))
         {
@@ -328,23 +329,75 @@ public sealed class GeoBand : IDisposable
     }
 
     private static long ReadTagScalar(Dictionary<int, (int type, long count, long valueOffset)> tags, int tag, BinaryReader br, bool le)
-        => (long)ReadArrayScalar(tags, tag, br, le, 0);
+        => ReadArrayScalar(tags, tag, br, le, 0);
 
     private static long ReadArrayScalar(Dictionary<int, (int type, long count, long valueOffset)> tags, int tag, BinaryReader br, bool le, int i)
     {
         var t = tags[tag];
-        long vo = t.count <= 1 ? t.valueOffset : t.valueOffset; // 单值时 valueOffset 即值（但需按 type 宽度对齐）
-        // 值内联在 4 字节里：按类型宽度从 valueOffset 起始读
-        br.BaseStream.Seek(vo, SeekOrigin.Begin);
+        var buf = ReadValueBytes(t, br, le); // 恒为小端字节序
+        int size = TypeSize(t.type);
+        long off = (long)i * size;
         return t.type switch
         {
-            1 or 6 => br.ReadByte(),
-            2 => br.ReadByte(),
-            3 or 8 => le ? br.ReadUInt16() : Reverse(br.ReadUInt16()),
-            4 or 9 or 11 => le ? br.ReadUInt32() : Reverse(br.ReadUInt32()),
-            5 or 10 or 12 => (long)(le ? br.ReadDouble() : ReverseD(br.ReadDouble())),
-            _ => le ? br.ReadUInt32() : Reverse(br.ReadUInt32())
+            1 or 2 or 6 => buf[off],
+            3 or 8 => BitConverter.ToUInt16(buf, (int)off),
+            4 or 9 or 11 => BitConverter.ToUInt32(buf, (int)off),
+            5 or 10 or 12 => (long)BitConverter.ToDouble(buf, (int)off),
+            _ => BitConverter.ToUInt32(buf, (int)off),
         };
+    }
+
+    /// <summary>TIFF 标准：当 count*typeSize ≤ 4 时，值内联在 4 字节字段里；否则 4 字节存放文件偏移。
+    /// 返回的值字节恒为小端序（无论源文件端序）。</summary>
+    private static byte[] ReadValueBytes((int type, long count, long valueOffset) t, BinaryReader br, bool le)
+    {
+        int size = TypeSize(t.type);
+        long total = t.count * size;
+        byte[] val = new byte[total > 0 ? total : 1];
+        if (total <= 4)
+        {
+            // 内联：4 字节字段 raw 即原始文件字节（端序还原后取前 total 字节）
+            uint v = (uint)t.valueOffset;
+            byte[] raw = le
+                ? new[] { (byte)v, (byte)(v >> 8), (byte)(v >> 16), (byte)(v >> 24) }
+                : new[] { (byte)(v >> 24), (byte)(v >> 16), (byte)(v >> 8), (byte)v };
+            int n = (int)Math.Min(total, 4);
+            Array.Copy(raw, val, n);
+        }
+        else
+        {
+            br.BaseStream.Seek(t.valueOffset, SeekOrigin.Begin);
+            br.BaseStream.ReadExactly(val, 0, (int)total);
+        }
+        if (!le && total > 0) ReverseBuf(val, size);
+        return val;
+    }
+
+    private static int TypeSize(int type) => type switch
+    {
+        1 or 2 or 6 or 7 => 1,
+        3 or 8 => 2,
+        4 or 9 or 11 => 4,
+        5 or 10 or 12 => 8,
+        _ => 1,
+    };
+
+    private static byte[] ReverseBuf(byte[] buf, int off, int size)
+    {
+        byte[] r = new byte[size];
+        for (int k = 0; k < size; k++) r[k] = buf[off + size - 1 - k];
+        return r;
+    }
+
+    private static void ReverseBuf(byte[] buf, int size)
+    {
+        for (int i = 0; i + size <= buf.Length; i += size)
+        {
+            for (int k = 0; k < size / 2; k++)
+            {
+                (buf[i + k], buf[i + size - 1 - k]) = (buf[i + size - 1 - k], buf[i + k]);
+            }
+        }
     }
 
     private static double ReverseD(double v)
@@ -356,27 +409,18 @@ public sealed class GeoBand : IDisposable
     {
         var t = tags[tag];
         if (t.count <= 0) return Array.Empty<long>();
-        long[] result;
-        if (t.count == 1)
-        {
-            result = new long[1];
-            br.BaseStream.Seek(t.valueOffset, SeekOrigin.Begin);
-            result[0] = t.type switch
-            {
-                3 or 8 => le ? br.ReadUInt16() : Reverse(br.ReadUInt16()),
-                _ => le ? br.ReadUInt32() : Reverse(br.ReadUInt32())
-            };
-            return result;
-        }
-        // 偏移数组存于 valueOffset 指向的位置
-        result = new long[t.count];
-        br.BaseStream.Seek(t.valueOffset, SeekOrigin.Begin);
+        var buf = ReadValueBytes(t, br, le); // 恒为小端序
+        int size = TypeSize(t.type);
+        var result = new long[t.count];
         for (var i = 0; i < t.count; i++)
+        {
+            long off = (long)i * size;
             result[i] = t.type switch
             {
-                3 or 8 => le ? br.ReadUInt16() : Reverse(br.ReadUInt16()),
-                _ => le ? br.ReadUInt32() : Reverse(br.ReadUInt32())
+                3 or 8 => BitConverter.ToUInt16(buf, (int)off),
+                _ => BitConverter.ToUInt32(buf, (int)off),
             };
+        }
         return result;
     }
 

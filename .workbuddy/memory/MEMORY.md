@@ -62,6 +62,14 @@ API_BASE_URL="https://api.<后端域名>/api" bash deploy/build-release-zip.sh
 - 留空 env → 回退后端下发（**运行时可改**，改服务端文件重启即可，不用重新构建前端）。
 - 多把 key 用逗号分隔（分摊日配额）。
 
+## 独立生成服务 HexFront.GisApi（2026-10-26 新增）
+- `server/HexFront.GisApi`：**独立**的「GIS→六角格」生成 Web API（net10.0，引用 Core），与游戏后端解耦、独立存储 `server/data/gis-api/{jobs,grids}`，**不写** `data/hexgrids`。默认端口 5180（appsettings `Urls`，可被 ASPNETCORE_URLS 覆盖）。
+- 端点：`/health`、`/api/capabilities`、`/api/plan`、`/api/generate`（异步作业）、`/api/jobs[/{id}][/{id}/download]`、`/api/grids[/{id}][/{id}/download]`。
+- DEM 模式（`GisApi:DemMode`）：auto（有 .ter 瓦片即真实）/ real / synthetic。真实数据 = `TerrainSampler` 读 `data/terrain/*.ter`（含 ESA 土地覆盖），无瓦片自动降级合成。生成引擎是 Core 的 `HexGenService.Generate(spec, sampler)`（全 C# hexgen.py 移植）。
+- 数据根解析 `RepoLocator`：HF_REPO_ROOT（兼容解压根/server 两种写法）→ 向上找 `<dir>/server/data` → 兜底 `<dir>/data`。**勿用"任意祖先含 data"作首选——用户机器 D:\data 是其个人 GIS 工作目录，曾误命中**。
+- HexPackage 落盘契约：SnakeCaseLower + 缩进（同 hexgen.py / 主后端 data/gis/*.json）；作业记录跨请求返回需 `DeepClone()` JsonNode。
+- 生成 `.ter`：用 Python `extract_terrain.py`（C# ExtractTerrainCommand 读 global_dem_30s.tif 有 ReadWindow 越界 bug 待修）。
+
 ## 测试
 `dotnet test server/HexFront.Tests/HexFront.Tests.csproj --no-build`（Windows 上建议先 clean 再 build）。
 已知既有失败（与结构/部署无关，需 GDAL 产物或引擎逻辑）：ScenarioBuildP7、DayNightCycle、AiOfficerP3、SaveLoadProtocol。

@@ -1,0 +1,284 @@
+{
+  "id": "taierzhuang_1938",
+  "name": "台儿庄战役 1938",
+  "era": "抗日战争",
+  "scale": "战役级",
+  "description": "1938年3月至4月，鲁南运河畔的城镇攻防。红方以内侧防御配合外线反击夹击突进之敌，蓝方孤军深入强攻砖城。",
+  "environment": {
+    "width": 22,
+    "height": 18,
+    "cell_km": 2.5,
+    "center_lonlat": [
+      117.7,
+      34.6
+    ],
+    "height_seed": 3804
+  },
+  "flags": {
+    "fog": true,
+    "air_superiority": true,
+    "strict_supply": false,
+    "night": false
+  },
+  "clock": {
+    "start_hour": 6,
+    "season": "春"
+  },
+  "weather": {
+    "initial": "clear",
+    "mode": "stochastic"
+  },
+  "max_turns": 12,
+  "sides": {
+    "red": {
+      "name": "第5战区 · 内线反击集群",
+      "points_budget": 155,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            9,
+            9
+          ],
+          "commander": {
+            "name": "孙连仲（第2集团军总司令）",
+            "quality": 0.78
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 75
+        },
+        {
+          "type": "light_inf",
+          "qty": 1,
+          "at": [
+            12,
+            9
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "light_inf",
+          "qty": 1,
+          "at": [
+            11,
+            10
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "light_inf",
+          "qty": 3,
+          "at": [
+            10,
+            7
+          ],
+          "fort": 2,
+          "training": 45,
+          "experience": 42,
+          "morale": 78
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            12,
+            10
+          ],
+          "fort": 2,
+          "training": 42,
+          "experience": 40,
+          "morale": 75
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            11,
+            11
+          ],
+          "fort": 2,
+          "training": 42,
+          "experience": 40,
+          "morale": 75
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            9,
+            10
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            9,
+            8
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            10,
+            9
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            9,
+            11
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            7,
+            10
+          ]
+        },
+        {
+          "type": "aa",
+          "qty": 1,
+          "at": [
+            10,
+            7
+          ]
+        }
+      ]
+    },
+    "blue": {
+      "name": "日军 · 突进支队",
+      "points_budget": 145,
+      "oob": [
+        {
+          "type": "hq",
+          "qty": 1,
+          "at": [
+            13,
+            3
+          ],
+          "commander": {
+            "name": "濑谷启（第33旅团长·濑谷支队）",
+            "quality": 0.62
+          },
+          "training": 48,
+          "experience": 45,
+          "morale": 72
+        },
+        {
+          "type": "light_inf",
+          "qty": 2,
+          "at": [
+            12,
+            5
+          ],
+          "training": 45,
+          "experience": 42,
+          "morale": 72
+        },
+        {
+          "type": "light_inf",
+          "qty": 3,
+          "at": [
+            13,
+            6
+          ],
+          "training": 45,
+          "experience": 42,
+          "morale": 72
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            13,
+            4
+          ],
+          "training": 42,
+          "experience": 40,
+          "morale": 70
+        },
+        {
+          "type": "rifle",
+          "qty": 2,
+          "at": [
+            12,
+            6
+          ],
+          "training": 42,
+          "experience": 40,
+          "morale": 70
+        },
+        {
+          "type": "gun",
+          "qty": 1,
+          "at": [
+            12,
+            3
+          ]
+        },
+        {
+          "type": "arty",
+          "qty": 1,
+          "at": [
+            13,
+            3
+          ]
+        },
+        {
+          "type": "engineer",
+          "qty": 1,
+          "at": [
+            11,
+            3
+          ]
+        },
+        {
+          "type": "signals",
+          "qty": 1,
+          "at": [
+            13,
+            2
+          ]
+        },
+        {
+          "type": "recy",
+          "qty": 1,
+          "at": [
+            14,
+            2
+          ]
+        }
+      ]
+    }
+  },
+  "victory": [
+    {
+      "kind": "capture",
+      "side": "blue",
+      "target": "5,9",
+      "amount": 0,
+      "turns": 0
+    },
+    {
+      "kind": "survive",
+      "side": "red",
+      "target": null,
+      "amount": 0,
+      "turns": 12
+    }
+  ]
+}
