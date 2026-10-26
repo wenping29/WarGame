@@ -9,8 +9,12 @@ server/data              地图数据：dem/gis/hexgrids/scenarios/landcover/wat
 server/tools/gis         Python 栅格工具（extract_terrain.py 纯 tifffile，不用 GDAL）
 webfront                 React + Vite 前端
 deploy                   部署物料与脚本（out/ 放产物，已 gitignore）
+├── build-release-zip.sh 前后端分离发布包构建入口
+├── release/              随包分发的部署物料（nginx 配置/env/手册/域名替换脚本）
+└── tools/pack_release.py Python zipfile 打包器（ZIP64）
 ```
 后端定位根目录用 `AppDbService.ServerRoot()`（认 `server` 目录），支持 `HF_REPO_ROOT`/`HF_DATA_DIR`/`HF_APP_DB`/`HF_SAVE_DIR`/`HF_SCENARIO_DIR` 环境变量覆盖。**不要再用"向上 N 层"的硬编码层级。**
+`HF_REPO_ROOT` 两种写法都认：指向解压根（其下有 `server/`）或直接指向 `server` 目录本身（`ResolveServerRoot` 统一处理，不会拼出 `server/server`）。
 
 ## 部署架构：两种方案
 - **方案 A（默认，单进程同源）**：后端进程同时托管 `wwwroot` 前端 + `/api` + `/ws`，只需一个站点，无需 nginx、无需 CORS。发布包已含前端。
@@ -22,8 +26,29 @@ deploy                   部署物料与脚本（out/ 放产物，已 gitignore�
   5. **两边都必须 HTTPS**：https 页面调 http 接口会被浏览器按混合内容拦截
   6. 静态站必须 `try_files $uri $uri/ /index.html`（前端是 path 路由，如 `/room/XXX/red`）
 
+## 发布包（当前主流程：前后端分离 + zip）
+```bash
+API_BASE_URL="https://api.<后端域名>/api" bash deploy/build-release-zip.sh
+# -> deploy/out/hexfront-release-<ts>.zip  (2.0G, 148 文件, 约 60s)
+```
+包内结构 `hexfront-release/{web,server/{HexFront.Api/{publish,app.db},data},deploy}`：
+- `web/` 前端静态产物（构建时注入 `VITE_API_BASE_URL`，**必须以 /api 结尾**）
+- `server/HexFront.Api/publish/` 后端 dll（宝塔 .NET 站点「运行路径」指向这里，启动文件只写 `HexFront.Api.dll`）
+- `server/data/` 地图剧本数据；`deploy/` nginx 配置 + env + DEPLOY.md + set-api-domain.sh
+- 已剔除：`tianditu.json`（密钥）、`saves/`、`terrain_test/`、备份、`bin`/`obj`/`node_modules`、`.pdb`
+
+**占位符换域名**：包里 `deploy/set-api-domain.sh` 直接改产物里的地址字符串，**不用重新构建前端**。
+产物里 `https://api.example.com/api` 是完整字符串（出现 2 次），WS 地址是**运行时**从它派生
+（`new URL(apiBase)` → https 转 wss），所以替换一处 REST 与 WS 同时生效。
+
+**打包注意**：
+- PowerShell 5.1 的 `Compress-Archive` 处理 2G 数据极慢且有单文件 2GB 上限 → 用 Python `zipfile`（开 ZIP64）
+- `.tif`/`.ovr`/`.png` 等已压缩格式用 level 1，其余 level 6；zip 前后 2.2G→2.0G
+- 打包前必须 `PRAGMA wal_checkpoint(TRUNCATE)` 合并 SQLite WAL，否则服务器首次启动看不到最近数据
+- `dotnet publish` 必须带 `--artifacts-path <全新目录>`（见下坑）
+
 ## 已知坑
-- **MSBuild Copy 任务在 Windows 上会栈溢出**（Stack overflow / MSB4166）：publish 前先 `dotnet clean`；不要用 `rm -rf` 清 bin/obj（会被安全策略拦截），用 `dotnet clean`。
+- **MSBuild Copy 任务在 Windows 上会栈溢出**（Stack overflow / MSB4166）：**正解是 `dotnet publish --artifacts-path <全新目录>`**（`dotnet clean` 清不掉 RID 子目录）；不要用 `rm -rf` 清 bin/obj（会被安全策略拦截），用 `dotnet clean`。
 - **CORS 方法表**：前端除 GET/POST 外还有 PUT（副本单位编辑）、DELETE，漏一个在跨源部署时预检就 403。
 - **.ter 瓦片坐标换算是闭区间**：`col = clamp(floor((lon-west)/resLon), 0, cols-1)`，边界点归属最后一格。Python 生成端与 C# 读取端都要钳制，浮点在边界会算出越界值。
 - 天地图真实 token 在 `server/data/tianditu.json`，**不进版本库、不进部署包**，部署时单独放。

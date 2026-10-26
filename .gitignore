@@ -90,9 +90,15 @@ pnpm-debug.log*
 .env.production.local
 # 方案B 双站分离时前端按后端域名编译，域名是环境相关的，不进版本库（模板见 webfront/.env.production.example）
 .env.production
+# 前端本地开发用的天地图 key 等环境相关配置，同样不进版本库（模板见 webfront/.env.example）
+.env
+.env.development
 *.local.json
 appsettings.Local.json
 appsettings.*.json
+# SQLite 运行时临时文件（WAL 已 checkpoint 合并进主库，这两个是空的副产物）
+*.db-shm
+*.db-wal
 !appsettings.json
 !appsettings.Development.json
 !appsettings.Production.json

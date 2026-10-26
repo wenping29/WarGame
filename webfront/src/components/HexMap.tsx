@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { BASEMAPS, DEFAULT_DISPLAY, MapView, type DisplayOptions } from '../map/MapView'
 import { useMeta } from '../room/useUnitFull'
+import { resolveTiandituTk } from '../services/tianditu'
 import type { AnyView } from '../room/protocol'
 
 interface HexMapProps {
@@ -73,8 +74,9 @@ export default function HexMap({
 
   useEffect(() => { mapRef.current?.setView(view) }, [view])
 
-  // 底图密钥经 /api/scenarios 下发（服务端读 data/tianditu.json），前端不硬编码
-  const tk = (meta?.tiles as { tk?: string } | undefined)?.tk ?? null
+  // 底图密钥：优先用前端 .env 里配的 VITE_TIANDITU_TK（按前端域名注册的 token），
+  // 没有则回退到后端 /api/scenarios 下发的 tiles.tk（服务端读 data/tianditu.json）。
+  const tk = resolveTiandituTk((meta?.tiles as { tk?: string } | undefined)?.tk)
   useEffect(() => { mapRef.current?.setTk(tk) }, [tk])
 
   const [basemap, setBasemap] = useState('vec')

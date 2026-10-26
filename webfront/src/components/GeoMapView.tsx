@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadMeta } from '../room/useUnitFull'
+import { resolveTiandituTk, TIANDITU_ENV_TK } from '../services/tianditu'
 import type { GisData } from '../gis/hexgen'
 
 const E = 20037508.342789244 // EPSG:3857 半周长（米）
@@ -161,7 +162,7 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
   const holeCacheRef = useRef<SmallCache | null>(null)
   const gisCacheRef = useRef<GisCache | null>(null)
 
-  const [tk, setTk] = useState<string | null>(null)
+  const [tk, setTk] = useState<string | null>(TIANDITU_ENV_TK)
   const [basemap, setBasemap] = useState<keyof typeof LAYERS>('vec')
   const [zoomLabel, setZoomLabel] = useState(5)
   const [tileFail, setTileFail] = useState(false)
@@ -193,7 +194,10 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
   const drawRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
-    loadMeta().then((m) => setTk((m.tiles as { tk?: string } | undefined)?.tk ?? null)).catch(() => {})
+    // 后端不可达时也要能用前端配置的密钥（.env 里的 VITE_TIANDITU_TK）
+    loadMeta()
+      .then((m) => setTk(resolveTiandituTk((m.tiles as { tk?: string } | undefined)?.tk)))
+      .catch(() => setTk(TIANDITU_ENV_TK))
   }, [])
 
   // 密钥异步到达：清掉带空 tk 失败的瓦片，换钥匙重载
