@@ -436,7 +436,8 @@ export const api = {
   scenDetail: (id: string) => get<{ file: string; doc: Record<string, unknown> }>('/scenadmin/' + id),
   scenSave: (id: string, doc: unknown, validateOnly = false) =>
     put<{ ok: boolean; errors: string[]; file?: string; backup?: string | null; saved_at?: string }>(
-      '/scenadmin/' + id + (validateOnly ? '?validateOnly=1' : ''), doc),
+      // 必须传 true：后端 bool 查询绑定不认 "1"，传 1 会被当成 false 而静默落盘保存
+      '/scenadmin/' + id + (validateOnly ? '?validateOnly=true' : ''), doc),
   feedbackList: () => get<{ feedback: FeedbackEntry[] }>('/scenadmin/feedback'),
   feedbackAdd: (body: { scenario: string; kind: string; detail: string; contact?: string }) =>
     post<{ ok: boolean; entry: FeedbackEntry }>('/scenadmin/feedback', body),

@@ -620,15 +620,41 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
         }
 
         // 单位标记（屏幕空间圆点 + 兵种牌；overlay.markers 每次引用变化由 effect 重绘）
+        // 兵种牌比格子宽，压在邻格圆点上会看不清落位，故分两遍：先全部牌，再全部点与选中圈
         const marks = o.markers
         if (marks?.length && r >= 2.2) {
           const slots = markerSlots(marks)
           const rad = markerRad(r)
+          const pos = marks.map((m, i) => {
+            if (!Number.isInteger(m.q) || !Number.isInteger(m.r)
+              || m.q < 0 || m.q >= o.cols || m.r < 0 || m.r >= o.rows) return null
+            return markerCenterPx(o, m, slots[i].idx, slots[i].n)
+          })
+          if (r >= 7) {
+            ctx.font = '11px sans-serif'
+            ctx.textAlign = 'left'
+            for (let i = 0; i < marks.length; i++) {
+              const m = marks[i]
+              const p = pos[i]
+              if (!m.label || !p) continue
+              const [cx, cy] = p
+              const txt = m.qty && m.qty > 1 ? `${m.label}×${m.qty}` : m.label
+              const x0 = cx + rad + 3
+              const bw = ctx.measureText(txt).width + 8
+              ctx.fillStyle = m.dirty ? 'rgba(58,48,18,.9)' : 'rgba(10,16,22,.78)'
+              ctx.fillRect(x0, cy - 8, bw, 16)
+              ctx.strokeStyle = m.dirty ? 'rgba(240,220,140,.95)' : 'rgba(255,255,255,.16)'
+              ctx.lineWidth = 1
+              ctx.strokeRect(x0, cy - 8, bw, 16)
+              ctx.fillStyle = '#e8eef4'
+              ctx.fillText(txt, x0 + 4, cy + 4)
+            }
+          }
           for (let i = 0; i < marks.length; i++) {
             const m = marks[i]
-            if (!Number.isInteger(m.q) || !Number.isInteger(m.r)
-              || m.q < 0 || m.q >= o.cols || m.r < 0 || m.r >= o.rows) continue
-            const [cx, cy] = markerCenterPx(o, m, slots[i].idx, slots[i].n)
+            const p = pos[i]
+            if (!p) continue
+            const [cx, cy] = p
             if (m.dirty) {
               ctx.beginPath()
               ctx.arc(cx, cy, rad + 2.5, 0, Math.PI * 2)
@@ -645,21 +671,6 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
             ctx.lineWidth = 1.2
             ctx.strokeStyle = 'rgba(10,14,18,.8)'
             ctx.stroke()
-            // 兵种牌：格子在屏幕上太小时只留圆点，避免文字糊成一片
-            if (m.label && r >= 7) {
-              const txt = m.qty && m.qty > 1 ? `${m.label}×${m.qty}` : m.label
-              ctx.font = '11px sans-serif'
-              ctx.textAlign = 'left'
-              const x0 = cx + rad + 3
-              const bw = ctx.measureText(txt).width + 8
-              ctx.fillStyle = m.dirty ? 'rgba(58,48,18,.9)' : 'rgba(10,16,22,.78)'
-              ctx.fillRect(x0, cy - 8, bw, 16)
-              ctx.strokeStyle = m.dirty ? 'rgba(240,220,140,.95)' : 'rgba(255,255,255,.16)'
-              ctx.lineWidth = 1
-              ctx.strokeRect(x0, cy - 8, bw, 16)
-              ctx.fillStyle = '#e8eef4'
-              ctx.fillText(txt, x0 + 4, cy + 4)
-            }
           }
         }
       }

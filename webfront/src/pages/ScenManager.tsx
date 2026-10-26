@@ -99,7 +99,7 @@ function normalizeDoc(d: Doc) {
     else sc.points_budget = toInt(sc.points_budget)
     if (!Array.isArray(sc.oob)) sc.oob = []
     for (const e of sc.oob) {
-      e.type = e.type || 'inf'
+      e.type = e.type || 'rifle'
       e.qty = toInt(e.qty, 1)
       if (!Array.isArray(e.at) || e.at.length < 2) e.at = [2, 2]
       e.at[0] = toInt(e.at[0], 2)
@@ -562,7 +562,7 @@ export default function ScenManager() {
           <button className="btn btn-sm" onClick={() => upd(d => {
             (d.sides ??= {})[side] ??= {};
             ((d.sides[side].oob ??= []) as Doc[]).push({
-              type: 'inf', qty: 1, at: [2, 2], training: 60, experience: 60, morale: 80,
+              type: 'rifle', qty: 1, at: [2, 2], training: 60, experience: 60, morale: 80,
               commander: { name: '', quality: 0.7 },
             })
           })}>＋ 增一行</button>
@@ -581,8 +581,13 @@ export default function ScenManager() {
                     <td key={p}>
                       {p === 'type' ? (
                         <select value={getIn(row, p)} onChange={e => upd(d => setIn(d, `sides.${side}.oob.${i}.${p}`, e.target.value))}>
-                          {(unitIds.length ? unitIds : [getIn(row, p) || 'inf']).map(t =>
-                            <option key={t} value={t}>{t}</option>)}
+                          {(() => {
+                            // 历史剧本里存着不存在的兵种 id（如旧的 inf）时，把它也列进选项，避免下拉显示与实际值不符
+                            const cur = String(getIn(row, p) || 'rifle')
+                            const ids = unitIds.includes(cur) ? unitIds : [cur, ...unitIds]
+                            return ids.map(t =>
+                              <option key={t} value={t}>{unitTypes[t]?.label ? `${unitTypes[t].label}（${t}）` : t}</option>)
+                          })()}
                         </select>
                       ) : (
                         <input style={{ width: 52 }} value={numInput(getIn(row, p))}

@@ -355,8 +355,9 @@ export default function Guide() {
       setActive(cur)
     }
     fn()
-    window.addEventListener('scroll', fn, { passive: true })
-    return () => window.removeEventListener('scroll', fn)
+    // 滚动容器是 Layout 里的 .page（overflow:auto），scroll 事件不上冒泡，必须用捕获阶段监听
+    window.addEventListener('scroll', fn, { passive: true, capture: true })
+    return () => window.removeEventListener('scroll', fn, { capture: true })
   }, [])
 
   return (
