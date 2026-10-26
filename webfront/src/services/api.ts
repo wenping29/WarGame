@@ -436,7 +436,7 @@ export const api = {
   scenDetail: (id: string) => get<{ file: string; doc: Record<string, unknown> }>('/scenadmin/' + id),
   scenSave: (id: string, doc: unknown, validateOnly = false) =>
     put<{ ok: boolean; errors: string[]; file?: string; backup?: string | null; saved_at?: string }>(
-      // 必须传 true：后端 bool 查询绑定不认 "1"，传 1 会被当成 false 而静默落盘保存
+      // 用 true 而不是 1：新服务端两种都认，线上还没更新的那份只认 true，传 1 会被静默当成「保存」
       '/scenadmin/' + id + (validateOnly ? '?validateOnly=true' : ''), doc),
   feedbackList: () => get<{ feedback: FeedbackEntry[] }>('/scenadmin/feedback'),
   feedbackAdd: (body: { scenario: string; kind: string; detail: string; contact?: string }) =>

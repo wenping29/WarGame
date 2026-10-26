@@ -78,10 +78,11 @@ public sealed class ScenAdminController : ControllerBase
 
     // ==================== PUT /api/scenadmin/{id}?validateOnly=1 — 校验/保存 ====================
 
-    /// <summary>保存编辑后的剧本全文；validateOnly=1 只校验不落盘。
-    /// 真源为 scenario_docs（保存前旧版本备份进 scenario_backups 表），磁盘文件尽力镜像。</summary>
+    /// <summary>保存编辑后的剧本全文；validateOnly=1（或 =true）只校验不落盘。
+    /// 真源为 scenario_docs（保存前旧版本备份进 scenario_backups 表），磁盘文件尽力镜像。
+    /// 开关用 string 接：MVC 的 bool 查询绑定只认字面 true，?validateOnly=1 会被静默当成 false，「校验」就变成写盘。</summary>
     [HttpPut("{id}")]
-    public async Task<IActionResult> Save(string id, bool validateOnly = false)
+    public async Task<IActionResult> Save(string id, [FromQuery] string? validateOnly = null)
     {
         var existing = _db.FindScenarioDoc(id);
         string? diskPath = null;
@@ -103,7 +104,7 @@ public sealed class ScenAdminController : ControllerBase
             ["ok"] = errors.Count == 0,
             ["errors"] = new JsonArray(errors.Select(e => JsonValue.Create(e)).ToArray()),
         };
-        if (errors.Count > 0 || validateOnly) return new JsonResult(result);
+        if (errors.Count > 0 || IsOn(validateOnly)) return new JsonResult(result);
 
         try
         {
@@ -242,6 +243,10 @@ public sealed class ScenAdminController : ControllerBase
     }
 
     // ==================== Helpers ====================
+
+    /// <summary>查询串开关的真值口径：1 / true 都算开（大小写随意），其余（含缺省）算关。</summary>
+    private static bool IsOn(string? raw) =>
+        raw == "1" || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase);
 
     private string? FindScenarioPath(string idOrFile)
     {

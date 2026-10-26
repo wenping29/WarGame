@@ -157,6 +157,12 @@ public sealed class ApiFixture : IAsyncLifetime
             Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
         });
 
+    public Task<JsonObject> PutJsonAsync(string path, string json) =>
+        SendJsonAsync(new HttpRequestMessage(HttpMethod.Put, BaseUrl + path)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+        });
+
     private async Task<JsonObject> SendJsonAsync(HttpRequestMessage request)
     {
         using var res = await Http.SendAsync(request);
