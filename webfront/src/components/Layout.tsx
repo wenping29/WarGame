@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
-import { useState, type ReactNode } from 'react'
+import { useState, type ComponentType, type ReactNode } from 'react'
+import { BookOpen, FolderOpen, Hexagon, Home, Plus, ScrollText, Settings, Users } from 'lucide-react'
 import { isMuted, play, setMuted } from '../services/sound'
 import { useAuth } from './Auth'
 import { roleLabel } from '../services/auth'
@@ -8,16 +9,20 @@ interface LayoutProps {
   children: ReactNode
 }
 
+type NavItem = { code: string; to: string; label: string; icon: ComponentType<{ size?: number }> }
+
 /** 导航项与菜单表的 code 对应；未登录时展示除系统管理外的全部入口；always 项不受授权限制 */
-const NAV: Array<{ code: string; to: string; label: string; always?: boolean }> = [
-  { code: 'lobby', to: '/lobby', label: '大厅' },
-  { code: 'new_game', to: '/new', label: '创建副本' },
-  { code: 'saves', to: '/saves', label: '副本管理' },
-  { code: 'grid', to: '/grid', label: '六角格管理' },
-  { code: 'scenarios', to: '/scenarios', label: '剧本管理' },
-  { code: 'system', to: '/admin', label: '系统管理' },
-  { code: 'guide', to: '/guide', label: '使用说明', always: true },
+const NAV: Array<NavItem & { always?: boolean }> = [
+  { code: 'lobby', to: '/lobby', label: '大厅', icon: Users },
+  { code: 'new_game', to: '/new', label: '创建副本', icon: Plus },
+  { code: 'saves', to: '/saves', label: '副本管理', icon: FolderOpen },
+  { code: 'grid', to: '/grid', label: '六角格管理', icon: Hexagon },
+  { code: 'scenarios', to: '/scenarios', label: '剧本管理', icon: ScrollText },
+  { code: 'system', to: '/admin', label: '系统管理', icon: Settings },
+  { code: 'guide', to: '/guide', label: '使用说明', icon: BookOpen, always: true },
 ]
+
+const HOME: NavItem = { code: 'home', to: '/', label: '首页', icon: Home }
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
@@ -37,14 +42,20 @@ export default function Layout({ children }: LayoutProps) {
           兵棋对抗 <span className="sub">HEXFRONT-REACT</span>
         </div>
         <nav className="nav">
-          <Link to="/" className={location.pathname === '/' ? 'on' : ''}>
-            首页
-          </Link>
-          {visible.map((n) => (
-            <Link key={n.code} to={n.to} className={location.pathname === n.to ? 'on' : ''}>
-              {n.label}
-            </Link>
-          ))}
+          {[HOME, ...visible].map((n) => {
+            const Icon = n.icon
+            return (
+              <Link
+                key={n.code}
+                to={n.to}
+                className={location.pathname === n.to ? 'on' : ''}
+                title={n.label}
+              >
+                <Icon size={14} aria-hidden />
+                <span className="nav-label">{n.label}</span>
+              </Link>
+            )
+          })}
         </nav>
         <div className="topbar-right">
           {ready && user && (

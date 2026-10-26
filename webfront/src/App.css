@@ -21,9 +21,23 @@ body{
 .brand{font-weight:700; letter-spacing:1px; color:#eef3f7}
 .brand .sub{font-weight:400; font-size:11px; color:var(--dim); margin-left:6px}
 .nav{display:flex; gap:6px}
-.nav a{color:var(--dim); text-decoration:none; padding:6px 10px; border-radius:4px; font-size:13px}
+.nav a{display:inline-flex; align-items:center; gap:5px; color:var(--dim); text-decoration:none; padding:6px 10px; border-radius:4px; font-size:13px; white-space:nowrap}
+.nav a svg{flex:0 0 auto}
 .nav a:hover{background:var(--panel2); color:var(--fg)}
 .nav a.on{background:var(--panel2); color:var(--accent)}
+/* 手机端：导航只留图标（文字退到 title 提示），一项宽 28px，放不下时横向滚动 */
+@media (max-width:640px){
+  .topbar{gap:8px; padding:0 8px}
+  .brand{white-space:nowrap}
+  .brand .sub{display:none}
+  .nav{flex:1 1 auto; min-width:0; overflow-x:auto; scrollbar-width:none}
+  .nav::-webkit-scrollbar{display:none}
+  .nav a{padding:6px 7px}
+  .nav .nav-label{display:none}
+  .topbar-right{flex:0 1 auto; gap:6px; margin-left:0}
+  .user-chip{max-width:96px; overflow:hidden; white-space:nowrap}
+  .user-chip em{display:none}
+}
 .conn{margin-left:auto; font-size:12px; color:var(--dim)}
 .conn.live{color:var(--accent)} .conn.dead{color:var(--danger)}
 
@@ -541,10 +555,12 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 
 .mapzoom{
   position:absolute; right:8px; top:8px; display:flex; flex-direction:column; gap:4px;
+  align-items:flex-end;
 }
 .mapzoom button{
-  width:30px; height:28px; background:rgba(30,38,45,.9);
+  width:auto; min-width:30px; height:28px; background:rgba(30,38,45,.9);
   border:1px solid var(--line); color:var(--fg); border-radius:4px;
+  padding:0 6px; font-size:11px; line-height:1; text-align:center; white-space:nowrap;
 }
 .mapzoom .basemap-sel{
   background:rgba(30,38,45,.9); border:1px solid var(--line); color:var(--fg);
@@ -909,6 +925,12 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .scm-oob-scroll{overflow-x:auto}
 /* 部队编制落位地图（拖动圆点写回 oob[].at = [q, r]） */
 .scm-oob-map{position:relative; height:420px; border:1px solid var(--line); border-radius:6px; overflow:hidden; margin:6px 0 10px}
+/* 全屏 = 页面内铺满视口，不用浏览器 Fullscreen API（那个必须用户手势发起，且退出按钮由浏览器接管）；
+   z-index 压在 toast/弹窗（100）之下，免得全屏时弹出来的东西被地图盖住 */
+.scm-oob-map.full{position:fixed; inset:0; z-index:90; height:auto; margin:0; border:0; border-radius:0}
+/* GeoMapView 的图层条占了 top:8/right:8，本图自己的控件贴它下面，两种状态下位置一致 */
+.scm-oob-tools{position:absolute; top:44px; right:8px; display:flex; gap:5px; align-items:center;
+  background:rgba(10,14,18,.75); padding:4px 8px; border-radius:5px}
 .scm-oob-cap{position:absolute; left:8px; top:8px; display:flex; flex-direction:column; gap:2px;
   max-width:calc(100% - 190px); padding:5px 10px; background:rgba(10,16,22,.78); border-radius:5px; pointer-events:none}
 .scm-oob-warn{position:absolute; left:8px; top:52px; font-size:12px; color:#f2c079;

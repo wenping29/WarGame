@@ -861,7 +861,7 @@ export class MapView {
       || c.power_plant || c.substation || c.rail_station || c.fuel_station)
   }
 
-  /// 图例：竖排在右上（让开缩放控件与底部瓦片提示），缩略时隐藏避免遮挡兵力
+  /// 图例：竖排在左上（让开右侧缩放控件与底部瓦片提示），缩略时隐藏避免遮挡兵力
   private _drawFeatureLegend(rp: number) {
     if (!this._hasFeatures() || rp < 9 || this.w < 320) return
     const ctx = this.ctx
@@ -889,7 +889,7 @@ export class MapView {
     if (power) boxW = Math.max(boxW, ctx.measureText(power).width)
     boxW += padX * 2
     const boxH = rows * rowH + padY * 2
-    const x0 = this.w - boxW - 8, y0 = 128
+    const x0 = 8, y0 = 128
     ctx.fillStyle = 'rgba(15,19,23,.8)'
     ctx.strokeStyle = 'rgba(255,255,255,.18)'
     ctx.lineWidth = 1

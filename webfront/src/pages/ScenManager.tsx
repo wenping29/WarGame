@@ -299,7 +299,7 @@ function OobDeployMap({ doc, upd, sel, onSelect }: {
         <span><i style={{ background: SIDE_COLOR.red }} /> 红方</span>
         <span><i style={{ background: SIDE_COLOR.blue }} /> 蓝方</span>
         <span><i className="ring" /> 选中</span>
-        <span className="muted small">圆点旁标注兵种×数量 · 拖动圆点改落位（同格多块自动上下排开）· 空白处拖动 = 平移 · 滚轮 = 缩放</span>
+        <span className="muted small">圆点旁标注兵种×数量 · 拖动圆点改落位（同格多块自动上下排开）· 空白处拖动 = 平移 · 滚轮 = 缩放 · 右上「全屏」铺满窗口，Esc 退出</span>
       </div>
     </div>
   )
