@@ -100,31 +100,8 @@ public sealed class GeoTiffWriter : IDisposable
             }
         }
         // predictor 2：每行水平差分（与 GeoBand 解码互逆）
-        if (_bits == 16)
-        {
-            for (int r = 0; r < th; r++)
-            {
-                int baseIdx = r * tw;
-                for (int c = 1; c < tw; c++)
-                {
-                    int prev = (short)(raw[(baseIdx + c - 1) * 2] | (raw[(baseIdx + c - 1) * 2 + 1] << 8));
-                    int cur = (short)(raw[(baseIdx + c) * 2] | (raw[(baseIdx + c) * 2 + 1] << 8));
-                    int v = cur - prev;
-                    if (v > short.MaxValue) v -= 65536; else if (v < short.MinValue) v += 65536;
-                    raw[(baseIdx + c) * 2] = (byte)v;
-                    raw[(baseIdx + c) * 2 + 1] = (byte)(v >> 8);
-                }
-            }
-        }
-        else
-        {
-            for (int r = 0; r < th; r++)
-            {
-                int baseIdx = r * tw;
-                for (int c = 1; c < tw; c++)
-                    raw[baseIdx + c] = (byte)((raw[baseIdx + c] - raw[baseIdx + c - 1]) & 0xFF);
-            }
-        }
+        if (_bits == 16) HorizontalDiffInt16(raw, tw, th);
+        else HorizontalDiffByte(raw, tw, th);
         using var ms = new MemoryStream();
         using (var ds = new DeflateStream(ms, CompressionLevel.Optimal, true))
             ds.Write(raw, 0, raw.Length);
@@ -141,19 +118,7 @@ public sealed class GeoTiffWriter : IDisposable
             raw[i * 2] = (byte)v;
             raw[i * 2 + 1] = (byte)(v >> 8);
         }
-        for (int r = 0; r < th; r++)
-        {
-            int baseIdx = r * tw;
-            for (int c = 1; c < tw; c++)
-            {
-                int prev = (short)(raw[(baseIdx + c - 1) * 2] | (raw[(baseIdx + c - 1) * 2 + 1] << 8));
-                int cur = (short)(raw[(baseIdx + c) * 2] | (raw[(baseIdx + c) * 2 + 1] << 8));
-                int v = cur - prev;
-                if (v > short.MaxValue) v -= 65536; else if (v < short.MinValue) v += 65536;
-                raw[(baseIdx + c) * 2] = (byte)v;
-                raw[(baseIdx + c) * 2 + 1] = (byte)(v >> 8);
-            }
-        }
+        HorizontalDiffInt16(raw, tw, th);
         using var ms = new MemoryStream();
         using (var ds = new DeflateStream(ms, CompressionLevel.Optimal, true))
             ds.Write(raw, 0, raw.Length);
@@ -165,16 +130,47 @@ public sealed class GeoTiffWriter : IDisposable
         int n = tw * th;
         var raw = new byte[n];
         Array.Copy(src, raw, n);
-        for (int r = 0; r < th; r++)
-        {
-            int baseIdx = r * tw;
-            for (int c = 1; c < tw; c++)
-                raw[baseIdx + c] = (byte)((raw[baseIdx + c] - raw[baseIdx + c - 1]) & 0xFF);
-        }
+        HorizontalDiffByte(raw, tw, th);
         using var ms = new MemoryStream();
         using (var ds = new DeflateStream(ms, CompressionLevel.Optimal, true))
             ds.Write(raw, 0, raw.Length);
         return ms.ToArray();
+    }
+
+    /// <summary>predictor 2（int16）：与 GeoBand 解码互逆的水平差分。</summary>
+    private static void HorizontalDiffInt16(byte[] raw, int tw, int th)
+    {
+        for (int r = 0; r < th; r++)
+        {
+            int baseIdx = r * tw;
+            int prev = 0;   // 必须保存**原始**前值：raw 会被就地改写成差分值
+            for (int c = 0; c < tw; c++)
+            {
+                int cur = (short)(raw[(baseIdx + c) * 2] | (raw[(baseIdx + c) * 2 + 1] << 8));
+                int v = c == 0 ? cur : cur - prev;
+                if (v > short.MaxValue) v -= 65536;
+                else if (v < short.MinValue) v += 65536;
+                raw[(baseIdx + c) * 2] = (byte)v;
+                raw[(baseIdx + c) * 2 + 1] = (byte)(v >> 8);
+                prev = cur;
+            }
+        }
+    }
+
+    /// <summary>predictor 2（uint8）：与 GeoBand 解码互逆的水平差分。</summary>
+    private static void HorizontalDiffByte(byte[] raw, int tw, int th)
+    {
+        for (int r = 0; r < th; r++)
+        {
+            int baseIdx = r * tw;
+            int prev = 0;
+            for (int c = 0; c < tw; c++)
+            {
+                int cur = raw[baseIdx + c];
+                raw[baseIdx + c] = (byte)((cur - prev) & 0xFF);
+                prev = cur;
+            }
+        }
     }
 
     public void Dispose()
@@ -231,20 +227,34 @@ public sealed class GeoTiffWriter : IDisposable
         WriteEntry(258, 3, 1, (ushort)_bits);
         WriteEntry(259, 3, 1, (ushort)8);            // DEFLATE
         WriteEntry(262, 3, 1, (ushort)1);            // BlackIsZero
-        WriteEntry(324, 4, (uint)tileCount, (uint)toOffset);   // TileOffsets
+        // TIFF 内联规则：count*类型宽度 ≤ 4 时值直接放在标签的 4 字节字段里，不得另存数组。
+        // 单瓦片图像若仍写成“指向数组的文件偏移”，读取方会按规范把该字段当成瓦片偏移，
+        // 从而读到数组内容而不是瓦片数据（表现为 inflate 报 unsupported compression method）。
+        if (tileCount == 1)
+        {
+            WriteEntry(324, 4, 1, (uint)_tileOffsets[0]);
+            WriteEntry(325, 4, 1, (uint)_tileBytes[0]);
+        }
+        else
+        {
+            WriteEntry(324, 4, (uint)tileCount, (uint)toOffset);
+            WriteEntry(325, 4, (uint)tileCount, (uint)tbOffset);
+        }
         WriteEntry(322, 4, 1, (uint)_tile);          // TileWidth
         WriteEntry(323, 4, 1, (uint)_tile);          // TileLength
-        WriteEntry(325, 4, (uint)tileCount, (uint)tbOffset);   // TileByteCounts
         WriteEntry(339, 3, 1, (ushort)(_signed ? 2 : 1));    // SampleFormat
         WriteEntry(317, 3, 1, (ushort)2);            // Predictor 2
         WriteEntry(34264, 12, 16, (uint)trOffset);   // ModelTransformationTag
         WriteEntry(42113, 2, (uint)nodataStr.Length, (uint)ndOffset); // GDAL_NODATA
         _w.Write((uint)0); // next IFD = 0
 
-        _fs.Seek(toOffset, SeekOrigin.Begin);
-        foreach (var o in _tileOffsets) _w.Write((uint)o);
-        _fs.Seek(tbOffset, SeekOrigin.Begin);
-        foreach (var b in _tileBytes) _w.Write((uint)b);
+        if (tileCount > 1)
+        {
+            _fs.Seek(toOffset, SeekOrigin.Begin);
+            foreach (var o in _tileOffsets) _w.Write((uint)o);
+            _fs.Seek(tbOffset, SeekOrigin.Begin);
+            foreach (var b in _tileBytes) _w.Write((uint)b);
+        }
         _fs.Seek(trOffset, SeekOrigin.Begin);
         foreach (var d in tr) _w.Write(d);
         _fs.Seek(ndOffset, SeekOrigin.Begin);

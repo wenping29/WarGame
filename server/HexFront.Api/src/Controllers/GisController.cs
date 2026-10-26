@@ -38,12 +38,12 @@ public sealed class GisController : ControllerBase
 
     /// <summary>GET /api/gis/plan?w&amp;s&amp;e&amp;n&amp;cell_km — 推荐对边距 + 档位阶梯（设计文档 §6.2）。</summary>
     [HttpGet("plan")]
-    public IActionResult Plan(string? w = null, string? s = null, string? e = null, string? n = null,
+    public async Task<IActionResult> Plan(string? w = null, string? s = null, string? e = null, string? n = null,
                              string? cell_km = null)
     {
         try
         {
-            return PlanResult(GisService.BboxFromQuery(w, s, e, n), GisService.CellKmFromQuery(cell_km));
+            return await PlanResult(GisService.BboxFromQuery(w, s, e, n), GisService.CellKmFromQuery(cell_km));
         }
         catch (GisPlanException ex)
         {
@@ -65,7 +65,7 @@ public sealed class GisController : ControllerBase
         }
         try
         {
-            return PlanResult(nums, Num(body, "cell_km") ?? Num(body, "cellKm"));
+            return await PlanResult(nums, Num(body, "cell_km") ?? Num(body, "cellKm"));
         }
         catch (GisPlanException ex)
         {
@@ -109,6 +109,22 @@ public sealed class GisController : ControllerBase
         return job == null
             ? Error("作业不存在（服务端重启后作业记录会清空，数据包仍在）", 404)
             : Json(JobJson.ToNode(job));
+    }
+
+    /// <summary>
+    /// GET /api/gis/jobs/{id}/download —— 下载该作业生成的数据包（data/gis/&lt;包名&gt;.json，HexPackage 全文）。
+    /// 远程生成（独立生成服务）的产物在完成后已由服务端拉回本地，所以下载走的是本地那份。
+    /// </summary>
+    [HttpGet("jobs/{id}/download")]
+    public IActionResult DownloadJob(string id)
+    {
+        var job = _gis.Job(id);
+        if (job == null)
+            return Error("作业不存在（服务端重启后作业记录会清空，数据包仍在）", 404);
+        var path = Path.Combine(_gis.GisDirectory, job.PkgName + ".json");
+        if (!System.IO.File.Exists(path))
+            return Error(job.Status == GisJobStatus.Done ? "数据包已被清理" : "作业尚未生成完成，暂无可下载产物", 404);
+        return PhysicalFile(path, "application/json", job.PkgName + ".json");
     }
 
     /// <summary>GET /api/gis/packages — data/gis/ 下所有数据包摘要（与 /api/scenarios 的 gis 列表同形）。</summary>
@@ -193,9 +209,9 @@ public sealed class GisController : ControllerBase
 
     // ==================== 内部 ====================
 
-    private IActionResult PlanResult(double[] bbox, double? cellKm)
+    private async Task<IActionResult> PlanResult(double[] bbox, double? cellKm)
     {
-        var plan = _gis.Plan(bbox, cellKm);
+        var plan = await _gis.PlanAsync(bbox, cellKm);
         return plan["ok"]?.GetValueKind() == JsonValueKind.True
             ? Json(plan)
             : Error(Str(plan, "error") ?? "方案计算失败");

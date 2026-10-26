@@ -91,6 +91,15 @@ public sealed class GisJob
     public string? Error { get; set; }
     public HexPackage? Package { get; set; }
 
+    /// <summary>生成进度 0..100（生成服务按阶段回报；排队为 0，终态为 100）。</summary>
+    public int Progress { get; set; }
+
+    /// <summary>当前阶段说明（如「采样高程」），供前端进度条副标题。</summary>
+    public string? Stage { get; set; }
+
+    /// <summary>远程生成服务（HexFront.GisApi）上的作业 id；本地生成时为 null。</summary>
+    public string? RemoteId { get; set; }
+
     /// <summary>生成器回传的作业元信息（ok/fails/warns/layers/terrain_counts…），线上字段名保持 snake_case。</summary>
     public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
 

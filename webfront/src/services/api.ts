@@ -236,6 +236,22 @@ export interface GisCapabilities {
   airports_present?: boolean
   airports_shp?: string | null
   reason?: string | null
+  /** 远程生成服务（HexFront.GisApi）段；存在即表示生成由独立服务承担，本机 Python 探测项无意义 */
+  remote?: {
+    base_url?: string
+    service?: string | null
+    version?: string | null
+    grid_count?: number | null
+    dem?: {
+      mode?: string
+      effective_real?: boolean
+      real_tiles_available?: boolean
+      real_tiles_has_landcover?: boolean
+      terrain_dir?: string | null
+    } | null
+  } | null
+  dem_mode?: string
+  dem_effective_real?: boolean
 }
 
 export type PlanRungLabel = 'recommended' | 'heavy' | 'coarse' | 'ok' | string
@@ -273,6 +289,12 @@ export interface GisJob {
   name: string
   spec?: Record<string, unknown>
   log: string[]
+  /** 生成进度 0..100（远程生成服务按阶段回报） */
+  progress?: number
+  /** 当前阶段说明，如「采样高程」 */
+  stage?: string | null
+  /** 独立生成服务上的作业 id（远程生成时才有） */
+  remote_id?: string | null
   error?: string | null
   meta?: {
     ok?: boolean
@@ -429,6 +451,24 @@ export const api = {
   gisJobs: () => get<{ jobs: GisJob[] }>('/gis/jobs'),
   gisJob: (id: string) => get<GisJob>('/gis/jobs/' + id),
   gisStartJob: (spec: GisJobSpec) => post<GisJob>('/gis/jobs', spec),
+  /**
+   * 下载作业产物（data/gis/<包名>.json，HexPackage 全文）。
+   * 走 axios 是为了带上 Bearer token；拿到 blob 后再触发浏览器保存，不暴露 token 在 URL 里。
+   */
+  gisJobDownload: async (id: string, fileName?: string) => {
+    const resp = await apiClient.get('/gis/jobs/' + encodeURIComponent(id) + '/download', {
+      responseType: 'blob',
+      timeout: 120000,
+    })
+    const url = URL.createObjectURL(resp.data as Blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName || (id + '.json')
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
   gisPackage: (name: string) => get<unknown>('/gis/packages/' + name),
   gisValidate: (packageName: string) =>
     post<{ file: string; total: number; fails: number; warns: number; passes: number; results: Array<{ level: string; check: string; detail: string }> }>('/gis/validate', { package_name: packageName }),

@@ -21,6 +21,8 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddSingleton<RoomService>();
 builder.Services.AddSingleton<GisService>();
+// 六角格生成改由独立生成服务（HexFront.GisApi）承担：主后端只提交作业、轮询进度、下载产物
+builder.Services.AddSingleton<GisApiClient>();
 builder.Services.AddSingleton<OpsLogService>();
 builder.Services.AddSingleton<AppDbService>();
 

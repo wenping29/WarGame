@@ -38,6 +38,7 @@ public sealed class GisService
     private readonly string _hexGridDir;
     private readonly string _scriptPath;
     private readonly AppDbService _db;
+    private readonly GisApiClient _api;
 
     private readonly object _gate = new();
     private readonly Dictionary<string, GisJob> _jobs = new();
@@ -51,9 +52,10 @@ public sealed class GisService
     private Task<JsonObject>? _capsProbe;
     private string? _pythonExe;
 
-    public GisService(ILogger<GisService> logger, RoomService rooms, AppDbService db)
+    public GisService(ILogger<GisService> logger, RoomService rooms, AppDbService db, GisApiClient api)
     {
         _logger = logger;
+        _api = api;
         // GIS 目录只有一份口径：与建格/存档用的 RoomService.GisDirectory 同源
         _gisDir = rooms.GisDirectory;
         _hexGridDir = rooms.HexGridDirectory;
@@ -68,9 +70,17 @@ public sealed class GisService
 
     // ==================== 能力探测 ====================
 
-    /// <summary>本机 GIS 工具链可用性；5 分钟缓存，refresh=1 强制重探。</summary>
+    /// <summary>
+    /// GIS 工具链可用性；优先问独立生成服务（HexFront.GisApi），不可达才回落到本机探测（Python/hexgen.py）。
+    /// 5 分钟缓存，refresh=1 强制重探。
+    /// </summary>
     public async Task<JsonObject> CapabilitiesAsync(bool refresh)
     {
+        if (_api.Enabled)
+        {
+            var remote = await _api.CapabilitiesAsync();
+            if (remote != null) return MapRemoteCaps(remote);
+        }
         Task<JsonObject>? inflight;
         lock (_gate)
         {
@@ -181,6 +191,47 @@ public sealed class GisService
         ["network_ok"] = JsonValue.Create(false),
     };
 
+    /// <summary>
+    /// 远程生成服务的 capabilities → 前端既有字段。远程模式下「本机 Python/rasterio」这些探测项不再适用，
+    /// 所以把可能造成误导的开关一律置为可用（真实与否由 remote.dem 如实给出），并额外挂 remote 段供前端展示。
+    /// </summary>
+    private JsonObject MapRemoteCaps(JsonObject remote)
+    {
+        var dem = remote["dem"] as JsonObject;
+        var real = dem?["real_tiles_available"]?.GetValueKind() == JsonValueKind.True;
+        return new JsonObject
+        {
+            ["available"] = JsonValue.Create(true),
+            ["engine"] = JsonValue.Create("gisapi-remote"),
+            ["gis_dir"] = JsonValue.Create(_gisDir),
+            ["remote"] = new JsonObject
+            {
+                ["base_url"] = JsonValue.Create(_api.BaseUrl),
+                ["service"] = remote["service"]?.DeepClone(),
+                ["version"] = remote["version"]?.DeepClone(),
+                ["dem"] = dem?.DeepClone(),
+                ["grid_count"] = remote["storage"]?["grid_count"]?.DeepClone(),
+            },
+            // 本机探测项：远程生成不再依赖它们，置为「不缺」避免前端报无关的降级提示
+            ["python"] = JsonValue.Create((string?)null),
+            ["python_version"] = JsonValue.Create((string?)null),
+            ["rasterio"] = JsonValue.Create(true),
+            ["gdal_version"] = JsonValue.Create((string?)null),
+            ["script"] = JsonValue.Create((string?)null),
+            ["dem_tif"] = dem?["terrain_dir"]?.DeepClone(),
+            ["dem_present"] = JsonValue.Create(real),
+            ["landcover_online"] = JsonValue.Create(dem?["real_tiles_has_landcover"]?.GetValueKind() == JsonValueKind.True),
+            ["water_present"] = JsonValue.Create(true),
+            ["water_vector_ok"] = JsonValue.Create(true),
+            ["vector_ok"] = JsonValue.Create(true),
+            ["roads_gdb_present"] = JsonValue.Create(true),
+            ["airports_present"] = JsonValue.Create(true),
+            ["network_ok"] = JsonValue.Create(true),
+            ["dem_mode"] = dem?["mode"]?.DeepClone(),
+            ["dem_effective_real"] = JsonValue.Create(dem?["effective_real"]?.GetValueKind() == JsonValueKind.True),
+        };
+    }
+
     private async Task<string?> FindPythonAsync()
     {
         var fromEnv = Environment.GetEnvironmentVariable("HEXGEN_PYTHON")?.Trim();
@@ -204,8 +255,8 @@ public sealed class GisService
 
     // ==================== 格网方案 ====================
 
-    /// <summary>方案计算（进程内，与生成同一份几何）；同一 (bbox, cell) 命中缓存直接回。</summary>
-    public JsonObject Plan(double[] bbox, double? cellKm)
+    /// <summary>方案计算：优先问生成服务（同一份几何），不可达时进程内算；同一 (bbox, cell) 命中缓存直接回。</summary>
+    public async Task<JsonObject> PlanAsync(double[] bbox, double? cellKm)
     {
         var key = string.Join(",", bbox.Select(v => v.ToString("R", CultureInfo.InvariantCulture))) +
                   ":" + (cellKm?.ToString("R", CultureInfo.InvariantCulture) ?? "-");
@@ -214,7 +265,7 @@ public sealed class GisService
         try
         {
             ValidateBbox(bbox);
-            plan = GisPlanService.PlanPayload(bbox, cellKm);
+            plan = await _api.PlanAsync(bbox, cellKm) ?? GisPlanService.PlanPayload(bbox, cellKm);
         }
         catch (GisPlanException e)
         {
@@ -237,6 +288,34 @@ public sealed class GisService
         var cells = gw * gh;
         if (cells > GisPlanService.MaxCells)
             throw new GisPlanException($"该范围会有 {cells} 格，超过上限 {GisPlanService.MaxCells}；请扩大对边距或缩小范围框");
+
+        // 优先交给独立生成服务：生成 / 进度 / 下载都在那边完成，主后端只负责跟踪、落盘与发布为服务器网络包
+        if (_api.Enabled)
+        {
+            var submitted = await _api.SubmitAsync(spec);
+            var remoteId = submitted?["id"] is JsonValue idNode ? idNode.GetValue<string>() : null;
+            if (!string.IsNullOrEmpty(remoteId))
+            {
+                GisJob remoteJob;
+                lock (_gate)
+                {
+                    var rid = "G" + (++_seq).ToString("D4", CultureInfo.InvariantCulture);
+                    remoteJob = new GisJob
+                    {
+                        Id = rid,
+                        Spec = spec,
+                        PkgName = UniquePkgName(spec.Name),
+                        RemoteId = remoteId,
+                        Stage = "已提交到生成服务",
+                    };
+                    _jobs[rid] = remoteJob;
+                }
+                Log(remoteJob, $"引擎：独立生成服务 {_api.BaseUrl}（远程作业 {remoteId}）");
+                _ = Task.Run(() => TrackRemoteAsync(remoteJob, remoteId!));
+                return remoteJob;
+            }
+            _logger.LogWarning("远程生成不可用（{Why}），本次回落本机引擎", _api.LastError ?? "生成服务未接受该作业");
+        }
 
         var exe = await FindPythonAsync();
         lock (_gate)
@@ -318,6 +397,8 @@ public sealed class GisService
         }
         if (job.Status == GisJobStatus.Done)
         {
+            job.Progress = 100;
+            job.Stage = "已完成";
             Log(job, $"完成：data/gis/{job.PkgName}.json（{MetaInt(job, "width")}×{MetaInt(job, "height")} 格）");
             PublishToHexGrid(job);   // 副本统一只用服务器网络包：生成完成即存储为 data/hexgrids/<id>.zip
         }
@@ -343,6 +424,105 @@ public sealed class GisService
             Log(job, "存储服务器网络包失败（数据包仍在 data/gis，可重新生成）：" + e.Message);
             _logger.LogWarning(e, "hexgrid publish failed for {Pkg}", job.PkgName);
         }
+    }
+
+    /// <summary>
+    /// 跟踪远程作业：轮询生成服务的 /api/jobs/{id} 同步状态 / 进度 / 日志；完成后调用 /download 拉回包体，
+    /// 写入 data/gis/&lt;包名&gt;.json，再走既有的 PublishToHexGrid 发布为服务器网络包（data/hexgrids/&lt;id&gt;.zip）。
+    /// 这条路径完全不依赖本机 Python —— 生成在独立服务里做，主后端只负责跟踪、落盘与发布。
+    /// </summary>
+    private async Task TrackRemoteAsync(GisJob job, string remoteId)
+    {
+        job.Status = GisJobStatus.Running;
+        job.StartedAt = DateTime.UtcNow;
+        var deadline = DateTime.UtcNow.AddMinutes(JobTimeoutMinutes);
+        var merged = 0;
+        try
+        {
+            while (DateTime.UtcNow < deadline)
+            {
+                var node = await _api.JobAsync(remoteId);
+                if (node == null)
+                {
+                    job.Status = GisJobStatus.Failed;
+                    job.Error = $"无法从生成服务读取作业状态（{_api.LastError ?? _api.BaseUrl}）";
+                    Log(job, "失败：" + job.Error);
+                    return;
+                }
+                var status = node["status"] is JsonValue sv ? sv.GetValue<string>() : "";
+                if (node["progress"] is JsonValue pv && pv.TryGetValue(out int prog)) job.Progress = Math.Clamp(prog, 0, 100);
+                if (node["stage"] is JsonValue stv && stv.GetValueKind() == JsonValueKind.String) job.Stage = stv.GetValue<string>();
+                merged = MergeRemoteLog(job, node["log"], merged);
+
+                if (string.Equals(status, "Done", StringComparison.OrdinalIgnoreCase))
+                {
+                    var bytes = await _api.DownloadJobAsync(remoteId);
+                    if (bytes == null || bytes.Length == 0)
+                    {
+                        job.Status = GisJobStatus.Failed;
+                        job.Error = "远程作业已完成，但下载结果失败（可到生成服务 /api/jobs/{id}/download 手动取）";
+                        Log(job, "失败：" + job.Error);
+                        return;
+                    }
+                    var pkgPath = Path.Combine(_gisDir, job.PkgName + ".json");
+                    File.WriteAllBytes(pkgPath, bytes);
+                    job.Meta = RemoteMeta(node["meta"], pkgPath, remoteId);
+                    job.Status = GisJobStatus.Done;
+                    job.Progress = 100;
+                    job.Stage = "已完成";
+                    Log(job, $"完成：已从生成服务下载 → data/gis/{job.PkgName}.json" +
+                             $"（{MetaInt(job, "width")}×{MetaInt(job, "height")} 格）");
+                    PublishToHexGrid(job);   // 与本地路径一致：生成完成即存储为服务器网络包
+                    return;
+                }
+
+                if (string.Equals(status, "Failed", StringComparison.OrdinalIgnoreCase))
+                {
+                    job.Status = GisJobStatus.Failed;
+                    job.Error = (node["error"] is JsonValue ev && ev.GetValueKind() == JsonValueKind.String
+                                    ? ev.GetValue<string>() : null) ?? "远程生成失败";
+                    Log(job, "失败：" + job.Error);
+                    return;
+                }
+
+                await Task.Delay(1000);
+            }
+            job.Status = GisJobStatus.Failed;
+            job.Error = $"生成超时（{JobTimeoutMinutes} 分钟）";
+            Log(job, "失败：" + job.Error);
+        }
+        catch (Exception e)
+        {
+            job.Status = GisJobStatus.Failed;
+            job.Error = e.Message;
+            Log(job, "失败：" + e.Message);
+        }
+        finally
+        {
+            job.FinishedAt = DateTime.UtcNow;
+        }
+    }
+
+    /// <summary>远程作业日志增量合并（远程日志只增不减，按已合并行数续接）。</summary>
+    private int MergeRemoteLog(GisJob job, JsonNode? log, int merged)
+    {
+        if (log is not JsonArray arr) return merged;
+        for (var i = merged; i < arr.Count; i++)
+            if (arr[i] is JsonValue v && v.GetValueKind() == JsonValueKind.String)
+                Log(job, v.GetValue<string>());
+        return arr.Count;
+    }
+
+    /// <summary>远程作业 meta → 本地口径：路径/包名改成本地 data/gis 下的那份，其余（source/格数/地形构成）原样保留。</summary>
+    private static JsonObject RemoteMeta(JsonNode? meta, string localPath, string remoteId)
+    {
+        var m = meta is JsonObject o ? (JsonObject)o.DeepClone() : new JsonObject();
+        m["file"] = JsonValue.Create(localPath);
+        m["name"] = JsonValue.Create(Path.GetFileName(localPath));
+        m["remote_job"] = JsonValue.Create(remoteId);
+        m["ok"] = JsonValue.Create(true);
+        m["fails"] ??= JsonValue.Create(0);
+        return m;
     }
 
     private static int MetaInt(GisJob job, string key) =>
@@ -662,6 +842,9 @@ internal static class JobJson
                 ["offline"] = JsonValue.Create(spec.Offline),
             },
             ["log"] = ArrStr(log),
+            ["progress"] = JsonValue.Create(job.Progress),
+            ["stage"] = job.Stage == null ? null : JsonValue.Create(job.Stage),
+            ["remote_id"] = job.RemoteId == null ? null : JsonValue.Create(job.RemoteId),
             ["error"] = job.Error == null ? null : JsonValue.Create(job.Error),
             ["meta"] = job.Meta?.DeepClone(),
             ["hexgrid_id"] = job.HexGridId == null ? null : JsonValue.Create(job.HexGridId),

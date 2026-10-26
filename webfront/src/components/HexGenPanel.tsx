@@ -57,6 +57,18 @@ const JOB_STATUS_CN: Record<string, string> = {
 function capsNotes(caps: GisCapabilities | null, f: GisGenForm): string[] {
   if (!caps) return []
   if (!caps.available) return ['本机没有可用的 Python，无法现场生成：' + (caps.reason || '未知原因')]
+  // 远程生成服务承担生成：本机 Python / rasterio 那些探测项不再适用，只报远程数据层实况
+  if (caps.remote) {
+    const out: string[] = []
+    const dem = caps.remote.dem
+    if (dem && dem.real_tiles_available === false)
+      out.push(`生成服务未发现本地真实地形瓦片（${dem.terrain_dir || '?'}）⇒ 高程将退回合成地形。`)
+    else if (dem && dem.effective_real === false)
+      out.push('生成服务当前按合成地形跑（dem 档位不是真实数据）⇒ 高程为确定性噪声代理。')
+    if (dem && dem.effective_real && dem.real_tiles_has_landcover === false)
+      out.push('生成服务的瓦片不含土地覆盖层 ⇒ 地形判类只用高程。')
+    return out
+  }
   const out: string[] = []
   if (!caps.rasterio) out.push('Python 缺 rasterio/numpy ⇒ 只能生成合成地形；真实栅格请 pip 安装后重试。')
   if (caps.rasterio && !caps.dem_present) out.push(`未发现本地 DEM（${caps.dem_tif || '?'}）⇒ 高程将退回合成。`)
@@ -102,18 +114,27 @@ function PlanCard({ plan, planErr, planBusy, activeKm, customKm, onPick }: {
   )
 }
 
-function JobCard({ job, err }: { job: GisJob | null; err: string }) {
+function JobCard({ job, err, onDownload }: { job: GisJob | null; err: string; onDownload: () => void }) {
   if (!job) return <p className="muted small">尚未生成。真实栅格生成约需十几秒到几分钟。</p>
   const tail = (job.log || []).slice(-9)
   const m = job.meta
   const counts = m?.terrain_counts
+  const live = job.status === 'queued' || job.status === 'running'
+  const pct = Math.max(0, Math.min(100, Math.round(job.progress ?? 0)))
   return (
     <div className="card job-card">
       <div className="row">
         <div className="kv"><span>作业</span><b>{job.id}</b></div>
         <div className="kv"><span>状态</span><b>{JOB_STATUS_CN[job.status] || job.status}</b></div>
         <div className="kv"><span>产物</span><b>data/gis/{job.name}</b></div>
+        {job.remote_id && <div className="kv"><span>远程作业</span><b>{job.remote_id}</b></div>}
       </div>
+      {live && (
+        <div className="job-progress">
+          <div className="job-progress-bar"><i style={{ width: pct + '%' }} /></div>
+          <span className="muted small">{pct}%{job.stage ? ' · ' + job.stage : ''}</span>
+        </div>
+      )}
       <pre className="mono job-log">{tail.join('\n') || '…'}</pre>
       {(job.error || err) && <p className="warn small">{job.error || err}</p>}
       {job.status === 'done' && m && (
@@ -122,6 +143,14 @@ function JobCard({ job, err }: { job: GisJob | null; err: string }) {
           {' · '}{m.source || '?'} · {m.width}×{m.height} 格
           {counts ? ' · 地形构成 ' + JSON.stringify(counts) : ''}
         </p>
+      )}
+      {job.status === 'done' && (
+        <div className="row" style={{ marginTop: '6px' }}>
+          <button className="btn btn-sm" onClick={onDownload}
+            title="下载该作业生成的数据包（HexPackage JSON，含逐格高程/地形/地物）">
+            ⬇️ 下载数据包
+          </button>
+        </div>
       )}
     </div>
   )
@@ -381,8 +410,12 @@ export default function HexGenPanel({
       {caps && (
         <p className="muted small">
           生成引擎：<b>{caps.engine}</b>
-          {caps.python_version ? ` · Python ${caps.python_version}` : ''}
-          {caps.rasterio ? ' · rasterio 就绪' : ' · 缺 rasterio'}
+          {caps.remote
+            ? `${caps.remote.base_url ? ' · ' + caps.remote.base_url : ''}` +
+              `${caps.remote.dem?.real_tiles_available ? ' · 本地真实地形瓦片' : ' · 无真实瓦片（合成地形）'}` +
+              `${caps.remote.dem?.real_tiles_has_landcover ? ' + 土地覆盖' : ''}`
+            : `${caps.python_version ? ` · Python ${caps.python_version}` : ''}` +
+              `${caps.rasterio ? ' · rasterio 就绪' : ' · 缺 rasterio'}`}
         </p>
       )}
       {notes.map(t => <p key={t} className="warn small">{t}</p>)}
@@ -403,7 +436,11 @@ export default function HexGenPanel({
         <p className="muted small">{publishedHint(publishedId)}</p>
       )}
 
-      <JobCard job={job} err={jobErr} />
+      <JobCard job={job} err={jobErr} onDownload={() => {
+        if (!job) return
+        api.gisJobDownload(job.id, job.name || (job.id + '.json'))
+          .catch(e => toast('下载失败：' + netError(e), 'err'))
+      }} />
 
       {/* 地图选取弹窗：框选范围回填四至 */}
       {pickOpen && (

@@ -81,28 +81,55 @@ public static class HexGenService
     /// 生成完整六角格地形包。sampler 为非 null 且配置为真实 DEM 时，逐格心采样 .ter 瓦片的高程/土地覆盖；
     /// 否则（离线 / 未配置 / 采样失败）降级为确定性合成 DEM，保证既有调用与测试零回归。
     /// </summary>
-    public static Models.HexPackage Generate(GenSpec spec, TerrainSampler? sampler = null)
+    /// <param name="sampler">真实 .ter 瓦片采样器；null 或不满足真实条件时走合成 DEM。</param>
+    /// <param name="progress">可选进度回调 (阶段说明, 0..1)；长时间生成可供 Web API 转发真实进度。</param>
+    public static Models.HexPackage Generate(GenSpec spec, TerrainSampler? sampler = null,
+                                             Action<string, double>? progress = null)
     {
+        void Step(string stage, double p) => progress?.Invoke(stage, p);
+
+        Step("构建格网", 0.02);
         var grid = BuildGrid(spec);
+        Step($"格网 {grid.Width}×{grid.Height}（{grid.Width * grid.Height} 格）", 0.08);
+
+        Step("采样高程", 0.12);
         var (elev, lc, fromRealTiles) = SampleElevation(grid, spec, sampler);
+        Step(fromRealTiles ? "高程采样完成（本地 .ter 瓦片）" : "高程采样完成（合成 DEM）", 0.42);
+
+        Step("计算坡度/起伏", 0.46);
         var slopes = CalculateSlopes(grid, elev);
         var relief = CalculateRelief(elev);
         var th = BuildThresholds(elev, relief);
 
+        Step("判定地形", 0.56);
         var (terr, aux) = ClassifyTerrain(grid, elev, slopes, relief, th, spec, lc);
         var riverBand = ExtractRiverBand(grid, elev, terr);
+        Step("地形判类完成", 0.66);
+
+        Step("派生道路与城镇", 0.70);
         var (road, bridges) = BuildRoads(grid, elev, terr, riverBand, spec.Seed);
         var cities = PlaceCities(grid, elev, terr, road, spec.Seed);
+
+        Step("派生铁路/电网", 0.80);
         var railway = BuildRailway(grid, elev, terr, road, cities, spec.Seed);
+        // 铁路压到河带上就必须架桥：自校验 [17]「铁路只在桥位渡河」要求 Railway && River ⇒ Bridge。
+        // A* 只避开了 water 地形，河带是独立层，跨河段不补桥就会整包校验失败（真实 DEM 河网密时尤其容易命中）。
+        var riverSet = new HashSet<(int Q, int R)>(riverBand);
+        foreach (var cell in railway.Cells)
+            if (riverSet.Contains(cell)) bridges.Add(cell);
         var powerGrid = BuildPowerGrid(grid, elev, terr, road, cities, riverBand, spec.Seed);
+
+        Step("布设机场/加油站", 0.88);
         var airports = PlaceAirports(grid, elev, terr, cities, spec.Seed);
         var fuelStations = BuildFuelStations(grid, road, bridges, cities);
 
+        Step("组装格数据", 0.94);
         var hexes = BuildHexCells(grid, elev, slopes, terr, road, riverBand, bridges,
                                    cities, railway, powerGrid, airports, fuelStations);
         var meta = BuildMeta(grid, spec, elev, terr, road, riverBand, railway, powerGrid,
                              airports, fuelStations, fromRealTiles, lc);
-        
+        Step("完成", 1.0);
+
         return new Models.HexPackage
         {
             Hexes = hexes,

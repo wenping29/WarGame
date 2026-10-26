@@ -789,6 +789,17 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
   padding:8px; white-space:pre-wrap;
 }
 
+/* 生成进度条：远程生成服务按阶段回报 0..100 */
+.job-progress{display:flex; align-items:center; gap:8px;}
+.job-progress-bar{
+  flex:1; height:6px; background:#0d1216; border:1px solid var(--line);
+  border-radius:3px; overflow:hidden;
+}
+.job-progress-bar > i{
+  display:block; height:100%; background:#437050;
+  transition:width .35s ease;
+}
+
 .preview-box{
   background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:10px; margin-bottom:10px;
 }

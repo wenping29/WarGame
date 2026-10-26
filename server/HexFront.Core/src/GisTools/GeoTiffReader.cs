@@ -279,17 +279,23 @@ public sealed class GeoBand : IDisposable
                 for (var tx = c0; tx <= c1; tx++)
                 {
                     int idx = ty * ntx + tx;
-                    var block = DecodeBlock(idx, TileWidth, TileLength);
+                    // 边缘瓦片不是整块：必须按实际覆盖范围解码。
+                    // 这既是源数据的行步长，也是 predictor=2 水平差分的还原步长，用错会整块错位。
+                    int bw = Math.Min(TileWidth, Width - tx * TileWidth);
+                    int bh = Math.Min(TileLength, Height - ty * TileLength);
+                    if (bw <= 0 || bh <= 0) continue;
+                    var block = DecodeBlock(idx, bw, bh);
                     int sr0 = ty * TileLength, sc0 = tx * TileWidth;
                     int dr0 = Math.Max(sr0, row0) - row0;
-                    int dr1 = Math.Min(sr0 + TileLength, row0 + rows) - row0;
+                    int dr1 = Math.Min(sr0 + bh, row0 + rows) - row0;
                     int dc0 = Math.Max(sc0, col0) - col0;
-                    int dc1 = Math.Min(sc0 + TileWidth, col0 + cols) - col0;
-                    int bsr0 = Math.Max(sr0, row0), bsc0 = Math.Max(sc0, col0);
+                    int dc1 = Math.Min(sc0 + bw, col0 + cols) - col0;
                     for (var dr = dr0; dr < dr1; dr++)
                         for (var dc = dc0; dc < dc1; dc++)
                         {
-                            int src = (bsr0 + dr - sr0) * TileWidth + (bsc0 + dc - sc0);
+                            // dr/dc 是相对窗口原点的偏移，换算成块内坐标要减去该块的起点。
+                            // 曾误用 max(sr0,row0) 代替 row0：对非首块（sr0 > row0）会算出远超块大小的索引。
+                            int src = (row0 + dr - sr0) * bw + (col0 + dc - sc0);
                             int dst = dr * cols + dc;
                             if (BitsPerSample == 16) ((short[])outArr)[dst] = ((short[])block)[src];
                             else ((byte[])outArr)[dst] = ((byte[])block)[src];

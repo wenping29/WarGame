@@ -137,8 +137,11 @@ public sealed class GisApiService
             Spec = spec,
             PkgName = (string.IsNullOrEmpty(spec.Name) ? "gis" : spec.Name) + "_" + DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             Status = GisJobStatus.Queued,
+            Stage = "排队中",
+            Progress = 0,
             CreatedAt = DateTime.UtcNow,
         };
+        job.Log.Add($"作业已提交：{job.PkgName}（对边距 {spec.CellKm.ToString("G4", CultureInfo.InvariantCulture)} km）");
         lock (_gate)
         {
             _jobs[job.Id] = job;
@@ -305,8 +308,23 @@ public sealed class GisApiService
 
     private void RunJob(GisJob job)
     {
+        void Log(string msg)
+        {
+            lock (job.Log) job.Log.Add(msg);
+        }
+        // 阶段进度回报：写入作业记录，供调用方（主后端 / 前端）轮询展示真实进度
+        void OnProgress(string stage, double p)
+        {
+            job.Stage = stage;
+            job.Progress = Math.Clamp((int)Math.Round(p * 100), 0, 100);
+            Log($"[{job.Progress}%] {stage}");
+            PersistJob(job);
+        }
+
         job.Status = GisJobStatus.Running;
         job.StartedAt = DateTime.UtcNow;
+        job.Stage = "开始生成";
+        job.Progress = 0;
         PersistJob(job);
         try
         {
@@ -324,12 +342,27 @@ public sealed class GisApiService
                 Features = job.Spec.Features,
             };
 
-            var pkg = HexGenService.Generate(genSpec, useReal ? _sampler : null);
+            Log($"作业开始：范围 {string.Join(", ", job.Spec.Bbox.Select(v => v.ToString("G6", CultureInfo.InvariantCulture)))}°" +
+                $" · 对边距 {job.Spec.CellKm.ToString("G4", CultureInfo.InvariantCulture)} km · 种子 {job.Spec.Seed}");
+            Log(useReal
+                ? "引擎：本地 .ter 瓦片（真实 DEM" + (_sampler?.HasLandcover == true ? " + ESA 土地覆盖" : "") + "）"
+                : "引擎：合成地形（无真实瓦片 / 已指定 synthetic / 离线模式）");
+
+            var pkg = HexGenService.Generate(genSpec, useReal ? _sampler : null, OnProgress);
+            Log("生成完成，开始自校验");
+            job.Stage = "自校验";
+            job.Progress = 95;
+            PersistJob(job);
             var report = HexPackageValidator.Validate(pkg);
             if (report.Fails > 0)
             {
                 job.Status = GisJobStatus.Failed;
-                job.Error = $"自校验 {report.Fails} 项未通过，未产出数据包";
+                var failNames = string.Join("；", report.Results
+                    .Where(r => r.Level == "FAIL")
+                    .Select(r => string.IsNullOrEmpty(r.Detail) ? r.Check : $"{r.Check}（{r.Detail}）"));
+                job.Error = $"自校验 {report.Fails} 项未通过，未产出数据包：{failNames}";
+                Log("失败：" + job.Error);
+                job.Progress = 0;
                 job.FinishedAt = DateTime.UtcNow;
                 PersistJob(job);
                 return;
@@ -337,6 +370,7 @@ public sealed class GisApiService
 
             var path = Path.Combine(_gridsDir, job.PkgName + ".json");
             File.WriteAllText(path, JsonSerializer.Serialize(pkg, _pkgJson));
+            Log($"自校验 {report.Total} 项通过（{report.Warns} 项 WARN）→ {Path.GetFileName(path)}");
 
             var counts = pkg.Meta.Stats.TryGetValue("terrain_counts", out var tc) ? tc : new Dictionary<string, object>();
             job.Meta = new JsonObject
@@ -356,6 +390,8 @@ public sealed class GisApiService
             };
             job.Package = pkg;
             job.Status = GisJobStatus.Done;
+            job.Stage = "已完成";
+            job.Progress = 100;
             job.FinishedAt = DateTime.UtcNow;
             PersistJob(job);
         }
@@ -363,6 +399,8 @@ public sealed class GisApiService
         {
             job.Status = GisJobStatus.Failed;
             job.Error = ex.Message;
+            job.Stage = "失败";
+            Log("失败：" + ex.Message);
             job.FinishedAt = DateTime.UtcNow;
             PersistJob(job);
         }
@@ -424,6 +462,9 @@ public sealed class GisApiService
             ["created_at"] = job.CreatedAt.ToString("o", CultureInfo.InvariantCulture),
             ["started_at"] = job.StartedAt?.ToString("o", CultureInfo.InvariantCulture),
             ["finished_at"] = job.FinishedAt?.ToString("o", CultureInfo.InvariantCulture),
+            ["progress"] = JsonValue.Create(job.Progress),
+            ["stage"] = job.Stage == null ? null : JsonValue.Create(job.Stage),
+            ["log"] = new JsonArray(job.Log.Select(v => JsonValue.Create(v)).ToArray()),
             ["error"] = job.Error == null ? null : JsonValue.Create(job.Error),
             // DeepClone：同一 job.Meta 会被多个请求的视图引用，JsonNode 不允许一个节点挂到多个父节点下
             ["meta"] = job.Meta?.DeepClone(),
