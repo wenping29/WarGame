@@ -88,6 +88,8 @@ pnpm-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+# 方案B 双站分离时前端按后端域名编译，域名是环境相关的，不进版本库（模板见 webfront/.env.production.example）
+.env.production
 *.local.json
 appsettings.Local.json
 appsettings.*.json

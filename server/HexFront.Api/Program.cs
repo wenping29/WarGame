@@ -12,11 +12,15 @@ builder.Services.AddSingleton<AppDbService>();
 
 // 开发期 React 走 vite 同源代理（/api、/ws），不需要 CORS；
 // 只有把 React 构建产物部署到别的源（或直连 :5018）时才用得上，所以是白名单而不是通配。
+// 方法表要覆盖前端实际用到的全部动词：api.ts 里除 GET/POST 外还有 PUT（副本单位编辑）与 DELETE。
+// 少一个就会在跨源部署（方案B：静态站 + .NET 站分域名）时卡在 CORS 预检 OPTIONS 上返回 403。
 var allowedOrigins = (Environment.GetEnvironmentVariable("HF_ALLOWED_ORIGINS")
     ?? "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174")
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
-    policy.WithOrigins(allowedOrigins).WithMethods("GET", "POST", "OPTIONS").AllowAnyHeader()));
+    policy.WithOrigins(allowedOrigins)
+          .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
+          .AllowAnyHeader()));
 
 var app = builder.Build();
 

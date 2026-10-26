@@ -69,6 +69,10 @@ if [ "${SKIP_BACKEND_PUBLISH:-0}" = "1" ]; then
 else
   echo "==> 3/3 发布后端 (dotnet publish -c Release -r linux-x64 --no-self-contained) ..."
   cd "$REPO/server"
+  # Windows 上 MSBuild 的 Copy 任务在并行拷贝时会栈溢出（Stack overflow / MSB4166 子节点过早退出），
+  # 表现为 publish 拷 HexFront.Core.dll 到 Api 输出时崩掉、脚本半途退出。
+  # 先 clean 掉增量产物再 publish，可稳定通过。
+  dotnet clean HexFront.Api/HexFront.Api.csproj -c Release --disable-build-servers -v q
   dotnet publish HexFront.Api/HexFront.Api.csproj -c Release -r linux-x64 --no-self-contained -o "$PUBLISH_DIR" --disable-build-servers
 fi
 

@@ -47,11 +47,11 @@ public class TerrainTileReaderTests
 
         Assert.True(tile.Contains(lat, lon));
 
-        // 独立验证 reader 的行列换算（ElevationAt/LandcoverAt 内部使用同一 floor 公式）
-        int col = (int)((lon - tile.West) / tile.ResLon);
-        int row = (int)((tile.North - lat) / tile.ResLat);
-        Assert.Equal(expCol, col);
-        Assert.Equal(expRow, row);
+        // 行列换算走 reader 自己的方法（内部含闭区间钳制），不在测试里重抄一份裸公式：
+        // 抄一份的话，边界点（东北角 lon==East / 西南角 lat==South）会因浮点误差算出越界的
+        // 600 / 420，与实现漂移成假失败。期望值 599 / 419 对应"边界点归属最后一格"的闭区间语义。
+        Assert.Equal(expCol, tile.ColAt(lon));
+        Assert.Equal(expRow, tile.RowAt(lat));
 
         Assert.Equal(expElev, tile.ElevationAt(lat, lon));
         Assert.Equal(expLc, tile.LandcoverAt(lat, lon));

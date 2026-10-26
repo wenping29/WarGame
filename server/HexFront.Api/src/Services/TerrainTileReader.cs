@@ -91,14 +91,21 @@ public sealed class TerrainTile
     public bool Contains(double lat, double lon) =>
         lon >= West && lon <= East && lat >= South && lat <= North;
 
-    private (int col, int row) IndexOf(double lat, double lon)
-    {
-        int col = (int)Math.Floor((lon - West) / ResLon);
-        int row = (int)Math.Floor((North - lat) / ResLat);
-        col = Math.Clamp(col, 0, Cols - 1);
-        row = Math.Clamp(row, 0, Rows - 1);
-        return (col, row);
-    }
+    /// <summary>
+    /// 经度 → 列号。闭区间语义：东边界点（lon == East）归属最后一列。
+    /// 必须钳制：浮点上 (East - West) / ResLon 常算出 600.0000000000001 这类略越界的值。
+    /// </summary>
+    public int ColAt(double lon) =>
+        Math.Clamp((int)Math.Floor((lon - West) / ResLon), 0, Cols - 1);
+
+    /// <summary>
+    /// 纬度 → 行号。闭区间语义：北边界点（lat == North）归属第一行，南边界点归属最后一行。
+    /// 同样需要钳制，原因见 <see cref="ColAt"/>。
+    /// </summary>
+    public int RowAt(double lat) =>
+        Math.Clamp((int)Math.Floor((North - lat) / ResLat), 0, Rows - 1);
+
+    private (int col, int row) IndexOf(double lat, double lon) => (ColAt(lon), RowAt(lat));
 
     public short ElevationAt(double lat, double lon)
     {
