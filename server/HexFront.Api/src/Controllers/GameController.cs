@@ -563,13 +563,5 @@ internal static class RoomServiceStaticPaths
 
     private static string DefaultScenarioDir =>
         Environment.GetEnvironmentVariable("HF_SCENARIO_DIR") ??
-        Path.Combine(RepoRoot(), "data", "scenarios");
-
-    private static string RepoRoot()
-    {
-        var bin = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
-        return string.IsNullOrEmpty(bin)
-            ? Directory.GetCurrentDirectory()
-            : Path.GetFullPath(Path.Combine(bin, "..", "..", "..", "..", "..", ".."));
-    }
+        Path.Combine(AppDbService.ServerRoot(), "data", "scenarios");
 }

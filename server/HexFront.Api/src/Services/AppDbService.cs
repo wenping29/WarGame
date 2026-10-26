@@ -40,16 +40,24 @@ public sealed class AppDbService : IDisposable
         _logger.LogInformation("统一应用库就绪: {Db}", dbPath);
     }
 
-    /// <summary>仓库根：优先读 HF_REPO_ROOT 环境变量，否则按程序集位置向上 6 层（dotnet run 布局）。
-    /// 部署到 Linux 时用 HF_REPO_ROOT 指到解包根目录，规避 publish 后目录层级变化导致的定位错误。</summary>
-    private static string RepoRoot()
+    /// <summary>后端 server 目录（含 HexFront.Api 与 data）。优先用 HF_REPO_ROOT 拼 "server"，
+    /// 否则从程序集向上回溯到名为 "server" 且含 HexFront.Api 的目录。
+    /// 取代原先硬编码"向上 6 层"的写法——目录扁平化（server/HexFront.Api 不再含 src）后层级已变，数层数会指错。
+    /// 所有 data 类路径（scenarios/saves/gis/hexgrids/app.db）均相对 server 目录。</summary>
+    public static string ServerRoot()
     {
-        var env = Environment.GetEnvironmentVariable("HF_REPO_ROOT");
-        if (!string.IsNullOrEmpty(env)) return Path.GetFullPath(env);
-        var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-        var binDir = Path.GetDirectoryName(assemblyPath);
-        if (string.IsNullOrEmpty(binDir)) return Directory.GetCurrentDirectory();
-        return Path.GetFullPath(Path.Combine(binDir, "..", "..", "..", "..", "..", ".."));
+        var repoRoot = Environment.GetEnvironmentVariable("HF_REPO_ROOT");
+        if (!string.IsNullOrEmpty(repoRoot))
+            return Path.GetFullPath(Path.Combine(repoRoot, "server"));
+        var dir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+        while (!string.IsNullOrEmpty(dir))
+        {
+            if (string.Equals(Path.GetFileName(dir), "server", StringComparison.OrdinalIgnoreCase)
+                && Directory.Exists(Path.Combine(dir, "HexFront.Api")))
+                return Path.GetFullPath(dir);
+            dir = Path.GetDirectoryName(dir);
+        }
+        return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "server"));
     }
 
     private static string DefaultDbPath()
@@ -1196,8 +1204,7 @@ public sealed class AppDbService : IDisposable
     /// <summary>ops_log.db（旧推演流水库）→ app.db，成功后改名 .migrated。</summary>
     private void MigrateOpsLog()
     {
-        var root = RepoRoot();
-        var oldPath = Path.Combine(root, "data", "ops_log.db");
+        var oldPath = Path.Combine(ServerRoot(), "data", "ops_log.db");
         if (!File.Exists(oldPath)) return;
         try
         {
@@ -1249,8 +1256,7 @@ public sealed class AppDbService : IDisposable
     /// <summary>scenario_feedback.json（旧反馈文件）→ feedback 表，成功后改名 .migrated。</summary>
     private void MigrateFeedbackFile()
     {
-        var root = RepoRoot();
-        var oldPath = Path.Combine(root, "data", "scenario_feedback.json");
+        var oldPath = Path.Combine(ServerRoot(), "data", "scenario_feedback.json");
         if (!File.Exists(oldPath)) return;
         try
         {

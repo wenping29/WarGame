@@ -38,11 +38,11 @@ public sealed class RoomService
         _logger = logger;
         _ops = ops;
         _db = db;
-        var root = GetRepoRoot();
+        var serverRoot = AppDbService.ServerRoot();
         // 部署覆盖：HF_DATA_DIR 直接指定 data 目录（例如地图数据单独挂载到别的盘），
-        // 不设则回退到 <仓库根>/data，与开发期一致。
+        // 不设则回退到 <server>/data（server 目录含 HexFront.Api 与 data）。
         _dataDir = Environment.GetEnvironmentVariable("HF_DATA_DIR")
-            ?? Path.Combine(root, "data");
+            ?? Path.Combine(serverRoot, "data");
         _scenarioDir = Environment.GetEnvironmentVariable("HF_SCENARIO_DIR")
             ?? Path.Combine(_dataDir, "scenarios");
         _saveDir = Environment.GetEnvironmentVariable("HF_SAVE_DIR")
@@ -1245,18 +1245,6 @@ public sealed class RoomService
         {
             socket.Abort();
         }
-    }
-
-    private static string GetRepoRoot()
-    {
-        // 部署覆盖：HF_REPO_ROOT 直接指定仓库根，规避 publish 后目录层级变化（多一层 publish/）导致 6 层回溯指错。
-        var env = Environment.GetEnvironmentVariable("HF_REPO_ROOT");
-        if (!string.IsNullOrEmpty(env)) return Path.GetFullPath(env);
-        var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-        var binDir = Path.GetDirectoryName(assemblyPath);
-        if (string.IsNullOrEmpty(binDir)) return Directory.GetCurrentDirectory();
-        // bin/Debug/net10.0 → HexFront.Api → src → server → wargame
-        return Path.GetFullPath(Path.Combine(binDir, "..", "..", "..", "..", "..", ".."));
     }
 
     // ==================== Internal types ====================
