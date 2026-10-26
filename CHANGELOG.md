@@ -1,6 +1,6 @@
 # 更新日志
 
-HEXFRONT-WEB 从 Dart `hexfront/` + 原生 JS `web/` 迁移到 C# `HexFront.CSharp/` + React `hexfront-react/` 的逐阶段变更记录。
+HEXFRONT-WEB 从 Dart `hexfront/` + 原生 JS `web/` 迁移到 C# `server/` + React `webfront/` 的逐阶段变更记录。
 
 - **条目粒度**：一个阶段（= 排期表里的一个 #）一条，分「新增 / 修复 / 文档 / 验证」四栏。
 - **验收数字的唯一出处**是 [HEXFRONT-WEB产品设计文档.md](HEXFRONT-WEB产品设计文档.md) §13.6 的四条门槛命令，本文只记"当时是什么数"，不作为口径来源。
@@ -11,13 +11,13 @@ HEXFRONT-WEB 从 Dart `hexfront/` + 原生 JS `web/` 迁移到 C# `HexFront.CSha
 
 两条一直显式挂着的验收线补齐：**14 回合全 AI < 5s**、**地图缩放/拖拽/双击 60fps**。数字与口径的唯一出处仍是 §13.6，这里只记当时是什么数。
 
-- **新增**：`HexFront.CSharp/tests/HexFront.Tests/Performance/EnginePerfBaselineTests.cs`（2 条，`Trait=Benchmark`）——14 回合全 AI 对抗 + 稳态复跑同指纹；断言不只看耗时，还要求"14 回合真跑完、有交战、零被拒令、两遍同指纹"，防止空转局蒙过 5s 线。`Gis/HexGenBenchmarkTests.cs` 补第 3 条：按 doc §13.1 那块 2.5km 棋盘重测生成耗时。
+- **新增**：`server/tests/HexFront.Tests/Performance/EnginePerfBaselineTests.cs`（2 条，`Trait=Benchmark`）——14 回合全 AI 对抗 + 稳态复跑同指纹；断言不只看耗时，还要求"14 回合真跑完、有交战、零被拒令、两遍同指纹"，防止空转局蒙过 5s 线。`Gis/HexGenBenchmarkTests.cs` 补第 3 条：按 doc §13.1 那块 2.5km 棋盘重测生成耗时。
 - **新增**：`scripts/map-perf.mjs`——无头 Chrome + CDP 派发**真受信任事件**的地图帧率取证脚本，红方/导演部各跑 瓦片开 + 瓦片关 × 9 个场景（idle/pan/pan2/wheel-in/wheel-out/dblclick/buttons/pan-fit/saturate），产出 `.tmp/map-perf-<role>.json` + 截图。伪瓦片用 CDP `Fetch.fulfillRequest` 喂本机现造的 256px PNG（直连天地图会被中间层吞请求，拿不到"瓦片就绪"稳态）。
 - **实测**：引擎建局 55ms、14 回合整段循环 202ms（补令 74 + 结算 115，均 14.4ms/回合），5s 预算用掉 4%，终局指纹 `5d4bd5b8` 与 `ws-smoke` 8d 逐字相同；GIS 1728 格 94ms（0.0544 ms/格），30s 门槛的 0.3%；地图满载可持续 **235.8–239.3fps**（瓦片开/关几乎无差），所有交互行 `MapView.draw` p95 ≤7.8ms、max ≤10.1ms。
 - **翻出 1 条待拍板缺陷**：全场第一次交互那一帧 277–295ms、阻塞 227–243ms，LoAF 归属 `services/sound.ts` 的 `primeAudio`——`new AudioContext()` 同步建在第一个 `pointerdown` 监听里。一次性开销（第二次交互起 0 长帧），不影响 60fps 结论，但是玩家进图后第一次点击的卡顿。**本任务没动代码**，处置等拍板。
 - **取证过程本身翻出两个测量陷阱**（都写进 §13.6 的口径八条）：① 无头不做 vsync，rAF 间隔 4.2ms 不能当帧率读，必须用"单帧 draw 预算 + 满载循环帧数"两条替代；② `pan-fit` 两行 0 帧重绘的真因是 toast 浮层吃掉了画布中心的指针事件——脚本因此加了 `elementFromPoint` 自检 + 「画布事件 0 且 draws 0 一律 FAIL」闸门。
-- **文档**：§13.1/§13.2/§13.3 三条 `[ ]` 改 `[x]` 并就地写清口径（含 1728 vs 1645 的 bbox 回喂解释）；§13.4 风险表"60fps 数字待测"换成实测；§13.6 门槛命令从四条扩到五条（新增 `map-perf.mjs`）、`dotnet test` 基线 241→244、**`ws-smoke` 路径订正为 `HexFront.CSharp/scripts/`（原先文档写的根 `scripts/` 路径跑不起来）**。
-- **验证**：`dotnet test` **244/244**（`--filter Category=Benchmark` 单跑 6/6）；`node HexFront.CSharp/scripts/ws-smoke.mjs` 16 组 ALL PASS（8d 15 回合 159ms）；`npx tsc -b` exit 0；`npx oxlint src` 7 warning / 0 error（基线不变）；红方 + 导演部两次完整取证，截图目视复核（地图、图例、悬停格信息、署名齐全）。
+- **文档**：§13.1/§13.2/§13.3 三条 `[ ]` 改 `[x]` 并就地写清口径（含 1728 vs 1645 的 bbox 回喂解释）；§13.4 风险表"60fps 数字待测"换成实测；§13.6 门槛命令从四条扩到五条（新增 `map-perf.mjs`）、`dotnet test` 基线 241→244、**`ws-smoke` 路径订正为 `server/scripts/`（原先文档写的根 `scripts/` 路径跑不起来）**。
+- **验证**：`dotnet test` **244/244**（`--filter Category=Benchmark` 单跑 6/6）；`node server/scripts/ws-smoke.mjs` 16 组 ALL PASS（8d 15 回合 159ms）；`npx tsc -b` exit 0；`npx oxlint src` 7 warning / 0 error（基线不变）；红方 + 导演部两次完整取证，截图目视复核（地图、图例、悬停格信息、署名齐全）。
 
 ## 2026-10-18 · P7-e `web/` 处置与移植遗漏收口（#92）
 
@@ -30,14 +30,14 @@ HEXFRONT-WEB 从 Dart `hexfront/` + 原生 JS `web/` 迁移到 C# `HexFront.CSha
   - `.oob-table` 基表 + `th/td` + `input/select`——原先只搬了 `.num` 一条，表格不 `border-collapse`、单元格零内边距；
   - `#nav a.on` 被改名成 `.nav a.active` 而 `Layout.tsx` 输出的是 `on`——顶栏当前页永不高亮。
   - 判定为"非遗漏"的三条：`.room-list`（大厅有意改卡片列表）、`label>span`（由 `label` 继承同色）、`.warn-card`（无害空类）。
-- **文档**：设计文档 §13.6 新增「移植遗漏对照清单」与「已知残留」两块并改写 `web/` 处置段落；§6.3/§9/§11.6/§13.1/§13.3 的"退役排期"措辞改为已定结果；`MIGRATION-STATUS.md`、`hexfront-react/MIGRATION.md`、`hexfront-react/README.md` 同步；`scripts/hex-offset-check.mjs` 与 `HexFront.CSharp/scripts/web-static.mjs` 各加一行指回 §13.6。
+- **文档**：设计文档 §13.6 新增「移植遗漏对照清单」与「已知残留」两块并改写 `web/` 处置段落；§6.3/§9/§11.6/§13.1/§13.3 的"退役排期"措辞改为已定结果；`MIGRATION-STATUS.md`、`webfront/MIGRATION.md`、`webfront/README.md` 同步；`scripts/hex-offset-check.mjs` 与 `server/scripts/web-static.mjs` 各加一行指回 §13.6。
 - **验证**：`dotnet test` 241/241；`node scripts/ws-smoke.mjs` 编号 0–15 全 ALL PASS（8d 全 AI 15 回合 178ms、终局指纹 `5d4bd5b8`）；`npx tsc -b` exit 0；`oxlint` 0 error；`node scripts/hex-offset-check.mjs` ALL PASS（133 条无向边）；红方/导演部两视图回归截图无新增缺陷。
 
 ## 2026-10-18 · P7-d 交付文档一致性（#91）
 
 - **文档**：设计文档 §12 从 Dart 运行手册整体换成 **C# + React 运行手册**（起服务命令、路径路由表、四条门槛命令）；§13 全节回填"原计划 vs 实收"，每处偏离就地标注；新增 **§13.6 交付基线与取证口径**（门槛数字、两条显式未测项、CDP 取证规则）；§6.3.1 编号冲突修正；§11 三条改判为"已定并落地"并新增第 12 条「纯 AI 局的歼灭率（待拍板）」；§12.1 占用语义由"HTTP 409"更正为 **`type:error` 帧 + 关闭连接**；§11.11 道路/铁路出处按 `data/gis/rhine_2p5km.json` 的 `meta.layers` 实测更正（道路是真实 Natural Earth 向量，铁路才是派生走廊）。
 - **修复**：React 丢失的 `.scroll{overflow:auto}`（对照 `web/css/app.css:61`）导致超长接触列表/事件日志画到相邻面板上——最终规则 `.panel .scroll{flex:1;min-height:0;overflow:auto}` + `.terminal .col .panel:not(.grow){flex:0 0 auto;max-height:28%}`，四终端截图复核。
-- **文档**：`MIGRATION-STATUS.md` 从 399 行过期快照重写为 46 行当前状态表；`hexfront-react/MIGRATION.md`/`README.md` 按实收技术栈重写（React 19 / Router 7 路径路由 / 无 Konva / 无 AntD / **无 Zustand store**）。
+- **文档**：`MIGRATION-STATUS.md` 从 399 行过期快照重写为 46 行当前状态表；`webfront/MIGRATION.md`/`README.md` 按实收技术栈重写（React 19 / Router 7 路径路由 / 无 Konva / 无 AntD / **无 Zustand store**）。
 - **验证**：`dotnet test` 241/241；ws-smoke 16 组 ALL PASS（8d 两次 237ms / 177ms）；`npx tsc -b` exit 0。四终端无头 Chrome 取证：E1/E2/E3 情报分档、`status=gone` 卡片存活至 `staleTurns`=3 后剪除。
 
 ## 2026-10-18 · P7-c 坐标基线 + 遍历序确定性（#90，`27a12b2`）
@@ -54,7 +54,7 @@ HEXFRONT-WEB 从 Dart `hexfront/` + 原生 JS `web/` 迁移到 C# `HexFront.CSha
 
 ## 2026-10-18 · P7-a 引擎侧等价测试（#88，`08d98d3`）
 
-- **新增**：Dart `verify.dart` 61 项 → xUnit 等价实现，逐项映射表落在 `HexFront.CSharp/tests/PARITY-CHECKS.md`；补齐地物、几何、要点、连续推演用例。
+- **新增**：Dart `verify.dart` 61 项 → xUnit 等价实现，逐项映射表落在 `server/tests/PARITY-CHECKS.md`；补齐地物、几何、要点、连续推演用例。
 - **意义**：从此改引擎有回归网，"能编译/能推进回合"不再被当成"语义对等"。
 
 ## 2026-10-18 · P6 协议与视图细节对等（#67，`#84–#87`）
@@ -93,5 +93,5 @@ HEXFRONT-WEB 从 Dart `hexfront/` + 原生 JS `web/` 迁移到 C# `HexFront.CSha
 
 - **后端**：Dart 引擎语义 + Python GIS 链路搬进 `HexFront.Core`/`HexFront.Api`；Program.cs 接 `AddSignalR` + `UseWebSockets` + 原生 `/ws`（单例 `RoomService`，按 `web/js/ws.js` 协议）；`GameController` 实现 7 个 REST 端点并与 `/ws` 共用同一份房间真相；`LibraryService` 按 `library.dart` 1:1 全量移植（STANDARD_TERRAIN 10 项 / UNIT_TYPES 18 项 / WEATHER 7 项 / DEFAULT_RULES）；`FogService` 按 `fog.dart` 重写三视图（SideView 用 `own`+`contacts`，**side 视图没有 `view.units`**）；ready 自动结算屏障 + `director_cmd` 全量对齐 + `clear_orders`。
 - **两处曾静默致命的缺陷**：`RoomService.HandleAsync` 无 finally 注销 → 对端进程被杀时角色位永久占死；`TurnResolver.MovementPhase` 把整个 MP 预算 `Clamp(budget*hq,0.6,1.15)` → **所有机动静默失败且无报错**。
-- **前端**：`hexfront-react/` 建立并全面去 mock（`room/protocol.ts`、`RoomSocket.tsx`、`useUnitFull.ts`、`services/api.ts` 对齐真实信封，vite 代理 `/api`+`/ws` 到 5018），五页 + 四终端浏览器 E2E 跑通。
+- **前端**：`webfront/` 建立并全面去 mock（`room/protocol.ts`、`RoomSocket.tsx`、`useUnitFull.ts`、`services/api.ts` 对齐真实信封，vite 代理 `/api`+`/ws` 到 5018），五页 + 四终端浏览器 E2E 跑通。
 - **仓库**：`.gitignore` 收敛编译产物规则并停止跟踪运行期存档（`763bb23`/`bce2e1a`）。

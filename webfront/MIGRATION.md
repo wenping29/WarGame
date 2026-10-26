@@ -1,4 +1,4 @@
-# 前端迁移说明（`web/` → `hexfront-react/`）
+# 前端迁移说明（`web/` → `webfront/`）
 
 状态：**已完工**。本文件记的是"原生 JS 客户端如何搬到 React"的对照关系与踩坑清单，不是待办计划。技术选型实收见 [../HEXFRONT-WEB产品设计文档.md](../HEXFRONT-WEB产品设计文档.md) §13.3，验收数字见同文 §13.6。
 
@@ -10,7 +10,7 @@
 
 ## 技术栈对比（实收）
 
-| 特性 | 旧版 `web/` | 新版 `hexfront-react/` |
+| 特性 | 旧版 `web/` | 新版 `webfront/` |
 |---|---|---|
 | 框架 | 原生 JavaScript ES6（无构建） | React 19.2.8 + TypeScript ~6.0.2 + Vite 8.3.0 |
 | 路由 | hash 路由（手写） | React Router 7.18.4 `BrowserRouter` 路径路由 |
@@ -62,7 +62,7 @@ css/app.css                   →  App.css + index.css
 
 ```bash
 # 终端 1：后端（端口 5018）
-cd ../HexFront.CSharp && dotnet run --project src/HexFront.Api --urls http://127.0.0.1:5018
+cd ../server && dotnet run --project src/HexFront.Api --urls http://127.0.0.1:5018
 # 终端 2：前端
 npm run dev        # http://localhost:5173，5173 被占则顺延到 5174
 ```

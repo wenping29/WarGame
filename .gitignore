@@ -21,16 +21,6 @@ node_modules/
 deploy/dist/
 
 
-# ---- 构建输出 ----
-webapi/[Bb]in/
-webapi/[Oo]bj/
-webapi/hanjian.db-shm
-webapi/hanjian.db-wal
-
-## .NET 编译输出
- 
-webapi/uploads/
-
 ## .NET 隐藏文件夹
 .vs/
 .vscode/
@@ -39,40 +29,24 @@ webapi/uploads/
 *.userosscache
 *.sln.docstates
 
-hexfront.csharp/src/hexfront.api/bin/
-hexfront.csharp/src/hexfront.api/obj/
-hexfront.csharp/src/hexfront.core/bin/
-hexfront.csharp/src/hexfront.core/obj/
-hexfront.csharp/tests/hexfront.tests/bin/
-hexfront.csharp/tests/hexfront.tests/obj/
-
-
-## 发布输出
-webapi/[Pp]ublish/
-webapi/dist/
+server/hexfront.api/bin/
+server/hexfront.api/obj/
+server/hexfront.core/bin/
+server/hexfront.core/obj/
+server/hexfront.tests/bin/
+server/hexfront.tests/obj/
 
 ## 本地配置密钥
-webapi/appsettings.Development.json
-webapi/appsettings.Local.json
-webapi/*.pfx
+server/hexfront.api/appsettings.Development.json
+server/hexfront.api/appsettings.Local.json
+server/hexfront.api/*.pfx
 # 天地图 tk 属于访问凭证，只在本地存在；模板见 data/tianditu.example.json
-data/tianditu.json
-data/dem/tiles_z7/
-data/dem/*.tif
-data/dem/*.tif.ovr
-data/gis/*.lpk
+server/data/tianditu.json
+server/data/dem/tiles_z7/
+server/data/dem/*.tif
+server/data/dem/*.tif.ovr
+server/data/gis/*.lpk
 
-## 日志
-webapi/*.log
-webapi/logs/
-webapi/uploads/
-## 覆盖测试报告
-webapi/coverage/
-webapi/logs/
-
-## Rider
-webapi/.idea/
-webapi/*.iml
 
 ## Windows系统
 webapi/Thumbs.db
@@ -157,11 +131,11 @@ scripts/deploy/out/
 
 # ---- HexFront.CSharp .NET 编译产物 ----
 # 刻意限定在 HexFront.CSharp 下：hexfront/bin/ 是 Dart 引擎源码目录，全局 bin/ 规则会把它们一起吞掉
-HexFront.CSharp/**/[Bb]in/
-HexFront.CSharp/**/[Oo]bj/
-HexFront.CSharp/**/[Dd]ebug/
-HexFront.CSharp/**/[Rr]elease/
-HexFront.CSharp/**/*.binlog
+server/**/[Bb]in/
+server/**/[Oo]bj/
+server/**/[Dd]ebug/
+server/**/[Rr]elease/
+server/**/*.binlog
 
 # ---- 前端构建产物（部署用 wwwroot，由打包脚本从 hexfront-react/dist 拷贝进来）----
 HexFront.CSharp/src/HexFront.Api/wwwroot/
@@ -171,6 +145,6 @@ __pycache__/
 *.py[cod]
 
 # ---- 兵棋运行期存档（每跑一局验证就新增/改写，不属于代码） ----
-saves/
+server/data/saves/
 
 # data/

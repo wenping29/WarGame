@@ -11,7 +11,7 @@
 ## 怎么跑
 
 ```powershell
-cd HexFront.CSharp
+cd server
 dotnet test tests/HexFront.Tests                                  # 全量
 dotnet test tests/HexFront.Tests --filter "FullyQualifiedName~P7Tests"   # 只看 P7-a 新增
 dotnet test tests/HexFront.Tests --filter "FullyQualifiedName~Protocol"  # 只看 P7-b 协议侧
@@ -154,7 +154,7 @@ overrides 走线上同一份 `ScenarioService.MergeOverrides`，所以测出来�
 
 ## §10 协议对照（smoke_ws.dart 32 项 → dotnet test，#89 P7-b）
 
-基准是 `hexfront/bin/smoke_ws.dart`（32 项 `check()`）+ `HexFront.CSharp/scripts/ws-smoke.mjs`（51 处 `fail()` 闸门，
+基准是 `hexfront/bin/smoke_ws.dart`（32 项 `check()`）+ `server/scripts/ws-smoke.mjs`（51 处 `fail()` 闸门，
 它是 Dart 冒烟的 C# 侧改写，另带了 1a/3/5/7/7b/7c/8a/8b/9/10/10b/10c/11/12 这些 Dart 没覆盖的线上契约）。
 两边合起来的每一项都搬进了 `tests/HexFront.Tests/Protocol/`，共 **40 个用例**：
 
@@ -241,7 +241,7 @@ overrides 走线上同一份 `ScenarioService.MergeOverrides`，所以测出来�
 不复刻 Dart 意味着按设计文档补齐文档写过但 Dart 没测的分支，主要包括：
 
 - **迷雾纪律**：`FogAndAiP0Tests` 的 fog off 不写档案 / 重新开雾不继承明牌情报；`CommandValidatorP3Tests.Unobserved_Enemy_Hex_Is_Traversable`（进入未知格交给遭遇战，不在服务端一票否决）。
-- **接触档案的中间态**：`A_Dead_Under_Observation_Still_Reports_Gone`——档案按龄衰减而非死亡即清除，前端因此需要 `gone` 标签（`hexfront-react/src/room/protocol.ts`）。
+- **接触档案的中间态**：`A_Dead_Under_Observation_Still_Reports_Gone`——档案按龄衰减而非死亡即清除，前端因此需要 `gone` 标签（`webfront/src/room/protocol.ts`）。
 - **AI 只用看得见的信息**：`AiOfficerP3Tests` 9 项（不打看不见的目标、未知格是靠过去而不是猜着打、只有防空兵打飞机、炮兵在射程边缘射击不硬冲、固定设施不下令、渡河不拜河、同一局势同一指令、每存活单位恰好一令）。
 - **结算分支**：`TurnResolverP3Tests` 32 项（七阶段顺序、五种战斗类型、空中交战走同一条 CF 链、遭遇战取稳定序的一个防守方、伏击、溃退往自己纵深、同回合不开火回血、集结阈值、断供回落宽松默认、四种胜利 + 回合耗尽人员判定、终局幂等）。
 - **存档边界**：`DeterminismP1Tests` 的 jsonl 回退重开（rebranch 截断日志）、存档目录清单、实例 id 不许越出 saves 根目录。
@@ -281,7 +281,7 @@ overrides 走线上同一份 `ScenarioService.MergeOverrides`，所以测出来�
   载入只重放快照之后的尾部回合且 `replay_warnings` 为空。
 - **非法覆盖建不出副本**：`/api/validate` 与 `POST /api/instances` 用同一把尺子，向导被绕过也一样拦。
 
-`HexFront.CSharp/scripts/ws-smoke.mjs` 继续保留：它的 8c/8d 需要前线真的开火（挂 #94），加上要跑 10 回合贪心推进，
+`server/scripts/ws-smoke.mjs` 继续保留：它的 8c/8d 需要前线真的开火（挂 #94），加上要跑 10 回合贪心推进，
 不适合放进 `dotnet test` 的秒级路径，留作手工长测；上面这 40 项已经把同样的闸门搬进可重复执行的入口，
 交付验收以 `dotnet test --filter "FullyQualifiedName~Protocol"` 为准。
 
