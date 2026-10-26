@@ -181,7 +181,20 @@ public sealed class GeoTiffWriter : IDisposable
     {
         double resLon = (_east - _west) / _width;
         double resLat = (_north - _south) / _height;
-        double[] tr = { _west, resLon, 0, 0, _north, 0, -resLat, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+        // ModelTransformationTag(34264) 按 GeoTIFF 规范为 4x4 行主序：
+        //   | X |   | a b 0 d |   | I |
+        //   | Y | = | e f 0 h |   | J |
+        //   | Z |   | 0 0 0 0 |   | K |
+        //   | 1 |   | 0 0 0 1 |   | 1 |
+        // 规范明确 "d 与 h 常用于表示 X/Y 平移"，即平移量位于索引 3 与 7（与 GDAL 一致）。
+        // 早先误把原点写在索引 0/4，会导致 GDAL/QGIS 把本文件读成 originX=0、像元宽=经度值。
+        double[] tr =
+        {
+            resLon, 0.0,    0.0, _west,   // 行 0：X = resLon*I + west
+            0.0, -resLat,   0.0, _north,  // 行 1：Y = -resLat*J + north
+            0.0, 0.0,       0.0, 0.0,     // 行 2
+            0.0, 0.0,       0.0, 1.0,     // 行 3
+        };
 
         var nodataStr = Encoding.ASCII.GetBytes(_noData.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\0");
 

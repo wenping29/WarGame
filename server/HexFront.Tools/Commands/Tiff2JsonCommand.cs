@@ -82,8 +82,10 @@ public static class Tiff2JsonCommand
 
         double aT = band.Transform[0], cT = band.Transform[1], fT = band.Transform[2];
         double bT = band.Transform[3], dT = band.Transform[4], eT = band.Transform[5];
-        band.PixelToGeo(-0.5, -0.5, out double west, out double north);
-        band.PixelToGeo(W - 0.5, H - 0.5, out double east, out double south);
+        // PixelToGeo 采用 GDAL 仿射约定：像素索引 (0,0) 即左上角像素的左上角点，
+        // 故栅格外框由 (0,0) 与 (W,H) 两端点确定（无需再偏移半个像素）。
+        band.PixelToGeo(0, 0, out double west, out double north);
+        band.PixelToGeo(W, H, out double east, out double south);
 
         // 聚合：逐条带读取（按瓦片高度对齐，每瓦片仅解码一次）
         var sum = new double[total];

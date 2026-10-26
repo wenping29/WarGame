@@ -1,6 +1,6 @@
 import struct, zlib
 
-def write_geotiff(path, data, bits, sample_format, west, north, res_x, res_y, nodata=None, tiled=False):
+def write_geotiff(path, data, bits, sample_format, west, north, res_x, res_y, nodata=None, tiled=False, geo='matrix'):
     h, w = len(data), len(data[0])
     if bits == 16:
         raw = bytearray()
@@ -24,7 +24,10 @@ def write_geotiff(path, data, bits, sample_format, west, north, res_x, res_y, no
                 prev = v
     comp = zlib.compress(bytes(raw), 6)
 
-    transform = [res_x, 0, 0, 0,  0, -res_y, 0, 0,  0, 0, 0, 0,  west, north, 0, 1]
+    # GeoTIFF 规范（= GDAL 写法）4x4 行主序：平移量在 m[3](X) / m[7](Y)
+    transform = [res_x, 0, 0, west,  0, -res_y, 0, north,  0, 0, 1, 0,  0, 0, 0, 1]
+    tiepoint = [0, 0, 0, west, north, 0]
+    pixscale = [res_x, res_y, 0]
     tags = []
     tags.append((256, 4, 1, w))
     tags.append((257, 4, 1, h))
@@ -45,7 +48,11 @@ def write_geotiff(path, data, bits, sample_format, west, north, res_x, res_y, no
     tags.append((339, 3, 1, sample_format))
     if nodata is not None:
         tags.append((42113, 2, len(str(nodata)+'\0'), 0))
-    tags.append((34264, 12, 16, 0))
+    if geo == 'matrix':
+        tags.append((34264, 12, 16, 0))
+    else:
+        tags.append((33922, 12, 6, 0))
+        tags.append((33550, 12, 3, 0))
     tags.sort(key=lambda t: t[0])
 
     ifd_pos = 8
@@ -53,7 +60,11 @@ def write_geotiff(path, data, bits, sample_format, west, north, res_x, res_y, no
     blob_items = {}
     if nodata is not None:
         blob_items[42113] = (str(nodata) + '\0').encode('ascii')
-    blob_items[34264] = b''.join(struct.pack('<d', v) for v in transform)
+    if geo == 'matrix':
+        blob_items[34264] = b''.join(struct.pack('<d', v) for v in transform)
+    else:
+        blob_items[33922] = b''.join(struct.pack('<d', v) for v in tiepoint)
+        blob_items[33550] = b''.join(struct.pack('<d', v) for v in pixscale)
     off = data_start
     blob_offsets = {}
     for t, b in blob_items.items():
@@ -112,3 +123,10 @@ write_geotiff('test_uint8.tif', data2, 8, 1, west=-180.0, north=90.0, res_x=0.5,
 w3, h3 = 4, 4
 data3 = [[(r*5 + c*2) for c in range(w3)] for r in range(h3)]
 write_geotiff('test_tiled.tif', data3, 16, 2, west=0.0, north=1.0, res_x=0.25, res_y=0.25, nodata=-32768, tiled=True)
+
+# 走 Tiepoint + PixelScale 分支（真实 GDAL 单波段 DEM 最常见的写法）
+w4, h4 = 6, 6
+data4 = [[(100 + r*7 + c*5) for c in range(w4)] for r in range(h4)]
+data4[2][3] = -32768
+write_geotiff('test_tiepoint.tif', data4, 16, 2, west=8.0, north=47.0, res_x=0.02, res_y=0.02,
+              nodata=-32768, tiled=False, geo='tiepoint')
