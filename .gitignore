@@ -145,6 +145,10 @@ appsettings.*.json
 *.tgz
 *.bak
 
+# ---- 部署产物（由 scripts/deploy/build-package.sh 生成）----
+hexfront-deploy-*.tar.gz
+scripts/deploy/out/
+
 # ---- 数据库文件（开发 SQLite 按需排除，若要保留种子请注释下面两行） ----
 # *.db
 # *.sqlite
@@ -158,6 +162,9 @@ HexFront.CSharp/**/[Oo]bj/
 HexFront.CSharp/**/[Dd]ebug/
 HexFront.CSharp/**/[Rr]elease/
 HexFront.CSharp/**/*.binlog
+
+# ---- 前端构建产物（部署用 wwwroot，由打包脚本从 hexfront-react/dist 拷贝进来）----
+HexFront.CSharp/src/HexFront.Api/wwwroot/
 
 # ---- Python 缓存 ----
 __pycache__/

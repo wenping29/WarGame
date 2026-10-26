@@ -40,14 +40,25 @@ public sealed class AppDbService : IDisposable
         _logger.LogInformation("统一应用库就绪: {Db}", dbPath);
     }
 
+    /// <summary>仓库根：优先读 HF_REPO_ROOT 环境变量，否则按程序集位置向上 6 层（dotnet run 布局）。
+    /// 部署到 Linux 时用 HF_REPO_ROOT 指到解包根目录，规避 publish 后目录层级变化导致的定位错误。</summary>
+    private static string RepoRoot()
+    {
+        var env = Environment.GetEnvironmentVariable("HF_REPO_ROOT");
+        if (!string.IsNullOrEmpty(env)) return Path.GetFullPath(env);
+        var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+        var binDir = Path.GetDirectoryName(assemblyPath);
+        if (string.IsNullOrEmpty(binDir)) return Directory.GetCurrentDirectory();
+        return Path.GetFullPath(Path.Combine(binDir, "..", "..", "..", "..", "..", ".."));
+    }
+
     private static string DefaultDbPath()
     {
         var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
         var binDir = Path.GetDirectoryName(assemblyPath);
         if (string.IsNullOrEmpty(binDir)) return Path.Combine("HexFront.CSharp", "app.db");
-        // 6 级向上到 wargame 仓库根，再进 C# 项目根目录
-        var root = Path.GetFullPath(Path.Combine(binDir, "..", "..", "..", "..", "..", ".."));
-        return Path.Combine(root, "HexFront.CSharp", "app.db");
+        // HF_REPO_ROOT 覆盖根后，默认库路径 = <根>/HexFront.CSharp/app.db
+        return Path.Combine(RepoRoot(), "HexFront.CSharp", "app.db");
     }
 
     // ==================== Schema ====================
@@ -1179,10 +1190,7 @@ public sealed class AppDbService : IDisposable
     /// <summary>ops_log.db（旧推演流水库）→ app.db，成功后改名 .migrated。</summary>
     private void MigrateOpsLog()
     {
-        var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-        var binDir = Path.GetDirectoryName(assemblyPath);
-        if (string.IsNullOrEmpty(binDir)) return;
-        var root = Path.GetFullPath(Path.Combine(binDir, "..", "..", "..", "..", "..", ".."));
+        var root = RepoRoot();
         var oldPath = Path.Combine(root, "data", "ops_log.db");
         if (!File.Exists(oldPath)) return;
         try
@@ -1235,10 +1243,7 @@ public sealed class AppDbService : IDisposable
     /// <summary>scenario_feedback.json（旧反馈文件）→ feedback 表，成功后改名 .migrated。</summary>
     private void MigrateFeedbackFile()
     {
-        var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-        var binDir = Path.GetDirectoryName(assemblyPath);
-        if (string.IsNullOrEmpty(binDir)) return;
-        var root = Path.GetFullPath(Path.Combine(binDir, "..", "..", "..", "..", "..", ".."));
+        var root = RepoRoot();
         var oldPath = Path.Combine(root, "data", "scenario_feedback.json");
         if (!File.Exists(oldPath)) return;
         try
