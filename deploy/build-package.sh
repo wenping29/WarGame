@@ -4,7 +4,7 @@
 #
 # 产物：一个 tar.gz 部署包，内含
 #   hexfront/
-#     server/app.db                                 种子应用库（100MB）
+#     server/HexFront.Api/app.db                                 种子应用库（100MB）
 #     server/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish/  后端(linux-x64, 依赖运行时)
 #       └─ wwwroot/                                          React 构建产物（由 webfront/dist 拷贝）
 #     data/                                                  地图数据（约 2.8G，已剔除备份与密钥）
@@ -98,7 +98,7 @@ tar -czf "$OUT" -C "$REPO" \
   --exclude='tools/gis/__pycache__' \
   --exclude='tools/gis/dem_cache_rhine.json' \
   --exclude='*/__pycache__' \
-  "server/app.db" \
+  "server/HexFront.Api/app.db" \
   "server/src/HexFront.Api/bin/Release/net10.0/linux-x64/publish" \
   "data" \
   "tools"

@@ -12,7 +12,7 @@ using Microsoft.Data.Sqlite;
 namespace HexFront.Api.Services;
 
 /// <summary>
-/// 统一 SQLite 应用库（server/app.db，HF_APP_DB 可覆盖）：用户/角色/菜单/会话、
+/// 统一 SQLite 应用库（server/HexFront.Api/app.db，HF_APP_DB 可覆盖）：用户/角色/菜单/会话、
 /// 登录日志/查询日志/错误日志/用户反馈、推演操作流水、剧本目录、房间、已存副本。
 /// 全部管理类数据一个文件，写入失败只告警不打断主流程。
 /// </summary>
@@ -54,11 +54,17 @@ public sealed class AppDbService : IDisposable
 
     private static string DefaultDbPath()
     {
-        var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-        var binDir = Path.GetDirectoryName(assemblyPath);
-        if (string.IsNullOrEmpty(binDir)) return Path.Combine("server", "app.db");
-        // HF_REPO_ROOT 覆盖根后，默认库路径 = <根>/server/app.db
-        return Path.Combine(RepoRoot(), "server", "app.db");
+        // 部署：HF_REPO_ROOT 指到解包根，库随 Api 项目同目录（server/HexFront.Api/app.db）
+        var repoRoot = Environment.GetEnvironmentVariable("HF_REPO_ROOT");
+        if (!string.IsNullOrEmpty(repoRoot))
+            return Path.GetFullPath(Path.Combine(repoRoot, "server", "HexFront.Api", "app.db"));
+
+        // 开发：从程序集向上回溯到 HexFront.Api 项目目录（兼容 dotnet run / 本地 publish 层级差异），
+        // app.db 与 .csproj 同目录。
+        var dir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+        while (!string.IsNullOrEmpty(dir) && !File.Exists(Path.Combine(dir, "HexFront.Api.csproj")))
+            dir = Path.GetDirectoryName(dir);
+        return Path.Combine(dir ?? Directory.GetCurrentDirectory(), "app.db");
     }
 
     // ==================== Schema ====================

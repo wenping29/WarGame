@@ -14,11 +14,9 @@ $RECYCLE.BIN/
 .LSOverride
 Icon
 
-
-
 # ---- Node.js ----
-node_modules/
-deploy/dist/
+webfront/node_modules/
+webfront/dist/
 
 
 ## .NET 隐藏文件夹
@@ -46,11 +44,6 @@ server/data/dem/tiles_z7/
 server/data/dem/*.tif
 server/data/dem/*.tif.ovr
 server/data/gis/*.lpk
-
-
-## Windows系统
-webapi/Thumbs.db
-webapi/.DS_Store
 
 # ---- 编辑器 / IDE ----
 .idea/
@@ -138,7 +131,7 @@ server/**/[Rr]elease/
 server/**/*.binlog
 
 # ---- 前端构建产物（部署用 wwwroot，由打包脚本从 hexfront-react/dist 拷贝进来）----
-HexFront.CSharp/src/HexFront.Api/wwwroot/
+server/HexFront.Api/wwwroot/
 
 # ---- Python 缓存 ----
 __pycache__/

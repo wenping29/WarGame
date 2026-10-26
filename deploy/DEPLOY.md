@@ -13,7 +13,7 @@
                                 ├─ /api/*          ← REST 控制器
                                 ├─ /ws             ← 原生 WebSocket 会话
                                 ├─ data/           ← 地图数据（运行时读取，含 dem/gis/hexgrids/scenarios…）
-                                └─ server/app.db  ← 种子应用库（用户/角色/菜单，运行时写入）
+                                └─ server/HexFront.Api/app.db  ← 种子应用库（用户/角色/菜单，运行时写入）
 ```
 
 - 前端构建产物 `webfront/dist/` 在打包时被拷贝进 `server/src/HexFront.Api/wwwroot/`，`dotnet publish` 会把它带进发布输出；`Program.cs` 在 `wwwroot` 存在时启用静态托管与路径路由 fallback（`/room/XXXX/red` 刷新不 404）。
@@ -27,7 +27,7 @@
 
 | 路径 | 大小(约) | 说明 |
 |---|---|---|
-| `server/app.db` | 100 MB | 种子应用库（用户/角色/菜单/会话；运行时写入推演流水与存档索引） |
+| `server/HexFront.Api/app.db` | 100 MB | 种子应用库（用户/角色/菜单/会话；运行时写入推演流水与存档索引） |
 | `server/.../publish/` | 数 MB | 后端发布输出（linux-x64，依赖运行时），内含 `wwwroot/` 前端 |
 | `data/dem/` | **2.6 GB** | 数字高程模型（地形），占数据绝大多数 |
 | `data/gis/` | 124 MB | GIS 数据包（真实栅格生成产出与缓存） |
@@ -108,7 +108,7 @@ sudo bash server-setup.sh /tmp/hexfront-deploy-*.tar.gz        # 默认装到 /s
 |---|---|
 | `HF_REPO_ROOT` | 解包根目录（如 `/srv/hexfront`）。后端据此定位 `data/` 与 `app.db` |
 | `HF_DATA_DIR` | 覆盖 `data/` 位置（数据单独挂盘时用） |
-| `HF_APP_DB` | 覆盖应用库路径（默认 `<HF_REPO_ROOT>/server/app.db`） |
+| `HF_APP_DB` | 覆盖应用库路径（默认 `<HF_REPO_ROOT>/server/HexFront.Api/app.db`） |
 | `ASPNETCORE_ENVIRONMENT` | `Production`（关闭 Swagger） |
 | `ASPNETCORE_URLS` | `http://0.0.0.0:5018` |
 | `HF_ALLOWED_ORIGINS` | 仅当浏览器直连 `:5018` 且不同源时需要（单进程同源可留空） |
