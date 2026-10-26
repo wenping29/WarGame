@@ -44,12 +44,45 @@ public sealed class AppDbService : IDisposable
     /// 否则从程序集向上回溯到名为 "server" 且含 HexFront.Api 的目录。
     /// 取代原先硬编码"向上 6 层"的写法——目录扁平化（server/HexFront.Api 不再含 src）后层级已变，数层数会指错。
     /// 所有 data 类路径（scenarios/saves/gis/hexgrids/app.db）均相对 server 目录。</summary>
-    public static string ServerRoot()
+    public static string ServerRoot() => ResolveServerRoot(
+        Environment.GetEnvironmentVariable("HF_REPO_ROOT"),
+        Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location)
+            ?? Directory.GetCurrentDirectory());
+
+    /// <summary>
+    /// 解析 server 根目录（含 HexFront.Api 与 data）。抽成纯函数是为了能在单测里直接验证各种目录布局，
+    /// 不必真起进程、也不受并行测试改环境变量的干扰。
+    ///
+    /// HF_REPO_ROOT 有两种常见写法，都要支持（写错任一种都会让所有 data 路径整体偏移一层）：
+    ///   A) 指向「解压根」——其下有 server/ 子目录。例：/www/wwwroot/wargame
+    ///   B) 直接指向「server 目录本身」。例：/www/wwwroot/wargame/server
+    /// 早期实现只认 A，B 会拼出 server/server（剧本目录变成 .../server/server/data/scenarios，直接读不到）。
+    /// </summary>
+    internal static string ResolveServerRoot(string? configuredRoot, string probeStartDir)
     {
-        var repoRoot = Environment.GetEnvironmentVariable("HF_REPO_ROOT");
-        if (!string.IsNullOrEmpty(repoRoot))
-            return Path.GetFullPath(Path.Combine(repoRoot, "server"));
-        var dir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+        if (!string.IsNullOrWhiteSpace(configuredRoot))
+        {
+            var full = Path.GetFullPath(configuredRoot.Trim());
+
+            // 写法 B：目录名本身就是 server，直接用，不再重复拼一层。
+            if (string.Equals(Path.GetFileName(full), "server", StringComparison.OrdinalIgnoreCase))
+                return full;
+
+            // 写法 A：解压根，其下的 server/ 里含 HexFront.Api。
+            var nested = Path.Combine(full, "server");
+            if (Directory.Exists(Path.Combine(nested, "HexFront.Api")))
+                return Path.GetFullPath(nested);
+
+            // 目录被改过名：HF_REPO_ROOT 指向的目录里直接躺着 HexFront.Api。
+            if (Directory.Exists(Path.Combine(full, "HexFront.Api")))
+                return full;
+
+            // 都没命中：按标准布局拼 server（保持旧行为，让首次部署时目录能被自动创建出来）。
+            return Path.GetFullPath(nested);
+        }
+
+        // 开发/本机运行：没有环境变量时，从程序集位置回溯，找名为 server 且含 HexFront.Api 的目录。
+        var dir = probeStartDir;
         while (!string.IsNullOrEmpty(dir))
         {
             if (string.Equals(Path.GetFileName(dir), "server", StringComparison.OrdinalIgnoreCase)
@@ -57,17 +90,18 @@ public sealed class AppDbService : IDisposable
                 return Path.GetFullPath(dir);
             dir = Path.GetDirectoryName(dir);
         }
-        return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "server"));
+        return Path.GetFullPath(Path.Combine(probeStartDir, "server"));
     }
 
     private static string DefaultDbPath()
     {
-        // 部署：HF_REPO_ROOT 指到解包根，库随 Api 项目同目录（server/HexFront.Api/app.db）
-        var repoRoot = Environment.GetEnvironmentVariable("HF_REPO_ROOT");
-        if (!string.IsNullOrEmpty(repoRoot))
-            return Path.GetFullPath(Path.Combine(repoRoot, "server", "HexFront.Api", "app.db"));
+        // app.db 固定落在 server/HexFront.Api/app.db，与 ServerRoot() 用同一套解析，
+        // 避免两处各自拼路径导致「库和 data 目录不在一棵树上」。
+        var apiDir = Path.Combine(ServerRoot(), "HexFront.Api");
+        if (Directory.Exists(apiDir))
+            return Path.Combine(apiDir, "app.db");
 
-        // 开发：从程序集向上回溯到 HexFront.Api 项目目录（兼容 dotnet run / 本地 publish 层级差异），
+        // 兜底（目录被改名、server 目录尚未创建等）：从程序集上溯找 HexFront.Api.csproj 同级目录，
         // app.db 与 .csproj 同目录。
         var dir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
         while (!string.IsNullOrEmpty(dir) && !File.Exists(Path.Combine(dir, "HexFront.Api.csproj")))

@@ -16,4 +16,9 @@
     <ProjectReference Include="..\HexFront.Core\HexFront.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 让单测能直接验证内部的路径解析纯函数（ResolveServerRoot） -->
+    <InternalsVisibleTo Include="HexFront.Tests" />
+  </ItemGroup>
+
 </Project>
