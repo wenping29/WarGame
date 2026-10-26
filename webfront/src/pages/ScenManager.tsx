@@ -1,13 +1,15 @@
 /**
  * 剧本管理页：左栏剧本列表（按分期分组 + 内容反馈徽标），
- * 右栏分节编辑器（基本信息 / 环境 / 模式与日夜 / 天气 / 胜负 / 部队编制 / JSON 源）。
+ * 右栏分节编辑器（基本信息 / 环境 / 模式与日夜 / 天气 / 胜负 / 部队编制 / JSON 源），
+ * 其中部队编制可在地图上拖动兵种改落位（写回 oob[].at = [q, r]）。
  * 编辑基于剧本全文深拷贝原地改，保存前规范化数字字段并走服务端校验，落盘自动备份；
  * 内容错误反馈走服务端 SQLite 应用库（/api/scenadmin/feedback 提交/列表/删除）。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, netError, type FeedbackEntry, type HexGridMeta, type ScenarioInfo } from '../services/api'
+import { api, netError, type FeedbackEntry, type HexGridDoc, type HexGridMeta, type ScenarioInfo } from '../services/api'
 import { useMeta } from '../room/useUnitFull'
+import GeoMapView, { type HexOverlay, lngToMx, latToMy, mxToLng, myToLat } from '../components/GeoMapView'
 import HexGenPanel, { defaultGenForm, type GisGenForm } from '../components/HexGenPanel'
 import { toast } from '../components/Toast'
 
@@ -116,6 +118,171 @@ function normalizeDoc(d: Doc) {
 
 const numInput = (v: unknown) => (v == null ? '' : String(v))
 
+/* ==================== 部队编制落位地图 ==================== */
+
+const SQRT3 = Math.sqrt(3)
+const SIDE_COLOR = { red: '#e07a6a', blue: '#7aa7e0' } as const
+const sideLabel = (s: string) => (s === 'red' ? '红方' : s === 'blue' ? '蓝方' : s)
+
+/** 网面几何：hex(0,0) 中心的墨卡托米坐标 + 外接圆半径（与引擎 HexGrid.Center 同口径：r 增大向南） */
+interface DeployGeo {
+  ox: number
+  oy: number
+  radius: number
+  rows: number
+  cols: number
+  holes: Set<string>
+  terrains: Record<string, string>
+}
+
+/**
+ * 编制落位地图：几何优先取剧本绑定的六角格网络包，未绑定或包缺失时按 environment
+ * 程序化网格出图（底图仅供参照，落位以格坐标为准）。拖动圆点即写回 sides.<side>.oob[i].at = [q, r]。
+ */
+function OobDeployMap({ doc, upd, sel, onSelect }: {
+  doc: Doc
+  upd: (fn: (d: Doc) => void) => void
+  sel: string
+  onSelect: (k: string) => void
+}) {
+  const hgId = doc.hexgrid ? String(doc.hexgrid) : ''
+  // 读取结果按包 id 存着，渲染时比对 id：换绑无需在 effect 里复位，省掉一轮级联渲染
+  const [pkgState, setPkgState] = useState<{ id: string; grid: HexGridDoc } | null>(null)
+  const [errState, setErrState] = useState<{ id: string; msg: string } | null>(null)
+  const pkg = pkgState?.id === hgId ? pkgState.grid : null
+  const pkgErr = errState?.id === hgId ? errState.msg : ''
+  const [warn, setWarn] = useState('')
+
+  useEffect(() => {
+    if (!hgId) return
+    let dead = false
+    api.hexgridGet(hgId)
+      .then(r => { if (!dead) setPkgState({ id: hgId, grid: r.grid }) })
+      .catch(e => {
+        if (!dead) setErrState({ id: hgId, msg: `网格包 ${hgId} 读取失败：${netError(e)}（已按环境参数出图）` })
+      })
+    return () => { dead = true }
+  }, [hgId])
+
+  // 兜底几何的入参取原始值：doc 每次编辑都是整体深拷贝，直接用对象引用会让地图反复复位
+  const env = (doc.environment || {}) as Doc
+  const eW = toInt(env.width, 20)
+  const eH = toInt(env.height, 16)
+  const eKm = toFloat(env.cell_km, 2.5)
+  const eLng = +env.center_lonlat?.[0]
+  const eLat = +env.center_lonlat?.[1]
+
+  const geo = useMemo<DeployGeo | null>(() => {
+    if (pkg) {
+      const radius = pkg.flat_to_flat / SQRT3
+      return {
+        ox: lngToMx(pkg.west) + (SQRT3 / 2) * radius,
+        oy: latToMy(pkg.south) + radius,
+        radius,
+        rows: Math.max(1, toInt(pkg.rows, 1)),
+        cols: Math.max(1, toInt(pkg.cols, 1)),
+        holes: new Set(pkg.holes || []),
+        terrains: pkg.terrains || {},
+      }
+    }
+    const cols = Math.max(1, eW)
+    const rows = Math.max(1, eH)
+    // 墨卡托半径 = 地面格距 ×(1/cos 纬度)÷√3，与后端 BuildProceduralGrid 同式
+    const radius = (Math.max(0.1, eKm) * 1000) / SQRT3 / Math.cos(((Number.isFinite(eLat) ? eLat : 35) * Math.PI) / 180)
+    const cx = lngToMx(Number.isFinite(eLng) ? eLng : 110)
+    const cy = latToMy(Number.isFinite(eLat) ? eLat : 35)
+    return {
+      ox: cx - (SQRT3 * radius * (cols - 0.5)) / 2,
+      oy: cy + (radius * (1.5 * rows - 2)) / 2,
+      radius, rows, cols,
+      holes: new Set<string>(),
+      terrains: {},
+    }
+  }, [pkg, eW, eH, eKm, eLng, eLat])
+
+  const marks = useMemo(() => {
+    const out: Array<{ q: number; r: number; color: string; dirty: boolean; k: string; text: string }> = []
+    for (const side of ['red', 'blue'] as const) {
+      const list: Doc[] = doc.sides?.[side]?.oob || []
+      list.forEach((e, i) => {
+        const q = toInt(e.at?.[0], -1)
+        const r = toInt(e.at?.[1], -1)
+        out.push({
+          q, r,
+          color: SIDE_COLOR[side],
+          dirty: sel === `${side}.${i}`,
+          k: `${side}.${i}`,
+          text: `${sideLabel(side)} ${e.type || '?'} ×${toInt(e.qty, 1)} @ [${q}, ${r}]`,
+        })
+      })
+    }
+    return out
+  }, [doc, sel])
+
+  const overlay: HexOverlay | null = useMemo(() => (geo ? {
+    west: mxToLng(geo.ox),
+    south: myToLat(geo.oy),
+    rows: geo.rows,
+    cols: geo.cols,
+    size: geo.radius,
+    holes: [...geo.holes],
+    terrains: geo.terrains,
+    southward: true,
+    markers: marks.map(m => ({ q: m.q, r: m.r, color: m.color, dirty: m.dirty })),
+  } : null), [geo, marks])
+
+  const fit = useMemo(() => (geo ? {
+    bbox: {
+      west: mxToLng(geo.ox - (SQRT3 / 2) * geo.radius),
+      east: mxToLng(geo.ox + SQRT3 * geo.radius * geo.cols),
+      south: myToLat(geo.oy - geo.radius * (1.5 * geo.rows - 1)),
+      north: myToLat(geo.oy + geo.radius),
+    },
+    nonce: hgId ? 2 : 1,
+  } : null), [geo, hgId])
+
+  const moveTo = (idx: number, q: number, r: number) => {
+    const m = marks[idx]
+    if (!m) return
+    onSelect(m.k)
+    if (geo?.holes.has(`${q},${r}`)) {
+      setWarn(`格 (${q}, ${r}) 已挖除，不能作为落位点`)
+      return
+    }
+    setWarn('')
+    if (m.q === q && m.r === r) return
+    const [side, i] = m.k.split('.')
+    upd(d => setIn(d, `sides.${side}.oob.${i}.at`, [q, r]))
+  }
+
+  const selMark = marks.find(m => m.k === sel)
+
+  return (
+    <div className="scm-oob-map">
+      <GeoMapView mode="move" overlay={overlay} fit={fit}
+        onMarkerClick={i => { const m = marks[i]; if (m) onSelect(m.k) }}
+        onMarkerMove={moveTo} />
+      <div className="scm-oob-cap">
+        <span className="muted small">
+          {pkg
+            ? `网格包 ${hgId} · ${geo?.rows}×${geo?.cols} 格`
+            : hgId
+              ? `按环境出图 ${geo?.rows}×${geo?.cols} 格（绑定的网格包不可用）`
+              : `未绑定网格包：按战场环境出图 ${geo?.rows}×${geo?.cols} 格（底图仅供参照，落位以格坐标为准）`}
+        </span>
+        {selMark && <b className="small mono">{selMark.text}</b>}
+      </div>
+      {(pkgErr || warn) && <div className="scm-oob-warn">{pkgErr || warn}</div>}
+      <div className="sv-units-legend">
+        <span><i style={{ background: SIDE_COLOR.red }} /> 红方</span>
+        <span><i style={{ background: SIDE_COLOR.blue }} /> 蓝方</span>
+        <span><i className="ring" /> 选中</span>
+        <span className="muted small">拖动圆点改落位 · 空白处拖动 = 平移 · 滚轮 = 缩放</span>
+      </div>
+    </div>
+  )
+}
+
 export default function ScenManager() {
   const meta = useMeta()
   const [selId, setSelId] = useState('')
@@ -128,6 +295,8 @@ export default function ScenManager() {
   const [search, setSearch] = useState('')
   const [jsonText, setJsonText] = useState('')
   const [fbOpen, setFbOpen] = useState(false)
+  const [oobSel, setOobSel] = useState('')
+  const [oobOpen, setOobOpen] = useState(false)
   const [fbAll, setFbAll] = useState<FeedbackEntry[]>([])
   const [fbKind, setFbKind] = useState(FB_KINDS[0])
   const [fbDetail, setFbDetail] = useState('')
@@ -222,6 +391,7 @@ export default function ScenManager() {
     setHgPick('')
     setGisOpen(false)
     setGisForm(defaultGenForm)
+    setOobSel('')
     try {
       const r = await api.scenDetail(id)
       if (seq !== openSeq.current) return
@@ -399,7 +569,8 @@ export default function ScenManager() {
             </tr></thead>
             <tbody>
               {rows.map((row, i) => (
-                <tr key={i}>
+                <tr key={i} className={oobSel === `${side}.${i}` ? 'on' : ''}
+                  onClick={() => setOobSel(`${side}.${i}`)}>
                   {(['type', 'qty', 'at.0', 'at.1', 'training', 'experience', 'morale'] as const).map(p => (
                     <td key={p}>
                       {p === 'type' ? (
@@ -684,8 +855,9 @@ export default function ScenManager() {
                 })}>＋ 增一条判定</button>
               </details>
 
-              <details className="scm-sec">
-                <summary>部队编制</summary>
+              <details className="scm-sec" onToggle={e => setOobOpen((e.target as HTMLDetailsElement).open)}>
+                <summary>部队编制{oobOpen && <span className="cnt">{((doc.sides?.red?.oob || []) as Doc[]).length + ((doc.sides?.blue?.oob || []) as Doc[]).length} 条</span>}</summary>
+                {oobOpen && <OobDeployMap doc={doc} upd={upd} sel={oobSel} onSelect={setOobSel} />}
                 <OobTable side="red" />
                 <OobTable side="blue" />
               </details>

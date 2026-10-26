@@ -1,7 +1,7 @@
 /**
- * 在线地图 + 六角格网叠加视图（GridManager 专用地图引擎）。
+ * 在线地图 + 六角格网叠加视图（六角格/存档/剧本共用的地图引擎）。
  * 天地图 WMTS（EPSG:3857）为底图，六角格以墨卡托米计（与主地图约定一致），
- * 支持浏览/框选范围/拾取坐标/涂刷挖格补格等模式。由 GridManager 常驻挂载。
+ * 支持浏览/框选范围/拾取坐标/涂刷挖格补格/拖动单位落位（move）等模式。
  *
  * 性能要点（基准：8816 格 fill≈1ms，路径构建≈390ms，构建是唯一瓶颈）：
  * - 底层格网路径缓存为世界坐标（相对网格锚点）Path2D，平移/缩放零重建，仅几何变化时
@@ -60,7 +60,7 @@ export interface BBox {
   east: number
   north: number
 }
-export type MapMode = 'pan' | 'paint' | 'dig' | 'fill' | 'frame' | 'pick'
+export type MapMode = 'pan' | 'paint' | 'dig' | 'fill' | 'frame' | 'pick' | 'move'
 
 /** 六角格网叠加：SW 锚点（经纬度）+ 行列 + 外接圆半径（墨卡托米） */
 export interface HexOverlay {
@@ -88,6 +88,10 @@ interface Props {
   onFrame?: (b: BBox) => void
   onPick?: (lng: number, lat: number) => void
   onCellClick?: (k: string | null) => void
+  /** mode='move'：拖起 overlay.markers 里的某个标记（按下即触发，便于选中联动） */
+  onMarkerClick?: (index: number) => void
+  /** mode='move'：拖动标记落到新格（q=列、r=行，按网面吸附，越界/挖除由调用方判定） */
+  onMarkerMove?: (index: number, q: number, r: number) => void
   /** 变更 nonce 时飞到 bbox 范围 */
   fit?: { bbox: BBox; nonce: number } | null
   /** 常驻显示的框选范围矩形（随视图缩放平移） */
@@ -145,7 +149,7 @@ function buildLine(pts: number[], path: Path2D) {
 
 const ckey = (col: number, row: number) => `${col},${row}`
 
-export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick, fit, range, gis, canvasOnly }: Props) {
+export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick, onMarkerClick, onMarkerMove, fit, range, gis, canvasOnly }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewRef = useRef<View>({ cx: lngToMx(107), cy: latToMy(34), scale: (256 * Math.pow(2, 5)) / (2 * E) })
@@ -156,6 +160,7 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
   const paintingRef = useRef(false)
   const lastCellRef = useRef<string | null>(null)
   const hoverRef = useRef<string | null>(null)
+  const markerDragRef = useRef<{ idx: number; last: string | null } | null>(null)
   const deadRef = useRef(0)
   const baseRef = useRef<BaseCache | null>(null)
   const terrCacheRef = useRef<SmallCache | null>(null)
@@ -174,7 +179,7 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
   const bmRef = useRef(basemap)
   const tkRef = useRef(tk)
   const coRef = useRef(canvasOnly)
-  const cbRef = useRef({ onFrame, onPick, onCellClick })
+  const cbRef = useRef({ onFrame, onPick, onCellClick, onMarkerClick, onMarkerMove })
   modeRef.current = mode
   overlayRef.current = overlay
   rangeRef.current = range
@@ -182,7 +187,7 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
   bmRef.current = basemap
   tkRef.current = tk
   coRef.current = canvasOnly
-  cbRef.current = { onFrame, onPick, onCellClick }
+  cbRef.current = { onFrame, onPick, onCellClick, onMarkerClick, onMarkerMove }
 
   const schedule = useCallback(() => {
     if (rafRef.current) return
@@ -306,6 +311,30 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
       }
     }
     return best
+  }
+
+  /** 格 (col,row) 中心的墨卡托坐标（与 draw 里悬停/标记的定位同式） */
+  const cellCenterM = (o: HexOverlay, col: number, row: number): [number, number] => [
+    lngToMx(o.west) + SQRT3 * o.size * (col + 0.5 * (row & 1)),
+    latToMy(o.south) + (o.southward ? -1.5 : 1.5) * o.size * row,
+  ]
+
+  /** 屏幕点 → 命中的标记序号（后画的在上层，故倒序找；容差与绘制半径同式再 +4px） */
+  const hitMarker = (px: number, py: number): number | null => {
+    const o = overlayRef.current
+    const marks = o?.markers
+    if (!o || !marks?.length) return null
+    const [mx, my] = toMeters(px, py)
+    const v = viewRef.current
+    const grabPx = Math.max(3, Math.min(8, o.size * v.scale * 0.3)) + 4
+    const grab = grabPx / v.scale
+    for (let i = marks.length - 1; i >= 0; i--) {
+      const m = marks[i]
+      if (!Number.isInteger(m.q) || !Number.isInteger(m.r) || m.q < 0 || m.q >= o.cols || m.r < 0 || m.r >= o.rows) continue
+      const [gx, gy] = cellCenterM(o, m.q, m.r)
+      if ((mx - gx) ** 2 + (my - gy) ** 2 <= grab * grab) return i
+    }
+    return null
   }
 
   /* ---------- 绘制 ---------- */
@@ -548,7 +577,7 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
         }
         // 悬停高亮（ref，不触发重渲染）
         const hv = hoverRef.current
-        if (hv && (modeRef.current === 'paint' || modeRef.current === 'dig' || modeRef.current === 'fill')) {
+        if (hv && (modeRef.current === 'paint' || modeRef.current === 'dig' || modeRef.current === 'fill' || modeRef.current === 'move')) {
           const [hc, hr] = hv.split(',').map(Number)
           if (hc < o.cols && hr < o.rows) {
             const gx = westM + SQRT3 * o.size * (hc + 0.5 * (hr & 1))
@@ -774,6 +803,34 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
     const px = e.clientX - rect.left
     const py = e.clientY - rect.top
     const m = modeRef.current
+    if (m === 'move') {
+      const idx = hitMarker(px, py)
+      if (idx !== null) {
+        markerDragRef.current = { idx, last: null }
+        hoverRef.current = hitCell(px, py)
+        cbRef.current.onMarkerClick?.(idx)
+        schedule()
+        const moveMk = (ev: MouseEvent) => {
+          const k = hitCell(ev.clientX - rect.left, ev.clientY - rect.top)
+          if (k !== hoverRef.current) { hoverRef.current = k; schedule() }
+          const d = markerDragRef.current
+          if (!k || !d || k === d.last) return
+          d.last = k
+          const [c, r] = k.split(',').map(Number)
+          cbRef.current.onMarkerMove?.(idx, c, r)
+        }
+        const upMk = () => {
+          window.removeEventListener('mousemove', moveMk)
+          window.removeEventListener('mouseup', upMk)
+          markerDragRef.current = null
+          schedule()
+        }
+        window.addEventListener('mousemove', moveMk)
+        window.addEventListener('mouseup', upMk)
+        return
+      }
+      // 空白处按下：不吞掉，继续走下方平移分支
+    }
     if (m === 'frame') {
       bandRef.current = { ax: px, ay: py, bx: px, by: py }
     } else if (m === 'pick') {
@@ -826,7 +883,7 @@ export default function GeoMapView({ mode, overlay, onFrame, onPick, onCellClick
   /** 涂刷拖动 + 悬停（ref 驱动，无 React 重渲染） */
   const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const m = modeRef.current
-    if (m === 'paint' || m === 'dig' || m === 'fill') {
+    if (m === 'paint' || m === 'dig' || m === 'fill' || m === 'move') {
       if (paintingRef.current) applyCellAt(e)
       const wrap = wrapRef.current
       if (wrap) {

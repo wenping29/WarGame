@@ -907,6 +907,13 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent); width:15px; h
 .scm-hex-bind{display:flex; align-items:center; gap:10px; font-size:13px; flex-wrap:wrap}
 .scm-hex-bind code{background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:2px 6px}
 .scm-oob-scroll{overflow-x:auto}
+/* 部队编制落位地图（拖动圆点写回 oob[].at = [q, r]） */
+.scm-oob-map{position:relative; height:420px; border:1px solid var(--line); border-radius:6px; overflow:hidden; margin:6px 0 10px}
+.scm-oob-cap{position:absolute; left:8px; top:8px; display:flex; flex-direction:column; gap:2px;
+  max-width:calc(100% - 190px); padding:5px 10px; background:rgba(10,16,22,.78); border-radius:5px; pointer-events:none}
+.scm-oob-warn{position:absolute; left:8px; top:52px; font-size:12px; color:#f2c079;
+  background:rgba(10,16,22,.82); padding:4px 10px; border-radius:4px; pointer-events:none}
+.oob-table tr.on{background:rgba(240,220,140,.13)}
 .scm-json{
   width:100%; background:var(--bg); color:var(--fg); border:1px solid var(--line);
   border-radius:4px; font-family:var(--mono); font-size:12px; line-height:1.5; resize:vertical;
