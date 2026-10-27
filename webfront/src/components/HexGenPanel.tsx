@@ -62,7 +62,7 @@ function capsNotes(caps: GisCapabilities | null, f: GisGenForm): string[] {
     const out: string[] = []
     const dem = caps.remote.dem
     if (dem && dem.real_tiles_available === false)
-      out.push(`生成服务未发现本地真实地形瓦片（${dem.terrain_dir || '?'}）⇒ 高程将退回合成地形。`)
+      out.push(`生成服务未发现本地真实地形瓦片（${dem.terrain_dir || '?'}）⇒ 高程将退回合成地形。请把 GisApi 的 TerrainDir（Linux 写 TerrainDirLinux）指向含 terrain_manifest.json 与 *.ter 的目录（发布包内为 server/data/terrain）。`)
     else if (dem && dem.effective_real === false)
       out.push('生成服务当前按合成地形跑（dem 档位不是真实数据）⇒ 高程为确定性噪声代理。')
     if (dem && dem.effective_real && dem.real_tiles_has_landcover === false)

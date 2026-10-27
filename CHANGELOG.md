@@ -7,6 +7,25 @@ HEXFRONT-WEB 从 Dart `hexfront/` + 原生 JS `web/` 迁移到 C# `server/` + Re
 - 进度全景（哪些搬完、哪些没搬）看 [MIGRATION-STATUS.md](MIGRATION-STATUS.md)。
 - 括号里是 git 提交短码，只对能从提交信息确认的条目标注。
 
+## 2026-10-27 · GisApi 路径配置跨平台 + Windows 打包脚本
+
+**新增**：`server/HexFront.GisApi/src/GisApiOptions.cs` 路径键从 2 个扩到 6 个——`TerrainDir`/`DataDir` 之外增加 `TerrainDirWindows`/`TerrainDirLinux`/`DataDirWindows`/`DataDirLinux`。运行时按当前系统优先取特化键、取不到回退通用键、都留空再按 `HF_REPO_ROOT` 推导默认值（`<repoRoot>/data/terrain`、`<repoRoot>/data/gis-api`）。**同一份 appsettings.json 即可在 Windows 与 Linux 间通用**，不必为不同系统维护两份文件。
+
+**新增**：`GisApiService` 里 `SelectPlatformPath`（选键）+ `NormalizePath`（归一：展开 `$ENV`/`%ENV%`、展开 `~` 为用户主目录、统一 `/` 分隔符）+ `ResolveDir` 支持相对路径按仓库根解析。生成数据的存储目录（`DataDir` → 其下 `jobs/` 作业记录与 `grids/` 六角格包体）从此可配置。
+
+**新增**：`deploy/build-release-zip.bat`（Windows 版发布包构建入口，与 `deploy/build-release-zip.sh` 等价，共用 `deploy/tools/pack_release.py`）。实跑验证：前端构建 → 后端 publish → 生成服务 publish → WAL checkpoint → 打包 5 步全通，产出 195 文件 / 2.0GB，zip 全量 CRC 校验通过。
+
+**修复（踩坑）**：`.bat` 文件的编码/换行有三条硬约束，实测踩过——
+① **不能用 `chcp 65001`**：在 UTF-8 批处理里改代码页，cmd.exe 会在**错误的字节偏移**上继续执行，文件头的 `REM` 注释行被当成命令执行（报一堆"不是内部或外部命令"）。矩阵实测：`chcp` 有无 × 编码 UTF-8/GBK × 换行 CRLF/LF 共 8 组，只有**纯 ASCII + CRLF + 无 chcp** 的组合输出干净。
+② **必须 CRLF**：LF-only 的 .bat 同样会让 cmd.exe 解析错位。
+③ 文件正文保持**纯 ASCII**（注释与提示用英文），避免任何代码页依赖。
+
+**文档**：`deploy/release/DEPLOY.md` §4.1 补「路径跨系统通用」说明（通用键 + 系统特化键的选键规则、支持的路径写法）。
+
+**注意**：`server/HexFront.GisApi/appsettings.json` 的 `//` 注释被移除（提交 `26021c7`）——本项目的 appsettings.json 保持**纯 JSON 无注释**，配置含义的说明放在 C# 侧注释与 DEPLOY.md 里。
+
+---
+
 ## 2026-10-18 · P7-f 性能基线（#93）
 
 两条一直显式挂着的验收线补齐：**14 回合全 AI < 5s**、**地图缩放/拖拽/双击 60fps**。数字与口径的唯一出处仍是 §13.6，这里只记当时是什么数。

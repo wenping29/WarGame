@@ -315,6 +315,12 @@ systemctl restart hexfront
 VITE_TIANDITU_TK="你的前端专属token" bash deploy/build-release-zip.sh
 ```
 
+Windows 上用等价的 `deploy\build-release-zip.bat`（同一套打包逻辑，两个入口共用 `deploy/tools/pack_release.py`）：
+
+```bat
+set VITE_TIANDITU_TK=你的前端专属token && deploy\build-release-zip.bat
+```
+
 或写进 `webfront/.env.production` 再构建：
 
 ```

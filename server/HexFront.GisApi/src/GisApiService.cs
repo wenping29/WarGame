@@ -10,6 +10,7 @@ using HexFront.Core.Models;
 using HexFront.Core.Services;
 using HexFront.Core.Validation;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace HexFront.GisApi;
 
@@ -26,6 +27,7 @@ public sealed class GisApiService
     private readonly string _jobsDir;
     private readonly string _gridsDir;
     private readonly TerrainSampler? _sampler;
+    private readonly ILogger<GisApiService> _logger;
 
     private readonly object _gate = new();
     private readonly Dictionary<string, GisJob> _jobs = new();
@@ -40,8 +42,9 @@ public sealed class GisApiService
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
     };
 
-    public GisApiService(IConfiguration cfg)
+    public GisApiService(IConfiguration cfg, ILogger<GisApiService> logger)
     {
+        _logger = logger;
         var opt = cfg.GetSection("GisApi").Get<GisApiOptions>() ?? new GisApiOptions();
         var repo = RepoLocator.ResolveRepoRoot();
 
@@ -60,8 +63,39 @@ public sealed class GisApiService
         if (Directory.Exists(_terrainDir))
             _sampler = new TerrainSampler(_terrainDir);
 
+        // 把判定用的真实路径与命中情况打进日志：地形静默回落时，运维可直接从日志定位配置错误
+        _logger.LogInformation("GisApi 数据路径：terrain_dir={TerrainDir}（配置源={TerrainSrc}）, data_dir={DataDir}",
+            _terrainDir, DescribeSource(terrainConfigured, opt), _dataDir);
+        if (_sampler is null)
+        {
+            _logger.LogWarning("地形目录不存在，将回落合成地形：{Dir}", _terrainDir);
+        }
+        else if (!_sampler.Available)
+        {
+            _logger.LogWarning("地形目录已存在但未发现 terrain_manifest.json 或 .ter 瓦片，将回落合成地形：{Dir}。" +
+                "请把 GisApi 的 TerrainDir（Linux 用 TerrainDirLinux）指向含 terrain_manifest.json 的目录。",
+                _terrainDir);
+        }
+        else
+        {
+            _logger.LogInformation("地形瓦片已加载（真实 DEM），含土地覆盖={HasLandcover}：{Dir}",
+                _sampler.HasLandcover, _terrainDir);
+        }
+
         LoadJobs();
         StartWorker();
+    }
+
+    /// <summary>记录地形目录来自哪个配置键，便于日志里一眼看出是特化键还是默认值。</summary>
+    private static string DescribeSource(string? configured, GisApiOptions opt)
+    {
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            if (OperatingSystem.IsLinux() && !string.IsNullOrWhiteSpace(opt.TerrainDirLinux)) return "TerrainDirLinux";
+            if (OperatingSystem.IsWindows() && !string.IsNullOrWhiteSpace(opt.TerrainDirWindows)) return "TerrainDirWindows";
+            return "TerrainDir";
+        }
+        return "默认 data/terrain";
     }
 
     // ==================== 能力查询 ====================

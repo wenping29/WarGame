@@ -1,1 +1,6 @@
-./build-release-zip.sh
+d:
+
+
+
+
+git .\build-release-zip.sh

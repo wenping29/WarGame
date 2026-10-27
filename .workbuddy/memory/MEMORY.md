@@ -69,6 +69,17 @@ API_BASE_URL="http://api.<后端域名>/api" bash deploy/build-release-zip.sh
 - **CORS 方法表**：前端除 GET/POST 外还有 PUT（副本单位编辑）、DELETE，漏一个在跨源部署时预检就 403。
 - **.ter 瓦片坐标换算是闭区间**：`col = clamp(floor((lon-west)/resLon), 0, cols-1)`，边界点归属最后一格。Python 生成端与 C# 读取端都要钳制，浮点在边界会算出越界值。
 - 天地图真实 token 在 `server/data/tianditu.json`，**不进版本库、不进部署包**，部署时单独放。
+- **appsettings.json 保持纯 JSON、不写 `//` 注释**（用户 2026-10-27 提交 `26021c7` 主动删掉了注释）。配置含义的说明写 C# 侧 XML 注释或 DEPLOY.md。
+- **Windows 批处理三条硬约束**（实测矩阵 2 编码 × 2 换行 × chcp 有无 = 8 组，只有「纯 ASCII + CRLF + 无 chcp」干净）：
+  ① **禁止在 .bat 里 `chcp 65001`**——改代码页后 cmd.exe 会在**错误字节偏移**上继续执行，文件头 `REM` 行被当命令执行；② **必须 CRLF**，LF-only 同样解析错位；③ 正文**纯 ASCII**（提示用英文），避开代码页依赖。
+
+## GisApi 路径配置（2026-10-27）
+- `GisApi` 段 6 个路径键：`TerrainDir`/`TerrainDirWindows`/`TerrainDirLinux` + `DataDir`/`DataDirWindows`/`DataDirLinux`。
+  运行时**系统特化键优先 → 通用键 → 留空按 `HF_REPO_ROOT` 推导**（`<repoRoot>/data/terrain`、`<repoRoot>/data/gis-api`）。
+  同一份 appsettings.json 跨 Windows/Linux 通用。
+- 归一在 `GisApiService.NormalizePath`：展开 `$ENV`/`%ENV%`、展开 `~`、统一 `/`；`ResolveDir` 支持相对路径**按仓库根**解析（非 CWD、非 appsettings 所在目录）。
+- `TerrainDir` = **只读输入**（`terrain_manifest.json` + `*.ter`）；`DataDir` = **生成输出**（其下 `jobs/` 作业记录 + `grids/` 六角格包）。
+- ⚠️ `data/gis/` 是**原始 GIS 素材**（dem/landcover/water/roads_pkg/airports），不是 TerrainDir；`.ter` 是从它加工出来的产物。
 
 ## 天地图密钥：前后端两把，前端优先
 - 天地图按**请求 Referer（页面域名）**校验 token 白名单；底图瓦片是**浏览器直接**请求的，
