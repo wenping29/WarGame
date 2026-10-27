@@ -69,12 +69,14 @@ public sealed class GisService
         _hexGridDir = rooms.HexGridDirectory;
         Directory.CreateDirectory(_gisDir);
 
-        // 地形目录：GisApi 段（TerrainDir* 特化键优先）→ 回落 server/data/terrain。
-        // 与 HexFront.Core.UtilsPath 的口径保持一致：server 目录即仓库根，其下 data/terrain 是默认地形位置。
+        // 地形目录：GisApi 段（TerrainDir* 特化键优先）→ 回落「已解析出的 data 根 / terrain」。
+        // 兜底必须跟着 DataPath 走，否则 DataDir 配到别处时地形仍指 <server>/data/terrain，
+        // 症状是瓦片找不到、auto 静默回落合成地形。
         var serverRoot = UtilsPath.ServerRoot();
         var opt = cfg.GetSection("GisApi").Get<GisApiOptions>() ?? new GisApiOptions();
         var terrainConfigured = UtilsPath.SelectPlatformPath(opt.TerrainDir, opt.TerrainDirWindows, opt.TerrainDirLinux);
-        _terrainDir = UtilsPath.ResolveDir(terrainConfigured, serverRoot, "data/terrain");
+        _terrainDir = UtilsPath.ResolveDir(terrainConfigured, serverRoot,
+            Path.Combine(rooms.DataDirectory, "terrain"));
         _demMode = string.IsNullOrWhiteSpace(opt.DemMode) ? "auto" : opt.DemMode;
 
         // 作业落盘：data/gis-api/jobs/<id>.json（包体仍落在 data/gis/<pkg>.json，这里只存作业记录）。

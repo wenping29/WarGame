@@ -48,11 +48,11 @@ public sealed class RoomService
         // 与 HexFront.Core.UtilsPath 的路径解析口径一致：同一份 appsettings.json 跨 Windows/Linux 通用。
         var dataOpts = cfg.GetSection("DataPath").Get<DataPathOptions>() ?? new DataPathOptions();
         var dataConfigured = UtilsPath.SelectPlatformPath(dataOpts.DataDir, dataOpts.DataDirWindows, dataOpts.DataDirLinux);
-        _dataDir = Environment.GetEnvironmentVariable("HF_DATA_DIR")
+        _dataDir = UtilsPath.EnvOrNull("HF_DATA_DIR")
             ?? UtilsPath.ResolveDir(dataConfigured, serverRoot, "data");
-        _scenarioDir = Environment.GetEnvironmentVariable("HF_SCENARIO_DIR")
+        _scenarioDir = UtilsPath.EnvOrNull("HF_SCENARIO_DIR")
             ?? Path.Combine(_dataDir, "scenarios");
-        _saveDir = Environment.GetEnvironmentVariable("HF_SAVE_DIR")
+        _saveDir = UtilsPath.EnvOrNull("HF_SAVE_DIR")
             ?? Path.Combine(_dataDir, "saves"); // §12.1：副本存档落在 data/saves/<实例>/
         _gisDir = Path.Combine(_dataDir, "gis");
         Directory.CreateDirectory(_gisDir);
@@ -66,7 +66,7 @@ public sealed class RoomService
     /// <summary>记录数据根目录来自哪个配置键，便于日志里一眼看出是环境变量、系统特化键、通用键还是默认值。</summary>
     private static string DescribeDataSrc(string? configured, DataPathOptions opt)
     {
-        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("HF_DATA_DIR"))) return "HF_DATA_DIR";
+        if (UtilsPath.EnvOrNull("HF_DATA_DIR") != null) return "HF_DATA_DIR";
         if (!string.IsNullOrWhiteSpace(configured))
         {
             if (OperatingSystem.IsLinux() && !string.IsNullOrWhiteSpace(opt.DataDirLinux)) return "DataDirLinux";
@@ -83,7 +83,8 @@ public sealed class RoomService
     public string GisDirectory => _gisDir;
     /// <summary>服务器六角格网络包目录（data/hexgrids，每网格一个 zip，剧本只存 id）。</summary>
     public string HexGridDirectory => Path.Combine(_dataDir, "hexgrids");
-    /// <summary>仓库 data 目录（剧本备份、内容反馈等管理类文件落这里）。</summary>
+    /// <summary>数据根目录（scenarios/saves/gis/hexgrids/terrain 的父级）；管理类数据不落盘，
+    /// 剧本备份与内容反馈分别在 app.db 的 scenario_backups/feedback 表里。目前只用于派生 gis-api 作业目录。</summary>
     public string DataDirectory => _dataDir;
 
     /// <summary>Create a room from an existing game state (REST instance creation / save resume).</summary>

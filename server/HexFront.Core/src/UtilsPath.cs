@@ -16,9 +16,21 @@ namespace HexFront.Core;
 /// </summary>
 public static class UtilsPath
 {
+    /// <summary>
+    /// 读取路径类环境变量：未设置或只有空白都当成「没设」（返回 null），让后面各级配置继续生效。
+    ///
+    /// 不能直接用 `GetEnvironmentVariable(...) ?? 下一级`：`HF_DATA_DIR=` 这种「设了但留空」会让空串赢过
+    /// appsettings 与默认值，拼出 `""/scenarios` 这种相对 CWD 的路径，整棵 data 树原地消失。
+    /// </summary>
+    public static string? EnvOrNull(string name)
+    {
+        var value = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
     /// <summary>后端 server 目录（含 HexFront.Api 与 data）。优先 HF_REPO_ROOT，否则从程序集位置回溯。</summary>
     public static string ServerRoot() => ResolveServerRoot(
-        Environment.GetEnvironmentVariable("HF_REPO_ROOT"),
+        EnvOrNull("HF_REPO_ROOT"),
         Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)
             ?? Directory.GetCurrentDirectory());
 
@@ -69,9 +81,9 @@ public static class UtilsPath
     /// <summary>数据根目录：HF_DATA_DIR 环境变量优先，否则回落 server/data。</summary>
     public static string DataDir()
     {
-        var env = Environment.GetEnvironmentVariable("HF_DATA_DIR");
-        if (!string.IsNullOrWhiteSpace(env))
-            return NormalizePath(env.Trim().TrimEnd('\\', '/'));
+        var env = EnvOrNull("HF_DATA_DIR");
+        if (env != null)
+            return NormalizePath(env);
         return Path.Combine(ServerRoot(), "data");
     }
 

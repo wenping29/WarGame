@@ -26,7 +26,7 @@ public sealed class AppDbService : IDisposable
     public AppDbService(ILogger<AppDbService> logger)
     {
         _logger = logger;
-        var dbPath = Environment.GetEnvironmentVariable("HF_APP_DB") ?? DefaultDbPath();
+        var dbPath = UtilsPath.EnvOrNull("HF_APP_DB") ?? DefaultDbPath();
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
         _conn = new SqliteConnection(new SqliteConnectionStringBuilder
         {

@@ -535,15 +535,15 @@ public class GameController : ControllerBase
         return StatusCode(400, dict);
     }
 
-    private static string? TiandituTk()
+    private string? TiandituTk()
     {
         var env = Environment.GetEnvironmentVariable("TIANDITU_TK")?.Trim();
         if (!string.IsNullOrEmpty(env)) return env;
         try
         {
-            // DataDir 已经是仓库的 data/，再取一次 dirname 会退到仓库根，
-            // 于是永远去找 <root>/tianditu.json（不存在），密钥静默失效。
-            var file = Path.Combine(RoomServiceStaticPaths.DataDir, "tianditu.json");
+            // 用 RoomService 解析出的数据根（含 HF_DATA_DIR 与 appsettings DataPath 各级），
+            // 不再从剧本目录反推 dirname——那条路会退到 <root>/tianditu.json 让密钥静默失效。
+            var file = Path.Combine(_rooms.DataDirectory, "tianditu.json");
             if (System.IO.File.Exists(file))
             {
                 using var doc = JsonDocument.Parse(System.IO.File.ReadAllText(file));
@@ -553,16 +553,4 @@ public class GameController : ControllerBase
         catch { /* ignore */ }
         return null;
     }
-}
-
-/// <summary>Shared data-directory paths derived from the scenario directory.</summary>
-internal static class RoomServiceStaticPaths
-{
-    public static string DataDir => _dataDir ??= Path.GetDirectoryName(DefaultScenarioDir)!;
-
-    private static string? _dataDir;
-
-    private static string DefaultScenarioDir =>
-        Environment.GetEnvironmentVariable("HF_SCENARIO_DIR") ??
-        Path.Combine(UtilsPath.ServerRoot(), "data", "scenarios");
 }
