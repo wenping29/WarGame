@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using HexFront.Core.Geometry;
 using HexFront.Core.GisTools;
 using HexFront.Core.Services;
+using HexFront.Core;
 using HexFront.Tools.Common;
 using NetTopologySuite.Geometries;
 
@@ -61,19 +62,19 @@ public static class RastersCommand
 
         if (what is "dem" or "all")
         {
-            var dem = a.Get("dem") ?? RepoLocator.DataSub("gis/dem/global_dem_30s.tif");
+            var dem = a.Get("dem") ?? UtilsPath.DataSub("gis/dem/global_dem_30s.tif");
             if (File.Exists(dem)) result["dem"] = RunDem(grid, dem);
             else Log.Warn($"DEM 不存在，跳过: {dem}");
         }
         if (what is "landcover" or "all")
         {
-            var lc = a.Get("landcover") ?? RepoLocator.DataSub("gis/landcover/global_landcover_0p01.tif");
+            var lc = a.Get("landcover") ?? UtilsPath.DataSub("gis/landcover/global_landcover_0p01.tif");
             if (File.Exists(lc)) result["landcover"] = RunLandcover(grid, lc);
             else Log.Warn($"土地覆盖不存在，跳过: {lc}");
         }
         if (what is "water" or "all")
         {
-            var wg = a.Get("water-gpkg") ?? RepoLocator.DataSub("water/global_water.gpkg");
+            var wg = a.Get("water-gpkg") ?? UtilsPath.DataSub("water/global_water.gpkg");
             if (File.Exists(wg)) result["water"] = RunWater(grid, wg);
             else Log.Warn($"水系 gpkg 不存在，跳过: {wg}");
         }

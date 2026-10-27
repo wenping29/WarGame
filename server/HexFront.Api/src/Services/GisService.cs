@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using HexFront.Core;
 using HexFront.Core.GisTools;
 using HexFront.Core.Models;
 using HexFront.Core.Services;
@@ -69,11 +70,11 @@ public sealed class GisService
         Directory.CreateDirectory(_gisDir);
 
         // 地形目录：GisApi 段（TerrainDir* 特化键优先）→ 回落 server/data/terrain。
-        // 与旧 HexFront.GisApi 的口径保持一致：server 目录即仓库根，其下 data/terrain 是默认地形位置。
-        var serverRoot = AppDbService.ServerRoot();
+        // 与 HexFront.Core.UtilsPath 的口径保持一致：server 目录即仓库根，其下 data/terrain 是默认地形位置。
+        var serverRoot = UtilsPath.ServerRoot();
         var opt = cfg.GetSection("GisApi").Get<GisApiOptions>() ?? new GisApiOptions();
-        var terrainConfigured = PathResolver.SelectPlatformPath(opt.TerrainDir, opt.TerrainDirWindows, opt.TerrainDirLinux);
-        _terrainDir = PathResolver.ResolveDir(terrainConfigured, serverRoot, "data/terrain");
+        var terrainConfigured = UtilsPath.SelectPlatformPath(opt.TerrainDir, opt.TerrainDirWindows, opt.TerrainDirLinux);
+        _terrainDir = UtilsPath.ResolveDir(terrainConfigured, serverRoot, "data/terrain");
         _demMode = string.IsNullOrWhiteSpace(opt.DemMode) ? "auto" : opt.DemMode;
 
         // 作业落盘：data/gis-api/jobs/<id>.json（包体仍落在 data/gis/<pkg>.json，这里只存作业记录）。

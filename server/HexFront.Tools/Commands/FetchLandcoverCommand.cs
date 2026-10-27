@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using HexFront.Core;
 using HexFront.Core.GisTools;
 using HexFront.Tools.Common;
 
@@ -51,7 +52,7 @@ public static class FetchLandcoverCommand
         }
         if (a.Bool("log")) Log.SetFile(a.Get("log"));
 
-        var root = a.Get("root") ?? RepoLocator.DataSub("landcover");
+        var root = a.Get("root") ?? UtilsPath.DataSub("landcover");
         Directory.CreateDirectory(root);
         double cellDeg = a.Dbl("cell-deg", 0.01);
         int workers = a.Int("workers", 6);

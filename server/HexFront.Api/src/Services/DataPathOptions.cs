@@ -7,7 +7,7 @@ namespace HexFront.Api.Services;
 /// （DataDirWindows / DataDirLinux），取不到再退回通用键（DataDir）；都为空则
 /// 回落到 &lt;server&gt;/data（server 目录含 HexFront.Api 与 data）。
 ///
-/// 约定与 HexFront.GisApi 的 GisApiOptions 保持一致：路径内部统一归一
+/// 约定与 HexFront.Core.UtilsPath 保持一致：路径内部统一归一
 /// （展开 $ENV / %ENV% 与 ~、统一 / 分隔符），同一份 appsettings.json 即可在
 /// Windows 与 Linux 之间通用，无需为不同系统维护两份文件。
 ///

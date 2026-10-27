@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using HexFront.Tools.Common;
+using HexFront.Core;
 
 namespace HexFront.Tools.Commands;
 
@@ -354,7 +354,7 @@ public static class UpdateScenariosCommand
         }
         if (a.Bool("log")) Log.SetFile(a.Get("log"));
 
-        var scenDir = a.Get("scen") ?? RepoLocator.DataSub("scenarios");
+        var scenDir = a.Get("scen") ?? UtilsPath.DataSub("scenarios");
         if (!Directory.Exists(scenDir))
         {
             Log.Error($"剧本目录不存在: {scenDir}");

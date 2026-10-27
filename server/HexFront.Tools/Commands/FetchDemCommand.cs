@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using HexFront.Core;
 using HexFront.Core.GisTools;
 using HexFront.Tools.Common;
 
@@ -44,7 +45,7 @@ public static class FetchDemCommand
         }
         if (a.Bool("log")) Log.SetFile(a.Get("log"));
 
-        var root = a.Get("root") ?? RepoLocator.DataSub("dem");
+        var root = a.Get("root") ?? UtilsPath.DataSub("dem");
         Directory.CreateDirectory(root);
         int z = a.Int("z", 7);
         int workers = a.Int("workers", 16);

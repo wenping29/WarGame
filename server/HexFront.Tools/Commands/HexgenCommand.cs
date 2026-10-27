@@ -81,7 +81,7 @@ public static class HexgenCommand
             return 0;
         }
 
-        var outPath = a.Get("out") ?? RepoLocator.DataSub($"gis/{name}.json");
+        var outPath = a.Get("out") ?? UtilsPath.DataSub($"gis/{name}.json");
         var dir = Path.GetDirectoryName(outPath);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir!);
         var json = JsonSerializer.Serialize(pkg, new JsonSerializerOptions

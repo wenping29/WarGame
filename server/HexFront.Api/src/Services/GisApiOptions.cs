@@ -11,8 +11,8 @@ namespace HexFront.Api.Services;
 /// （TerrainDirWindows / TerrainDirLinux），取不到再退回通用键（TerrainDir）；
 /// 都为空则按仓库根目录（server 目录）推导默认 data/terrain。
 ///
-/// 所有路径内部统一归一（展开 $ENV / %ENV% 与 ~、统一 / 分隔符），
-/// 同一份 appsettings.json 即可在 Windows 与 Linux 之间通用。
+/// 所有路径内部统一归一（展开 $ENV / %ENV% 与 ~、统一 / 分隔符），逻辑集中在
+/// HexFront.Core.UtilsPath，同一份 appsettings.json 即可在 Windows 与 Linux 之间通用。
 /// </summary>
 public sealed class GisApiOptions
 {

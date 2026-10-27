@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using HexFront.Api.Services;
+using HexFront.Core;
 using HexFront.Core.Models;
 using HexFront.Core.Services;
 using static HexFront.Core.Services.ScenarioService;
@@ -563,5 +564,5 @@ internal static class RoomServiceStaticPaths
 
     private static string DefaultScenarioDir =>
         Environment.GetEnvironmentVariable("HF_SCENARIO_DIR") ??
-        Path.Combine(AppDbService.ServerRoot(), "data", "scenarios");
+        Path.Combine(UtilsPath.ServerRoot(), "data", "scenarios");
 }

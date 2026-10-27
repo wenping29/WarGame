@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
+using HexFront.Core;
 using HexFront.Core.GisTools;
 using HexFront.Tools.Common;
 using NetTopologySuite.Geometries;
@@ -42,7 +43,7 @@ public static class FetchWaterCommand
         }
         if (a.Bool("log")) Log.SetFile(a.Get("log"));
 
-        var root = a.Get("root") ?? RepoLocator.DataSub("water");
+        var root = a.Get("root") ?? UtilsPath.DataSub("water");
         Directory.CreateDirectory(root);
         var step = a.Get("step", "all");
         var keepSrc = a.Bool("keep-src");

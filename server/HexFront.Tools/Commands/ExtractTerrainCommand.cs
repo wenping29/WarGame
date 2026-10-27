@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json.Nodes;
+using HexFront.Core;
 using HexFront.Core.GisTools;
 using HexFront.Tools.Common;
 
@@ -29,10 +30,10 @@ public static class ExtractTerrainCommand
             return 0;
         }
 
-        var demPath = a.Get("dem") ?? RepoLocator.DataSub("gis/dem/global_dem_30s.tif");
-        var lcPath = a.Get("landcover") ?? RepoLocator.DataSub("gis/landcover/global_landcover_0p01.tif");
+        var demPath = a.Get("dem") ?? UtilsPath.DataSub("gis/dem/global_dem_30s.tif");
+        var lcPath = a.Get("landcover") ?? UtilsPath.DataSub("gis/landcover/global_landcover_0p01.tif");
         var mode = a.Get("mode", "region");
-        var outDir = a.Get("out") ?? RepoLocator.DataSub("terrain");
+        var outDir = a.Get("out") ?? UtilsPath.DataSub("terrain");
         var name = a.Get("name", "region");
         var tileDeg = a.Dbl("tile-deg", 10.0);
 

@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
+using HexFront.Core;
 using HexFront.Core.Geometry;
 using HexFront.Core.Models;
 using HexFront.Core.Services;
@@ -39,16 +40,16 @@ public sealed class RoomService
         _logger = logger;
         _ops = ops;
         _db = db;
-        var serverRoot = AppDbService.ServerRoot();
+        var serverRoot = UtilsPath.ServerRoot();
         // 数据根目录解析优先级：
         //   1) HF_DATA_DIR 环境变量（兼容旧部署，地图数据单独挂载到别的盘时最稳）
         //   2) appsettings「DataPath」按运行系统特化键（DataDirWindows/DataDirLinux）优先于通用键（DataDir）
         //   3) 回落 <server>/data（server 目录含 HexFront.Api 与 data）
-        // 与 HexFront.GisApi 的路径解析口径一致：同一份 appsettings.json 跨 Windows/Linux 通用。
+        // 与 HexFront.Core.UtilsPath 的路径解析口径一致：同一份 appsettings.json 跨 Windows/Linux 通用。
         var dataOpts = cfg.GetSection("DataPath").Get<DataPathOptions>() ?? new DataPathOptions();
-        var dataConfigured = PathResolver.SelectPlatformPath(dataOpts.DataDir, dataOpts.DataDirWindows, dataOpts.DataDirLinux);
+        var dataConfigured = UtilsPath.SelectPlatformPath(dataOpts.DataDir, dataOpts.DataDirWindows, dataOpts.DataDirLinux);
         _dataDir = Environment.GetEnvironmentVariable("HF_DATA_DIR")
-            ?? PathResolver.ResolveDir(dataConfigured, serverRoot, "data");
+            ?? UtilsPath.ResolveDir(dataConfigured, serverRoot, "data");
         _scenarioDir = Environment.GetEnvironmentVariable("HF_SCENARIO_DIR")
             ?? Path.Combine(_dataDir, "scenarios");
         _saveDir = Environment.GetEnvironmentVariable("HF_SAVE_DIR")

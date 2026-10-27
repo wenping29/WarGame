@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using HexFront.Api.Services;
+using HexFront.Core;
 using Xunit;
 
 namespace HexFront.Tests.Protocol;
@@ -54,7 +54,7 @@ public sealed class ServerRootResolutionTests : IDisposable
     {
         var root = MakeLayoutA();
 
-        var resolved = AppDbService.ResolveServerRoot(root, root);
+        var resolved = UtilsPath.ResolveServerRoot(root, root);
 
         Assert.Equal(Path.GetFullPath(Path.Combine(root, "server")), resolved);
     }
@@ -65,7 +65,7 @@ public sealed class ServerRootResolutionTests : IDisposable
         // 这是线上踩到的写法：宝塔里把项目路径填到 server 这一层。
         var serverDir = Path.Combine(MakeLayoutB(), "server");
 
-        var resolved = AppDbService.ResolveServerRoot(serverDir, serverDir);
+        var resolved = UtilsPath.ResolveServerRoot(serverDir, serverDir);
 
         // 必须是 server 目录本身，而不是 server/server
         Assert.Equal(Path.GetFullPath(serverDir), resolved);
@@ -80,7 +80,7 @@ public sealed class ServerRootResolutionTests : IDisposable
         // 回归的真正意义：data 与 app.db 不能分家，否则剧本读不到、库却是新的。
         var serverDir = Path.Combine(MakeLayoutB(), "server");
 
-        var resolved = AppDbService.ResolveServerRoot(serverDir, serverDir);
+        var resolved = UtilsPath.ResolveServerRoot(serverDir, serverDir);
         var scenarioDir = Path.Combine(resolved, "data", "scenarios");
 
         Assert.True(Directory.Exists(scenarioDir), $"剧本目录应真实存在：{scenarioDir}");
@@ -97,7 +97,7 @@ public sealed class ServerRootResolutionTests : IDisposable
         Directory.CreateDirectory(Path.Combine(root, "HexFront.Api"));
         Directory.CreateDirectory(Path.Combine(root, "data"));
 
-        var resolved = AppDbService.ResolveServerRoot(root, root);
+        var resolved = UtilsPath.ResolveServerRoot(root, root);
 
         Assert.Equal(Path.GetFullPath(root), resolved);
     }
@@ -109,7 +109,7 @@ public sealed class ServerRootResolutionTests : IDisposable
         var probe = Path.Combine(_tmp, "probe", "server", "HexFront.Api", "bin", "Debug", "net10.0");
         Directory.CreateDirectory(probe);
 
-        var resolved = AppDbService.ResolveServerRoot(null, probe);
+        var resolved = UtilsPath.ResolveServerRoot(null, probe);
 
         Assert.Equal(Path.GetFullPath(Path.Combine(_tmp, "probe", "server")), resolved);
     }
@@ -120,7 +120,7 @@ public sealed class ServerRootResolutionTests : IDisposable
         var probe = Path.Combine(_tmp, "probe2", "server", "HexFront.Api");
         Directory.CreateDirectory(probe);
 
-        var resolved = AppDbService.ResolveServerRoot("   ", probe);
+        var resolved = UtilsPath.ResolveServerRoot("   ", probe);
 
         Assert.Equal(Path.GetFullPath(Path.Combine(_tmp, "probe2", "server")), resolved);
     }
