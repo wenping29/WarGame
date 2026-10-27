@@ -1192,7 +1192,7 @@ public sealed class AppDbService : IDisposable
     /// <summary>ops_log.db（旧推演流水库）→ app.db，成功后改名 .migrated。</summary>
     private void MigrateOpsLog()
     {
-        var oldPath = Path.Combine(ServerRoot(), "data", "ops_log.db");
+        var oldPath = Path.Combine(UtilsPath.ServerRoot(), "data", "ops_log.db");
         if (!File.Exists(oldPath)) return;
         try
         {
@@ -1244,7 +1244,7 @@ public sealed class AppDbService : IDisposable
     /// <summary>scenario_feedback.json（旧反馈文件）→ feedback 表，成功后改名 .migrated。</summary>
     private void MigrateFeedbackFile()
     {
-        var oldPath = Path.Combine(ServerRoot(), "data", "scenario_feedback.json");
+        var oldPath = Path.Combine(UtilsPath.ServerRoot(), "data", "scenario_feedback.json");
         if (!File.Exists(oldPath)) return;
         try
         {
