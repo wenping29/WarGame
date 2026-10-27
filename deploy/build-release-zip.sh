@@ -10,8 +10,10 @@
 #   deploy/out/hexfront-release-<时间戳>.zip
 #     hexfront-release/web/                    前端静态产物（已注入 API 地址）
 #     hexfront-release/server/HexFront.Api/    后端 publish + app.db（含进程内六角格生成）
-#     hexfront-release/server/data/            地图/剧本数据
 #     hexfront-release/deploy/                 nginx 配置 + 环境变量 + 本手册
+#
+# 注：约 2G 的地图/剧本数据（server/data/）不进包，由部署主机单独 provision，
+#     发布包因此保持很小。
 #
 # 环境变量：
 #   API_BASE_URL       前端调后端的完整前缀，必须以 /api 结尾
@@ -77,7 +79,7 @@ else
 fi
 
 # ---- 4. 打包 zip -----------------------------------------------------------
-echo "==> 4/4 打包 zip（数据 2G 级，压缩需几分钟）"
+echo "==> 4/4 打包 zip（仅前端+后端+部署物料，不含地图数据）"
 cd "$REPO"
 python3 "$REPO/deploy/tools/pack_release.py" \
   --out "$ZIP" \
@@ -85,7 +87,6 @@ python3 "$REPO/deploy/tools/pack_release.py" \
   --web "$REPO/webfront/dist" \
   --publish "$PUBLISH_DIR" \
   --db "$REPO/server/HexFront.Api/app.db" \
-  --data "$REPO/server/data" \
   --deploy "$REPO/deploy/release"
 
 echo ""

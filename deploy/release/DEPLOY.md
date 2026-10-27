@@ -14,20 +14,18 @@ hexfront-release/
 │   └── assets/…
 │
 ├── server/                           ← 后端（宝塔「.NET 网站」）
-│   ├── HexFront.Api/
-│   │   ├── publish/                  ← ★ .NET 站点的「运行路径」指向这里
-│   │   │   ├── HexFront.Api.dll
-│   │   │   ├── appsettings.json      ← 端口、监听地址在这里
-│   │   │   └── …
-│   │   └── app.db                    ← 应用库（SQLite）
-│   └── data/                         ← 地图/剧本数据（约 2.0G，后端进程内生成共用）
-│       ├── gis/{dem,water,landcover,roads_pkg,airports}
-│       ├── terrain/*.ter             ← 真实高程/土地覆盖瓦片（进程内生成的 DEM 数据源）
-│       ├── hexgrids/
-│       ├── scenarios/
-│       └── docs/
+│   └── HexFront.Api/
+│       ├── publish/                  ← ★ .NET 站点的「运行路径」指向这里
+│       │   ├── HexFront.Api.dll
+│       │   ├── appsettings.json      ← 端口、监听地址在这里
+│       │   └── …
+│       └── app.db                    ← 应用库（SQLite）
 │
 └── deploy/                           ← 部署物料（本文档 + 配置模板）
+
+> **注意：约 2G 的地图/剧本数据（`server/data/`）不进发布包**，由部署主机单独
+> provision 到 `server/data/`（地形瓦片、剧本、已生成的六角格等都在这里）。发布包
+> 因此只含前后端代码与配置，体积很小。详见第 5 节的「数据目录」说明。
     ├── bt-site-static.conf           ← 静态站 nginx 配置模板
     ├── bt-site-dotnet.conf           ← .NET 站 nginx 配置模板
     ├── hexfront.env                  ← 后端环境变量模板

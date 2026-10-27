@@ -34,10 +34,11 @@ bash deploy/build-release-zip.sh
 API_BASE_URL="http://api.<后端域名>/api" bash deploy/build-release-zip.sh
 # -> deploy/out/hexfront-release-<ts>.zip
 ```
-包内结构 `hexfront-release/{web,server/HexFront.Api/{publish,app.db},data},deploy}`：
+包内结构 `hexfront-release/{web,server/HexFront.Api/{publish,app.db},deploy}`：
 - `web/` 前端静态产物（构建时注入 `VITE_API_BASE_URL`，**必须以 /api 结尾**）
 - `server/HexFront.Api/publish/` 后端 dll（**含进程内六角格生成**，宝塔 .NET 站点「运行路径」指向这里，启动文件只写 `HexFront.Api.dll`）
-- `server/data/` 地图剧本数据；`deploy/` nginx 配置 + env + DEPLOY.md + set-api-domain.sh
+- `deploy/` nginx 配置 + env + DEPLOY.md + set-api-domain.sh
+- **约 2G 的 `server/data/` 地图/剧本数据不进包**，由部署主机单独 provision 到 `server/data/`
 - 已剔除：`tianditu.json`（密钥）、`saves/`、`terrain_test/`、备份、`bin`/`obj`/`node_modules`、`.pdb`
 
 **占位符换域名**：包里 `deploy/set-api-domain.sh` 直接改产物里的地址字符串，**不用重新构建前端**。
@@ -48,14 +49,9 @@ API_BASE_URL="http://api.<后端域名>/api" bash deploy/build-release-zip.sh
 `capabilities` 的 `engine=local-terrain`（真实瓦片就绪）或 `synthetic`（瓦片缺失回落合成）。部署只需起这一个后端。
 
 **打包注意**：
-- PowerShell 5.1 的 `Compress-Archive` 处理 2G 数据极慢且有单文件 2GB 上限 → 用 Python `zipfile`（开 ZIP64）
-- `.tif`/`.ovr`/`.png` 等已压缩格式用 level 1，其余 level 6；zip 前后 2.2G→2.0G
-- 打包前必须 `PRAGMA wal_checkpoint(TRUNCATE)` 合并 SQLite WAL，否则服务器首次启动看不到最近数据
-- `dotnet publish` 必须带 `--artifacts-path <全新目录>`（见下坑）
-
-**打包注意**：
-- PowerShell 5.1 的 `Compress-Archive` 处理 2G 数据极慢且有单文件 2GB 上限 → 用 Python `zipfile`（开 ZIP64）
-- `.tif`/`.ovr`/`.png` 等已压缩格式用 level 1，其余 level 6；zip 前后 2.2G→2.0G
+- PowerShell 5.1 的 `Compress-Archive` 极慢且有单文件 2GB 上限 → 用 Python `zipfile`（开 ZIP64）
+- `.tif`/`.ovr`/`.png` 等已压缩格式用 level 1，其余 level 6
+- **发布包不含约 2G 的 `server/data/` 地图数据**（部署主机单独 provision），所以包只有 ~9MB；若将来要把数据打进包，zip64 + 分级压缩逻辑仍适用
 - 打包前必须 `PRAGMA wal_checkpoint(TRUNCATE)` 合并 SQLite WAL，否则服务器首次启动看不到最近数据
 - `dotnet publish` 必须带 `--artifacts-path <全新目录>`（见下坑）
 

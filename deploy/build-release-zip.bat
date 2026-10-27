@@ -13,8 +13,9 @@ REM  Output:
 REM    deploy\out\hexfront-release-<timestamp>.zip
 REM      hexfront-release\web\                     front-end static bundle (API URL injected)
 REM      hexfront-release\server\HexFront.Api\     back-end publish + app.db (in-process hex-grid gen)
-REM      hexfront-release\server\data\             map / scenario data
 REM      hexfront-release\deploy\                  nginx conf + env + DEPLOY.md
+REM  NOTE: the ~2G map / scenario data (server\data\) is NOT packed - it is
+REM        provisioned on the deploy host separately. The package stays small.
 REM
 REM  Environment variables:
 REM    API_BASE_URL       Full prefix the front-end calls the back-end with.
@@ -61,7 +62,7 @@ REM  VITE_* are injected as environment variables and take priority over the
 REM  .env.production file. VITE_TIANDITU_TK is NOT set when empty, so a value
 REM  configured in .env.production still applies (setting it to an empty string
 REM  would override it and leave the front-end with no key and no fallback).
-echo [1/5] Build front-end   VITE_API_BASE_URL=%API_BASE_URL%
+echo [1/4] Build front-end   VITE_API_BASE_URL=%API_BASE_URL%
 set "VITE_API_BASE_URL=%API_BASE_URL%"
 pushd "%REPO%\webfront"
 if defined VITE_TIANDITU_TK (
@@ -92,7 +93,7 @@ REM  The -wal file may still hold unmerged transactions. Packing without merging
 REM  is not data loss (the server replays the WAL on open), but -wal/-shm are
 REM  excluded by the packaging rules, so the server would not see the most
 REM  recent rows on its first start. Checkpoint them into the main DB first.
-echo [4/5] Merge database WAL
+echo [3/4] Merge database WAL
 pushd "%REPO%\server\HexFront.Api"
 where sqlite3 >nul 2>&1
 if errorlevel 1 (
@@ -107,7 +108,7 @@ if errorlevel 1 (
 popd
 
 REM ---- 4. pack the zip ------------------------------------------------------
-echo [4/4] Pack zip (2G of data, this takes a few minutes)
+echo [4/4] Pack zip (front-end + back-end + deploy only, no map data)
 set "PY="
 where python >nul 2>&1 && set "PY=python"
 if defined PY goto :have_python
@@ -117,7 +118,7 @@ echo [ERROR] python not found - cannot pack.
 exit /b 1
 :have_python
 pushd "%REPO%"
-%PY% "%REPO%\deploy\tools\pack_release.py" --out "%ZIP%" --root hexfront-release --web "%REPO%\webfront\dist" --publish "%PUBLISH_DIR%" --db "%REPO%\server\HexFront.Api\app.db" --data "%REPO%\server\data" --deploy "%REPO%\deploy\release"
+%PY% "%REPO%\deploy\tools\pack_release.py" --out "%ZIP%" --root hexfront-release --web "%REPO%\webfront\dist" --publish "%PUBLISH_DIR%" --db "%REPO%\server\HexFront.Api\app.db" --deploy "%REPO%\deploy\release"
 if errorlevel 1 goto :fail_pack
 popd
 
