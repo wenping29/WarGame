@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using HexFront.Core;
+using HexFront.Tools.Common;
 
 namespace HexFront.Tools.Commands;
 

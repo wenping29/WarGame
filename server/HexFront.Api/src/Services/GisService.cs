@@ -154,6 +154,16 @@ public sealed class GisService
         {
             ValidateBbox(bbox);
             plan = GisPlanService.PlanPayload(bbox, cellKm);
+            // 「瓦片已加载」不等于「这个范围有真实地形」：莱茵河瓦片覆盖不到中国 bbox，
+            // 不报覆盖率的话前端只能显示一个笼统的 real 布尔，缺数据会静默出合成地形。
+            var cov = _sampler?.CoverageOf(bbox[0], bbox[1], bbox[2], bbox[3]) ?? 0;
+            plan["terrain_coverage"] = JsonValue.Create(Math.Round(cov, 4));
+            plan["terrain_note"] = JsonValue.Create(cov switch
+            {
+                >= 1 => "该范围有真实 .ter 瓦片，高程来自真实 DEM",
+                > 0 => $"该范围仅 {cov:P1} 有真实 .ter 瓦片，未覆盖部分将使用合成高程",
+                _ => $"该范围完全没有 .ter 瓦片覆盖（瓦片目录 {_terrainDir}），高程将是合成值、不代表真实地形",
+            });
         }
         catch (GisPlanException e)
         {
@@ -278,6 +288,18 @@ public sealed class GisService
                 UseRealDem = useReal,
                 Features = job.Spec.Features,
             };
+
+            var bb = job.Spec.Bbox;
+            var cov = bb.Count >= 4
+                ? _sampler?.CoverageOf(bb[0], bb[1], bb[2], bb[3]) ?? 0
+                : 0;
+            if (useReal && cov < 1)
+                Log(job, cov > 0
+                    ? $"警告：该范围仅 {cov:P1} 落在真实 .ter 瓦片内，未覆盖部分将使用合成高程"
+                    : $"警告：该范围完全不在真实 .ter 瓦片覆盖内（瓦片目录 {_terrainDir}），" +
+                      "本次产出的高程为合成噪声、不代表真实地形；请用 extract-terrain 为该范围生成瓦片");
+            else if (!useReal && job.Spec.Dem is not ("synthetic" or "off"))
+                Log(job, "提示：未启用真实 DEM（离线模式或无瓦片），本次产出合成高程");
 
             var pkg = HexGenService.Generate(genSpec, useReal ? _sampler : null, OnProgress);
             Log(job, "生成完成，开始自校验");

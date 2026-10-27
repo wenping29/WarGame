@@ -140,7 +140,7 @@ server/**/[Dd]ebug/
 server/**/[Rr]elease/
 server/**/*.binlog
 
-
+.tmp-gisverify/
 # ---- HexFront.CSharp .NET 编译产物 ----
 # 刻意限定在 HexFront.CSharp 下：hexfront/bin/ 是 Dart 引擎源码目录，全局 bin/ 规则会把它们一起吞掉
 server/**/[Bb]in/

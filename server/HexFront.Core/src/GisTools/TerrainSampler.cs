@@ -41,6 +41,28 @@ public sealed class TerrainSampler
     /// <summary>瓦片目录（调试/能力查询用）。</summary>
     public string Directory => _dir;
 
+    /// <summary>已登记瓦片的地理范围（用于生成前判断请求 bbox 是否真的有真实数据）。</summary>
+    public IReadOnlyList<(double West, double South, double East, double North)> Extents =>
+        _tiles.Select(t => (t.West, t.South, t.East, t.North)).ToList();
+
+    /// <summary>
+    /// 请求 bbox 被瓦片覆盖的面积比例（0..1）。瓦片不重叠，交集面积直接累加后按 bbox 面积归一。
+    /// 用于把「有瓦片」和「这个范围有瓦片」区分开：只有后者才可能产出真实地形。
+    /// </summary>
+    public double CoverageOf(double west, double south, double east, double north)
+    {
+        var area = (east - west) * (north - south);
+        if (area <= 0) return 0;
+        double covered = 0;
+        foreach (var t in _tiles)
+        {
+            var iw = Math.Min(east, t.East) - Math.Max(west, t.West);
+            var ih = Math.Min(north, t.North) - Math.Max(south, t.South);
+            if (iw > 0 && ih > 0) covered += iw * ih;
+        }
+        return Math.Clamp(covered / area, 0, 1);
+    }
+
     private void LoadManifest()
     {
         var manifest = Path.Combine(_dir, "terrain_manifest.json");

@@ -27,6 +27,10 @@ public static class HexGenService
     private const double WoodsMaxElevRel = 0.85;
     
     // River generation
+    // 河槽候选按高程排位分位数取，不能用 min+span×比例：真实 DEM 的沿海/河谷平原是极度右偏分布
+    // （南京 bbox p25=7m 而最高 288m，span 被孤峰拉开），相对线会把 84% 格判成河；
+    // 合成 DEM 近正态才让那条公式「看起来对」。分位数对两种分布都稳定。
+    private const double RiverLowPercentile = 5.0;
     private const int RiverRouteSteps = 3;
     private const double RiverRouteRidgePct = 0.35;
     private const double RiverMinElevRatio = 1.15;
@@ -93,8 +97,13 @@ public static class HexGenService
         Step($"格网 {grid.Width}×{grid.Height}（{grid.Width * grid.Height} 格）", 0.08);
 
         Step("采样高程", 0.12);
-        var (elev, lc, fromRealTiles) = SampleElevation(grid, spec, sampler);
-        Step(fromRealTiles ? "高程采样完成（本地 .ter 瓦片）" : "高程采样完成（合成 DEM）", 0.42);
+        var (elev, lc, sampledHits) = SampleElevation(grid, spec, sampler);
+        // 命中 0 格 = 请求 bbox 完全落在 .ter 瓦片覆盖之外（如只有莱茵河瓦片时生成中国剧本），
+        // 此时整包高程其实是合成噪声，标签必须如实回落，否则交付方无从发现缺数据。
+        var fromRealTiles = sampledHits > 0;
+        Step(fromRealTiles
+                 ? $"高程采样完成（本地 .ter 瓦片，{sampledHits}/{grid.Width * grid.Height} 格命中）"
+                 : "高程采样完成（合成 DEM：bbox 无 .ter 瓦片覆盖）", 0.42);
 
         Step("计算坡度/起伏", 0.46);
         var slopes = CalculateSlopes(grid, elev);
@@ -127,7 +136,7 @@ public static class HexGenService
         var hexes = BuildHexCells(grid, elev, slopes, terr, road, riverBand, bridges,
                                    cities, railway, powerGrid, airports, fuelStations);
         var meta = BuildMeta(grid, spec, elev, terr, road, riverBand, railway, powerGrid,
-                             airports, fuelStations, fromRealTiles, lc);
+                             airports, fuelStations, fromRealTiles, lc, sampledHits);
         Step("完成", 1.0);
 
         return new Models.HexPackage
@@ -182,9 +191,10 @@ public static class HexGenService
     
     /// <summary>
     /// 采样高程（与可选土地覆盖）。优先用真实 .ter 瓦片（GIS 数据驱动地形），失败 / 未配置 / 离线时降级合成 DEM。
-    /// 返回 (高程数组, 土地覆盖数组?, 是否来自真实 .ter 瓦片)。土地覆盖数组仅在瓦片确实含 LC 层时非 null。
+    /// 返回 (高程数组, 土地覆盖数组?, 真实采样命中格数)。土地覆盖数组仅在瓦片确实含 LC 层时非 null。
+    /// 命中数为 0 表示 bbox 不在任何瓦片覆盖内，此时高程其实是合成值，调用方须据此如实标注来源。
     /// </summary>
-    private static (double[] Elev, byte[]? Lc, bool FromRealTiles) SampleElevation(HexGridGeometry grid, GenSpec spec, TerrainSampler? sampler)
+    private static (double[] Elev, byte[]? Lc, int SampledHits) SampleElevation(HexGridGeometry grid, GenSpec spec, TerrainSampler? sampler)
     {
         var synth = GenerateSyntheticDem(grid, spec.Seed);
 
@@ -193,6 +203,7 @@ public static class HexGenService
             try
             {
                 var elev = (double[])synth.Clone();
+                var hits = 0;
                 byte[]? lc = sampler.HasLandcover ? new byte[grid.Width * grid.Height] : null;
                 for (var r = 0; r < grid.Height; r++)
                 {
@@ -203,21 +214,28 @@ public static class HexGenService
                         var (lon, lat) = Mercator.MercatorToLonLat(x, y);
                         if (sampler.Sample(lat, lon, out short e, out byte c))
                         {
-                            // .ter 高程 nodata = -32768 ⇒ 保留合成值兜底
-                            elev[idx] = e == -32768 ? synth[idx] : e;
+                            if (e != -32768)
+                            {
+                                // .ter 高程 nodata = -32768 ⇒ 保留合成值兜底。
+                                // 真实 DEM 的海域/潮滩像元是负高程（合成 DEM 恒 ≥0），而道路/铁路/电网的
+                                // 代价都是 elev 的线性函数——负值会带来负边权，A* 的 gScore 反复松弛、
+                                // openSet 永不清空且 cameFrom 成环，ReconstructPath 直接死循环吃满内存。
+                                elev[idx] = Math.Max(0.0, e);
+                                hits++;
+                            }
                             if (lc != null) lc[idx] = c;
                         }
                     }
                 }
-                return (elev, lc, true);
+                return (elev, lc, hits);
             }
             catch
             {
-                return (synth, null, false);
+                return (synth, null, 0);
             }
         }
 
-        return (synth, null, false);
+        return (synth, null, 0);
     }
     
     /// <summary>Generate deterministic synthetic DEM using value noise.</summary>
@@ -314,18 +332,21 @@ public static class HexGenService
         
         var elevMountain = Math.Max(relief.Min + relief.Span * ElevMountainRel, p75);
         var elevHills = Math.Max(relief.Min + relief.Span * ElevHillsRel, p50);
+        var riverIdx = Math.Clamp((int)(n * RiverLowPercentile / 100.0), 1, n - 1);
         
         return new TerrainThresholds
         {
             ElevMountain = elevMountain,
             ElevHills = elevHills,
+            RiverElevMax = sorted[riverIdx],
             P25 = p25,
             P50 = p50,
             P75 = p75,
         };
     }
     
-    /// <summary>Classify terrain type for each cell. lc 为真实土地覆盖（ESA WorldCover 类码），null 表示无真实数据。</summary>
+    /// <summary>Classify terrain type for each cell. lc 为真实土地覆盖（ESA WorldCover 类码），null 表示无真实数据。
+    /// 河槽候选走整包高程分位数阈值（th.RiverElevMax）：真实平原的相对高差被孤峰拉开，min+span 口径会把大半张图判成河。</summary>
     private static (string[] Terrain, Dictionary<string, object> Aux) ClassifyTerrain(
         HexGridGeometry grid, double[] elev, double[] slopes,
         (double Min, double Max, double Span) relief, TerrainThresholds th, GenSpec spec, byte[]? lc)
@@ -345,7 +366,7 @@ public static class HexGenService
                 var sl = slopes[idx];
                 
                 // River will be marked later
-                if (IsRiverCandidate(q, r, elev, grid))
+                if (IsRiverCandidate(q, r, th.RiverElevMax, elev, grid))
                 {
                     terr[idx] = "river";
                     continue;
@@ -857,10 +878,13 @@ public static class HexGenService
         double[] elev, string[] terr, HashSet<(int Q, int R)> road,
         List<(int Q, int R)> riverBand, RailwayNetwork railway,
         PowerGrid powerGrid, List<(int Q, int R, bool IsMajor)> airports,
-        List<(int Q, int R)> fuelStations, bool fromRealTiles, byte[]? lc)
+        List<(int Q, int R)> fuelStations, bool fromRealTiles, byte[]? lc, int sampledHits)
     {
         var totalCells = grid.Width * grid.Height;
         var terrainCounts = terr.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count());
+        // C# 生成路径没有在线 DEM 抓取（open-meteo 仅 Python hexgen.py 实现），
+        // 未命中真实瓦片只可能是合成值，不能标成 open-meteo。
+        var elevSource = fromRealTiles ? "local-ter" : "synthetic";
         
         var stats = new Dictionary<string, object>
         {
@@ -879,13 +903,14 @@ public static class HexGenService
             ["bridge_cells"] = terr.Count(t => t == "bridge"),
             ["elev_min"] = Math.Round(elev.Min(), 1),
             ["elev_max"] = Math.Round(elev.Max(), 1),
+            ["elev_sampled_cells"] = sampledHits,
             ["terrain_counts"] = terrainCounts,
         };
         
         var layers = new Dictionary<string, object>
         {
-            ["elevation"] = fromRealTiles ? "local-ter" : spec.UseRealDem ? "open-meteo" : "synthetic",
-            ["landcover"] = lc != null ? "esa-worldcover" : "off",
+            ["elevation"] = elevSource,
+            ["landcover"] = fromRealTiles && lc != null ? "esa-worldcover" : "off",
             ["roads"] = spec.Features ? "generated" : "off",
             ["hydrology"] = "generated",
             ["settlements"] = "generated",
@@ -898,7 +923,7 @@ public static class HexGenService
         return new Models.PackageMeta
         {
             Name = spec.Name,
-            Source = fromRealTiles ? "local-ter" : spec.UseRealDem ? "open-meteo-elevation" : "synthetic-fallback",
+            Source = fromRealTiles ? "local-ter" : "synthetic-fallback",
             Width = grid.Width,
             Height = grid.Height,
             RadiusM = grid.RadiusM,
@@ -985,16 +1010,11 @@ public static class HexGenService
         return maxSlope;
     }
     
-    private static bool IsRiverCandidate(int q, int r, double[] elev, HexGridGeometry grid)
+    private static bool IsRiverCandidate(int q, int r, double riverElevMax, double[] elev, HexGridGeometry grid)
     {
-        // Simple heuristic: low elevation cells in valley
+        // 低槽候选：高程落在整包分位数阈值以下（阈值一次算好，见 BuildThresholds）
         var idx = r * grid.Width + q;
-        var e = elev[idx];
-        var eMin = elev.Min();
-        var eMax = elev.Max();
-        var span = eMax - eMin;
-        
-        return e < eMin + span * 0.15 && r > 0 && r < grid.Height - 1;
+        return elev[idx] < riverElevMax && r > 0 && r < grid.Height - 1;
     }
     
     /// <summary>Fractional Brownian Motion for procedural noise.</summary>
@@ -1251,6 +1271,7 @@ public static class HexGenService
     {
         public double ElevMountain { get; init; }
         public double ElevHills { get; init; }
+        public double RiverElevMax { get; init; }
         public double P25 { get; init; }
         public double P50 { get; init; }
         public double P75 { get; init; }
