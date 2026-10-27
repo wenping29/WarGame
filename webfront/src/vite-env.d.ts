@@ -5,7 +5,7 @@
 interface ImportMetaEnv {
   /**
    * 前端调用后端的完整前缀，必须以 /api 结尾。
-   * 方案 B（宝塔双站分离）时填后端站点的绝对地址，如 https://api.example.com/api；
+   * 方案 B（宝塔双站分离）时填后端站点的绝对地址，如 http://43.142.147.244:7777/api；
    * 不设置则退回同源相对路径 /api（单进程部署）。
    */
   readonly VITE_API_BASE_URL?: string

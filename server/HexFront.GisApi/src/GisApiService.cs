@@ -44,8 +44,13 @@ public sealed class GisApiService
     {
         var opt = cfg.GetSection("GisApi").Get<GisApiOptions>() ?? new GisApiOptions();
         var repo = RepoLocator.ResolveRepoRoot();
-        _dataDir = ResolveDir(opt.DataDir, repo, "data/gis-api");
-        _terrainDir = ResolveDir(opt.TerrainDir, repo, "data/terrain");
+
+        // 按运行系统选取对应的路径键（特化键优先，回退通用键），再做跨平台归一
+        var terrainConfigured = SelectPlatformPath(opt.TerrainDir, opt.TerrainDirWindows, opt.TerrainDirLinux);
+        var dataConfigured = SelectPlatformPath(opt.DataDir, opt.DataDirWindows, opt.DataDirLinux);
+
+        _terrainDir = ResolveDir(terrainConfigured, repo, "data/terrain");
+        _dataDir = ResolveDir(dataConfigured, repo, "data/gis-api");
         _demMode = string.IsNullOrWhiteSpace(opt.DemMode) ? "auto" : opt.DemMode;
         _jobsDir = Path.Combine(_dataDir, "jobs");
         _gridsDir = Path.Combine(_dataDir, "grids");
@@ -471,11 +476,45 @@ public sealed class GisApiService
         };
     }
 
+    /// <summary>
+    /// 路径归一：展开环境变量（Windows %VAR% / Linux $VAR / ${VAR}）、展开 ~ 为用户主目录、
+    /// 并统一使用 / 分隔符（Windows 与 Linux 的 .NET 均接受，便于同一份配置跨系统通用）。
+    /// </summary>
+    private static string NormalizePath(string path)
+    {
+        path = Environment.ExpandEnvironmentVariables(path).Trim();
+        if (path.StartsWith("~", StringComparison.Ordinal))
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var rest = path.Substring(1).TrimStart('/');
+            path = string.IsNullOrEmpty(rest) ? home : Path.Combine(home, rest);
+        }
+        return path.Replace('\\', '/');
+    }
+
+    /// <summary>按当前运行系统选取路径键：系统特化键优先，取不到回退通用键。</summary>
+    private static string? SelectPlatformPath(string? common, string? windows, string? linux)
+    {
+        if (OperatingSystem.IsWindows() && !string.IsNullOrWhiteSpace(windows)) return windows;
+        if (OperatingSystem.IsLinux() && !string.IsNullOrWhiteSpace(linux)) return linux;
+        return common;
+    }
+
     private static string ResolveDir(string? configured, string repo, string fallbackRelative)
     {
-        var dir = string.IsNullOrWhiteSpace(configured)
-            ? Path.Combine(repo, fallbackRelative)
-            : configured!;
+        string dir;
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            dir = Path.Combine(repo, fallbackRelative);
+        }
+        else
+        {
+            dir = NormalizePath(configured);
+            // 非绝对路径按仓库根解析（如 "data/terrain"），绝对路径直接采用
+            if (!Path.IsPathRooted(dir))
+                dir = Path.Combine(repo, dir);
+        }
+        dir = NormalizePath(dir);
         Directory.CreateDirectory(dir);
         return dir;
     }

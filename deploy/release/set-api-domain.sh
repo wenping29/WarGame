@@ -8,7 +8,7 @@
 # 可选第二个参数指定前端产物目录，默认 ../web
 #   bash set-api-domain.sh https://api.你的域名.com/api /www/wwwroot/wargame/web
 #
-# 前提：包是用占位符 https://api.example.com/api 构建的。
+# 前提：包是用占位符 http://43.142.147.244:7777/api 构建的。
 #      如果包是按真实域名构建的，这个脚本不需要跑。
 #
 # ⚠ 换完域名后还要做一件事：
@@ -18,7 +18,7 @@
 # =============================================================================
 set -euo pipefail
 
-OLD="https://api.example.com/api"
+OLD="http://43.142.147.244:7777/api"
 NEW="${1:-}"
 WEB="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/web}"
 

@@ -16,7 +16,7 @@
 #
 # 环境变量：
 #   API_BASE_URL       前端调后端的完整前缀，必须以 /api 结尾
-#                      默认 https://api.example.com/api（占位符，部署前需替换）
+#                      默认 http://43.142.147.244:7777/api（占位符，部署前需替换）
 #   VITE_TIANDITU_TK   天地图密钥（按**前端域名**注册白名单的那把 token）。
 #                      留空 → 产物不写死 key，前端回退用后端 data/tianditu.json 下发的那把
 #                      （运行时可改，改服务端文件即生效，但后端需重启）。
@@ -25,7 +25,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="$REPO/deploy/out"
-API_BASE_URL="${API_BASE_URL:-https://api.example.com/api}"
+API_BASE_URL="${API_BASE_URL:-http://43.142.147.244:7777/api}"
 TIANDITU_TK="${VITE_TIANDITU_TK:-}"
 TS="$(date +%Y%m%d-%H%M%S)"
 PUBLISH_DIR="$OUT_DIR/publish-linux-x64-$TS"

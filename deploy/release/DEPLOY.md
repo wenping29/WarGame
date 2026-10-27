@@ -191,6 +191,11 @@ proxy_read_timeout 3600s;      # 推演是长连接，默认 60s 会被掐断
   只由同机的主后端通过 `127.0.0.1:5180` 调用，无需单独配 nginx / HTTPS / 域名。
 - 与主后端**共用 `server/data/`**：真实高程来自 `server/data/terrain/*.ter`，
   生成的作业与网格包落在 `server/data/gis-api/{jobs,grids}`。
+- 这些目录都可在生成服务的 `appsettings.json`（`GisApi` 段）里改，**同一份配置跨 Windows / Linux 通用**：
+  每个路径提供「通用键 + 系统特化键」三套（`TerrainDir`/`TerrainDirWindows`/`TerrainDirLinux`、
+  `DataDir`/`DataDirWindows`/`DataDirLinux`）。运行时优先取当前系统的特化键，没有再退回通用键；
+  都留空则按 `HF_REPO_ROOT` 推导默认值。路径写法支持 `/` 分隔、`~` 主目录、`$ENV`/`%ENV%` 环境变量展开，
+  以及相对仓库根的相对路径（如 `data/terrain`）。
 - 主后端通过 `GisApi:BaseUrl`（环境变量 `HF_GIS_API_URL`）找它，默认就是
   `http://127.0.0.1:5180`，**同机部署无需改任何配置**；跨机部署时把 `HF_GIS_API_URL`
   指向对方地址、并把 GisApi 的 `Urls` 改成可访问的地址即可（详见第 9 节排错）。
@@ -331,7 +336,7 @@ curl -s -o /dev/null -w "后端 HTTP %{http_code}\n" http://127.0.0.1:5018/api/i
 #    期望 200
 
 # ② CORS 预检放行（跨域必需）
-curl -i -X OPTIONS http://api.example.com/api/instances \
+curl -i -X OPTIONS http://43.142.147.244:7777/api/instances \
   -H 'Origin: https://game.example.com' \
   -H 'Access-Control-Request-Method: POST' | grep -i allow-origin
 #    期望：Access-Control-Allow-Origin: https://game.example.com
@@ -343,7 +348,7 @@ curl -s -o /dev/null -w "前端路由 %{http_code}\n" https://game.example.com/r
 # ④ WebSocket 升级
 curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-  "http://api.example.com/ws?room=TEST&role=blue" | head -5
+  "http://43.142.147.244:7777/ws?room=TEST&role=blue" | head -5
 #    期望：HTTP/1.1 101 Switching Protocols
 ```
 

@@ -19,8 +19,8 @@ deploy                   部署物料与脚本（out/ 放产物，已 gitignore�
 ## 部署架构：两种方案
 - **方案 A（默认，单进程同源）**：后端进程同时托管 `wwwroot` 前端 + `/api` + `/ws`，只需一个站点，无需 nginx、无需 CORS。发布包已含前端。
 - **方案 B（宝塔双站分离）**：前端在宝塔「静态网站」，后端在宝塔「.NET 网站」，**分属不同域名 → 跨域**。前提：
-  1. 前端构建注入 `VITE_API_BASE_URL=https://api.<域名>/api`（**必须以 /api 结尾**；前端路径本身不带 /api，靠 baseURL 提供）
-  2. 后端设 `HF_ALLOWED_ORIGINS=https://<前端站 origin>`（逗号分隔，末尾无斜杠）
+  1. 前端构建注入 `VITE_API_BASE_URL=http://api.<域名>/api`（**必须以 /api 结尾**；前端路径本身不带 /api，靠 baseURL 提供）
+  2. 后端设 `HF_ALLOWED_ORIGINS=http://<前端站 origin>`（逗号分隔，末尾无斜杠）
   3. WebSocket 地址由 `VITE_API_BASE_URL` 的 origin 自动派生（https→wss），见 `RoomSocket.tsx`
   4. nginx 的 `/ws` 必须透传 `Upgrade`/`Connection`，`proxy_read_timeout` 放宽（长连接）
   5. **两边都必须 HTTPS**：https 页面调 http 接口会被浏览器按混合内容拦截
@@ -28,10 +28,10 @@ deploy                   部署物料与脚本（out/ 放产物，已 gitignore�
 
 ## 发布包（当前主流程：前后端分离 + zip，**含独立生成服务**）
 ```bash
-# 默认占位符 https://api.example.com/api（解压后跑 set-api-domain.sh 换域名）
+# 默认占位符 http://43.142.147.244:7777/api（解压后跑 set-api-domain.sh 换域名）
 bash deploy/build-release-zip.sh
 # 或按真实后端域名直接注入（需以 /api 结尾）：
-API_BASE_URL="https://api.<后端域名>/api" bash deploy/build-release-zip.sh
+API_BASE_URL="http://api.<后端域名>/api" bash deploy/build-release-zip.sh
 # -> deploy/out/hexfront-release-<ts>.zip  (2.0G, 195 文件)
 ```
 包内结构 `hexfront-release/{web,server/{HexFront.Api/{publish,app.db},HexFront.GisApi/publish},data},deploy}`：
@@ -42,7 +42,7 @@ API_BASE_URL="https://api.<后端域名>/api" bash deploy/build-release-zip.sh
 - 已剔除：`tianditu.json`（密钥）、`saves/`、`terrain_test/`、备份、`bin`/`obj`/`node_modules`、`.pdb`
 
 **占位符换域名**：包里 `deploy/set-api-domain.sh` 直接改产物里的地址字符串，**不用重新构建前端**。
-产物里 `https://api.example.com/api` 是完整字符串（前端 js 中），WS 地址是**运行时**从它派生
+产物里 `http://43.142.147.244:7777/api` 是完整字符串（前端 js 中），WS 地址是**运行时**从它派生
 （`new URL(apiBase)` → https 转 wss），所以替换一处 REST 与 WS 同时生效。
 **生成服务地址无需换**：同机部署主后端 `GisApi:BaseUrl` 默认就是 `http://127.0.0.1:5180`，
 跨机才用 `HF_GIS_API_URL` 配，并改 GisApi 的 `appsettings.json` 的 `Urls`。
