@@ -12,8 +12,7 @@ REM
 REM  Output:
 REM    deploy\out\hexfront-release-<timestamp>.zip
 REM      hexfront-release\web\                     front-end static bundle (API URL injected)
-REM      hexfront-release\server\HexFront.Api\     back-end publish + app.db
-REM      hexfront-release\server\HexFront.GisApi\  hex-grid generation service (separate process, port 5180)
+REM      hexfront-release\server\HexFront.Api\     back-end publish + app.db (in-process hex-grid gen)
 REM      hexfront-release\server\data\             map / scenario data
 REM      hexfront-release\deploy\                  nginx conf + env + DEPLOY.md
 REM
@@ -52,7 +51,6 @@ if not defined TS (
 )
 
 set "PUBLISH_DIR=%OUT_DIR%\publish-linux-x64-%TS%"
-set "GISAPI_PUBLISH_DIR=%OUT_DIR%\publish-gisapi-linux-x64-%TS%"
 set "ART_DIR=%OUT_DIR%\artifacts-%TS%"
 set "ZIP=%OUT_DIR%\hexfront-release-%TS%.zip"
 
@@ -83,20 +81,13 @@ REM ---- 2. back-end publish --------------------------------------------------
 REM  --artifacts-path points at a brand-new directory: on Windows the MSBuild
 REM  Copy task stack-overflows (MSB4166) when overwriting existing files, and a
 REM  fresh directory avoids that "overwrite" trigger at the root.
-echo [2/5] Publish back-end (linux-x64)
+echo [2/4] Publish back-end (linux-x64, in-process hex-grid gen)
 pushd "%REPO%\server"
 dotnet publish HexFront.Api\HexFront.Api.csproj -c Release -r linux-x64 --no-self-contained -o "%PUBLISH_DIR%" --artifacts-path "%ART_DIR%" --disable-build-servers
 if errorlevel 1 goto :fail_publish_api
 popd
 
-REM ---- 3. publish the hex-grid generation service (separate process, :5180) ---
-echo [3/5] Publish generation service HexFront.GisApi (linux-x64)
-pushd "%REPO%\server"
-dotnet publish HexFront.GisApi\HexFront.GisApi.csproj -c Release -r linux-x64 --no-self-contained -o "%GISAPI_PUBLISH_DIR%" --artifacts-path "%ART_DIR%" --disable-build-servers
-if errorlevel 1 goto :fail_publish_gis
-popd
-
-REM ---- 4. merge the SQLite WAL ---------------------------------------------
+REM ---- 3. merge the SQLite WAL ---------------------------------------------
 REM  The -wal file may still hold unmerged transactions. Packing without merging
 REM  is not data loss (the server replays the WAL on open), but -wal/-shm are
 REM  excluded by the packaging rules, so the server would not see the most
@@ -115,8 +106,8 @@ if errorlevel 1 (
 )
 popd
 
-REM ---- 5. pack the zip ------------------------------------------------------
-echo [5/5] Pack zip (2G of data, this takes a few minutes)
+REM ---- 4. pack the zip ------------------------------------------------------
+echo [4/4] Pack zip (2G of data, this takes a few minutes)
 set "PY="
 where python >nul 2>&1 && set "PY=python"
 if defined PY goto :have_python
@@ -126,7 +117,7 @@ echo [ERROR] python not found - cannot pack.
 exit /b 1
 :have_python
 pushd "%REPO%"
-%PY% "%REPO%\deploy\tools\pack_release.py" --out "%ZIP%" --root hexfront-release --web "%REPO%\webfront\dist" --publish "%PUBLISH_DIR%" --gisapi "%GISAPI_PUBLISH_DIR%" --db "%REPO%\server\HexFront.Api\app.db" --data "%REPO%\server\data" --deploy "%REPO%\deploy\release"
+%PY% "%REPO%\deploy\tools\pack_release.py" --out "%ZIP%" --root hexfront-release --web "%REPO%\webfront\dist" --publish "%PUBLISH_DIR%" --db "%REPO%\server\HexFront.Api\app.db" --data "%REPO%\server\data" --deploy "%REPO%\deploy\release"
 if errorlevel 1 goto :fail_pack
 popd
 
@@ -148,11 +139,6 @@ endlocal & exit /b 1
 :fail_publish_api
 popd
 echo [ERROR] Back-end publish failed.
-endlocal & exit /b 1
-
-:fail_publish_gis
-popd
-echo [ERROR] HexFront.GisApi publish failed.
 endlocal & exit /b 1
 
 :fail_pack

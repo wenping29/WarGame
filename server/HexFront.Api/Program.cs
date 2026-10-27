@@ -20,9 +20,9 @@ if (!string.IsNullOrWhiteSpace(urlsFromEnv))
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddSingleton<RoomService>();
+// 六角格生成已在进程内完成（2026-10-27 合并进 HexFront.Api，不再独立进程 HexFront.GisApi）：
+// GisService 直接调 Core 的 HexGenService.Generate（真实 .ter 或合成兜底），提交作业、轮询、落盘、发布网络包。
 builder.Services.AddSingleton<GisService>();
-// 六角格生成改由独立生成服务（HexFront.GisApi）承担：主后端只提交作业、轮询进度、下载产物
-builder.Services.AddSingleton<GisApiClient>();
 builder.Services.AddSingleton<OpsLogService>();
 builder.Services.AddSingleton<AppDbService>();
 

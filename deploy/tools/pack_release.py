@@ -9,8 +9,7 @@ Python 的 zipfile 支持 ZIP64、可精��控制排除项、可分档设置�
 用法：
   python3 pack_release.py --out <输出zip> --root <zip内顶层目录名> \
       --web <前端dist目录> --publish <后端publish目录> \
-      --db <app.db> --data <server/data目录> --deploy <部署物料目录> \
-      [--gisapi <生成服务publish目录>]
+      --db <app.db> --data <server/data目录> --deploy <部署物料目录>
 """
 import argparse
 import os
@@ -101,7 +100,6 @@ def main() -> int:
     ap.add_argument("--db")
     ap.add_argument("--data")
     ap.add_argument("--deploy")
-    ap.add_argument("--gisapi")
     args = ap.parse_args()
 
     t0 = time.time()
@@ -116,9 +114,6 @@ def main() -> int:
         if args.publish:
             print("  · 后端 publish/ + app.db")
             add_dir(zf, args.publish, f"{args.root}/server/HexFront.Api/publish", counter)
-        if args.gisapi:
-            print("  · 生成服务 HexFront.GisApi publish/")
-            add_dir(zf, args.gisapi, f"{args.root}/server/HexFront.GisApi/publish", counter)
         if args.db:
             add_file(zf, args.db, f"{args.root}/server/HexFront.Api/app.db", counter)
         if args.data:

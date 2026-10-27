@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -9,15 +8,23 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using HexFront.Core.GisTools;
 using HexFront.Core.Models;
 using HexFront.Core.Services;
+using HexFront.Core.Validation;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace HexFront.Api.Services;
 
 /// <summary>
-/// GIS 生成作业调度：能力探测 / 格网方案 / 串行作业队列。
-/// 真实栅格生成走 tools/gis/hexgen.py（本机 Python + GDAL），无 Python 时降级为原生 C# 合成地形，
-/// 两条路都产出 data/gis/&lt;包名&gt;.json，作业日志里如实标注用的是哪条。
+/// 进程内六角格生成调度：能力探测 / 格网方案 / 串行作业队列 / 作业落盘持久化。
+///
+/// 2026-10-27 起，六角格生成从独立进程 HexFront.GisApi（端口 5180）合并进 HexFront.Api：
+/// 不再通过 HTTP 调远程服务，也不再本机跑 tools/gis/hexgen.py，而是直接在本进程调用
+/// Core 的 HexGenService.Generate。真实栅格来自 data/terrain/*.ter（TerrainSampler 读取，
+/// 含 ESA 土地覆盖），瓦片缺失则回落确定性合成地形。两条路都产出 data/gis/&lt;包名&gt;.json，
+/// 生成完成即发布为服务器网络包（data/hexgrids/&lt;id&gt;.zip）。
 /// </summary>
 public sealed class GisService
 {
@@ -26,19 +33,24 @@ public sealed class GisService
     public const int JobTimeoutMinutes = 20;
     public const int MaxJobsInList = 30;
 
-    private static readonly JsonSerializerOptions PackageJson = new()
+    /// <summary>数据包落盘/回读契约：与 hexgen.py 及 Core 一致（snake_case + 缩进）。</summary>
+    private readonly JsonSerializerOptions _pkgJson = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
     };
 
+    /// <summary>作业记录落盘（不含包体，包体单独存 data/gis）：紧凑，避免大文件。</summary>
+    private readonly JsonSerializerOptions _jobJson = new() { WriteIndented = false };
+
     private readonly ILogger<GisService> _logger;
-    private readonly string _repoRoot;
     private readonly string _gisDir;
     private readonly string _hexGridDir;
-    private readonly string _scriptPath;
+    private readonly string _jobsDir;
+    private readonly string _terrainDir;
+    private readonly string _demMode;
+    private readonly TerrainSampler? _sampler;
     private readonly AppDbService _db;
-    private readonly GisApiClient _api;
 
     private readonly object _gate = new();
     private readonly Dictionary<string, GisJob> _jobs = new();
@@ -47,225 +59,98 @@ public sealed class GisService
     private int _seq;
 
     private readonly Dictionary<string, JsonObject> _planCache = new();
-    private JsonObject? _caps;
-    private DateTime _capsAt = DateTime.MinValue;
-    private Task<JsonObject>? _capsProbe;
-    private string? _pythonExe;
 
-    public GisService(ILogger<GisService> logger, RoomService rooms, AppDbService db, GisApiClient api)
+    public GisService(ILogger<GisService> logger, RoomService rooms, AppDbService db, IConfiguration cfg)
     {
         _logger = logger;
-        _api = api;
-        // GIS 目录只有一份口径：与建格/存档用的 RoomService.GisDirectory 同源
+        _db = db;
         _gisDir = rooms.GisDirectory;
         _hexGridDir = rooms.HexGridDirectory;
-        _db = db;
-        _repoRoot = Path.GetDirectoryName(Path.GetDirectoryName(_gisDir)!) ?? Directory.GetCurrentDirectory();
-        _scriptPath = Path.Combine(_repoRoot, "tools", "gis", "hexgen.py");
         Directory.CreateDirectory(_gisDir);
+
+        // 地形目录：GisApi 段（TerrainDir* 特化键优先）→ 回落 server/data/terrain。
+        // 与旧 HexFront.GisApi 的口径保持一致：server 目录即仓库根，其下 data/terrain 是默认地形位置。
+        var serverRoot = AppDbService.ServerRoot();
+        var opt = cfg.GetSection("GisApi").Get<GisApiOptions>() ?? new GisApiOptions();
+        var terrainConfigured = PathResolver.SelectPlatformPath(opt.TerrainDir, opt.TerrainDirWindows, opt.TerrainDirLinux);
+        _terrainDir = PathResolver.ResolveDir(terrainConfigured, serverRoot, "data/terrain");
+        _demMode = string.IsNullOrWhiteSpace(opt.DemMode) ? "auto" : opt.DemMode;
+
+        // 作业落盘：data/gis-api/jobs/<id>.json（包体仍落在 data/gis/<pkg>.json，这里只存作业记录）。
+        _jobsDir = Path.Combine(rooms.DataDirectory, "gis-api", "jobs");
+        Directory.CreateDirectory(_jobsDir);
+
+        // 真实地形采样器：地形目录存在且含 .ter 瓦片时才建立，否则回落合成地形。
+        if (Directory.Exists(_terrainDir))
+            _sampler = new TerrainSampler(_terrainDir);
+
+        _logger.LogInformation("GIS 生成配置：terrain_dir={TerrainDir}（dem_mode={DemMode}）, jobs_dir={JobsDir}, 真实瓦片={Real}",
+            _terrainDir, _demMode, _jobsDir, _sampler?.Available == true);
+        if (_sampler is null)
+            _logger.LogWarning("地形目录不存在，将回落合成地形：{Dir}", _terrainDir);
+        else if (!_sampler.Available)
+            _logger.LogWarning("地形目录已存在但未发现 terrain_manifest.json 或 .ter 瓦片，将回落合成地形：{Dir}。" +
+                "请把 GisApi 的 TerrainDir（Linux 写 TerrainDirLinux）指向含 terrain_manifest.json 的目录。", _terrainDir);
+        else
+            _logger.LogInformation("地形瓦片已加载（真实 DEM），含土地覆盖={HasLandcover}：{Dir}", _sampler.HasLandcover, _terrainDir);
+
+        LoadJobs();
     }
 
     public string GisDirectory => _gisDir;
-    public string ScriptPath => _scriptPath;
 
     // ==================== 能力探测 ====================
 
     /// <summary>
-    /// GIS 工具链可用性；优先问独立生成服务（HexFront.GisApi），不可达才回落到本机探测（Python/hexgen.py）。
-    /// 5 分钟缓存，refresh=1 强制重探。
+    /// 进程内 GIS 工具链可用性：真实 .ter 瓦片是否就绪、DemMode 是否强制真实。
+    /// 返回前端既有字段；为兼容 HexGenPanel 的 capsNotes（远程分支），把地形实况挂在 remote.dem 下。
     /// </summary>
-    public async Task<JsonObject> CapabilitiesAsync(bool refresh)
-    {
-        if (_api.Enabled)
-        {
-            var remote = await _api.CapabilitiesAsync();
-            if (remote != null) return MapRemoteCaps(remote);
-        }
-        Task<JsonObject>? inflight;
-        lock (_gate)
-        {
-            if (!refresh && _caps != null && DateTime.Now - _capsAt < TimeSpan.FromMinutes(5)) return _caps;
-            inflight = _capsProbe;
-            if (inflight == null)
-            {
-                _capsProbe = null;
-                inflight = ProbeAsync();
-                _capsProbe = inflight;
-            }
-        }
-        var result = await inflight;
-        lock (_gate)
-        {
-            if (ReferenceEquals(_capsProbe, inflight))
-            {
-                _caps = result;
-                _capsAt = DateTime.Now;
-                _capsProbe = null;
-            }
-        }
-        return result;
-    }
+    public Task<JsonObject> CapabilitiesAsync(bool refresh = false) => Task.FromResult(LocalCaps());
 
-    private async Task<JsonObject> ProbeAsync()
+    private JsonObject LocalCaps()
     {
-        var exe = await FindPythonAsync();
-        if (exe == null)
-            return Unavailable("未找到 python：真实栅格生成需要本机 Python（可用环境变量 HEXGEN_PYTHON 指定）；" +
-                               "作业将降级为原生 C# 合成地形");
-        if (!File.Exists(_scriptPath))
-            return Unavailable($"未找到生成脚本：{_scriptPath}；作业将降级为原生 C# 合成地形");
-
-        try
-        {
-            var (stdout, _, exitCode) = await RunOnceAsync(exe, new[] { "-X", "utf8", _scriptPath, "--capabilities" },
-                                                            TimeSpan.FromMinutes(2));
-            if (exitCode != 0) return Unavailable($"能力探测退出码 {exitCode}");
-            var line = LastPrefix(stdout, "##CAP## ");
-            if (line == null) return Unavailable("能力探测无输出（缺少 ##CAP## 行）");
-            return MapCaps(JsonNode.Parse(line)!.AsObject(), exe);
-        }
-        catch (Exception e)
-        {
-            _logger.LogWarning(e, "GIS 能力探测失败");
-            return Unavailable($"能力探测失败：{e.Message}");
-        }
-    }
-
-    private JsonObject MapCaps(JsonObject m, string exe)
-    {
-        static bool B(JsonObject s, string k) => s[k]?.GetValueKind() == JsonValueKind.True;
-        var rasterio = B(m, "rasterio");
-        var demPresent = B(m, "dem_present");
-        var roadsGdb = B(m, "roads_gdb_present");
-        var airports = B(m, "airports_present");
-        var vectorOk = B(m, "vector_ok");
+        var real = _sampler?.Available == true;
+        var useReal = _demMode == "real" || (_demMode == "auto" && real);
         return new JsonObject
         {
             ["available"] = JsonValue.Create(true),
-            ["engine"] = JsonValue.Create(rasterio && demPresent ? "python-hexgen" : "synthetic"),
-            ["python"] = JsonValue.Create(exe),
-            ["python_version"] = m["python"]?.DeepClone(),
-            ["rasterio"] = JsonValue.Create(rasterio),
-            ["gdal_version"] = m["version"]?.DeepClone(),
-            ["reason"] = m["reason"]?.DeepClone(),
-            ["script"] = JsonValue.Create(_scriptPath),
-            ["gis_dir"] = JsonValue.Create(_gisDir),
-            ["dem_tif"] = m["dem_tif"]?.DeepClone(),
-            ["dem_present"] = JsonValue.Create(demPresent),
-            ["dem_info"] = m["dem_info"]?.DeepClone(),
-            ["landcover_online"] = JsonValue.Create(rasterio),
-            ["water_gpkg"] = m["water_gpkg"]?.DeepClone(),
-            ["water_present"] = JsonValue.Create(B(m, "water_present")),
-            ["water_vector_ok"] = JsonValue.Create(B(m, "water_vector_ok")),
-            ["water_reason"] = m["water_reason"]?.DeepClone(),
-            ["vector_ok"] = JsonValue.Create(vectorOk),
-            ["vector_reason"] = m["vector_reason"]?.DeepClone(),
-            ["roads_gdb"] = m["roads_gdb"]?.DeepClone(),
-            ["roads_gdb_present"] = JsonValue.Create(roadsGdb),
-            ["airports_shp"] = m["airports_shp"]?.DeepClone(),
-            ["airports_present"] = JsonValue.Create(airports),
-            ["network_ok"] = JsonValue.Create(vectorOk && (roadsGdb || airports)),
-        };
-    }
-
-    private JsonObject Unavailable(string reason) => new()
-    {
-        ["available"] = JsonValue.Create(false),
-        ["engine"] = JsonValue.Create("synthetic"),
-        ["python"] = JsonValue.Create((string?)null),
-        ["rasterio"] = JsonValue.Create(false),
-        ["gdal_version"] = JsonValue.Create((string?)null),
-        ["reason"] = JsonValue.Create(reason),
-        ["script"] = JsonValue.Create(_scriptPath),
-        ["gis_dir"] = JsonValue.Create(_gisDir),
-        ["dem_tif"] = JsonValue.Create((string?)null),
-        ["dem_present"] = JsonValue.Create(false),
-        ["landcover_online"] = JsonValue.Create(false),
-        ["water_present"] = JsonValue.Create(File.Exists(Path.Combine(_repoRoot, "data", "water", "global_water.gpkg"))),
-        ["water_vector_ok"] = JsonValue.Create(false),
-        ["vector_ok"] = JsonValue.Create(false),
-        ["roads_gdb"] = JsonValue.Create(Path.Combine(_gisDir, "roads_pkg", "v10", "roads.gdb")),
-        ["roads_gdb_present"] = JsonValue.Create(Directory.Exists(Path.Combine(_gisDir, "roads_pkg", "v10", "roads.gdb"))),
-        ["airports_shp"] = JsonValue.Create(Path.Combine(_repoRoot, "data", "airports", "ne_10m_airports.shp")),
-        ["airports_present"] = JsonValue.Create(File.Exists(Path.Combine(_repoRoot, "data", "airports", "ne_10m_airports.shp"))),
-        ["network_ok"] = JsonValue.Create(false),
-    };
-
-    /// <summary>
-    /// 远程生成服务的 capabilities → 前端既有字段。远程模式下「本机 Python/rasterio」这些探测项不再适用，
-    /// 所以把可能造成误导的开关一律置为可用（真实与否由 remote.dem 如实给出），并额外挂 remote 段供前端展示。
-    /// </summary>
-    private JsonObject MapRemoteCaps(JsonObject remote)
-    {
-        var dem = remote["dem"] as JsonObject;
-        var real = dem?["real_tiles_available"]?.GetValueKind() == JsonValueKind.True;
-        return new JsonObject
-        {
-            ["available"] = JsonValue.Create(true),
-            ["engine"] = JsonValue.Create("gisapi-remote"),
+            ["engine"] = JsonValue.Create(useReal ? "local-terrain" : "synthetic"),
+            ["dem_mode"] = JsonValue.Create(_demMode),
+            ["dem_effective_real"] = JsonValue.Create(useReal),
+            ["dem_present"] = JsonValue.Create(real),
+            ["terrain_dir"] = JsonValue.Create(_terrainDir),
+            ["real_tiles_has_landcover"] = JsonValue.Create(_sampler?.HasLandcover ?? false),
             ["gis_dir"] = JsonValue.Create(_gisDir),
             ["remote"] = new JsonObject
             {
-                ["base_url"] = JsonValue.Create(_api.BaseUrl),
-                ["service"] = remote["service"]?.DeepClone(),
-                ["version"] = remote["version"]?.DeepClone(),
-                ["dem"] = dem?.DeepClone(),
-                ["grid_count"] = remote["storage"]?["grid_count"]?.DeepClone(),
-            },
-            // 本机探测项：远程生成不再依赖它们，置为「不缺」避免前端报无关的降级提示
-            ["python"] = JsonValue.Create((string?)null),
-            ["python_version"] = JsonValue.Create((string?)null),
-            ["rasterio"] = JsonValue.Create(true),
-            ["gdal_version"] = JsonValue.Create((string?)null),
-            ["script"] = JsonValue.Create((string?)null),
-            ["dem_tif"] = dem?["terrain_dir"]?.DeepClone(),
-            ["dem_present"] = JsonValue.Create(real),
-            ["landcover_online"] = JsonValue.Create(dem?["real_tiles_has_landcover"]?.GetValueKind() == JsonValueKind.True),
-            ["water_present"] = JsonValue.Create(true),
-            ["water_vector_ok"] = JsonValue.Create(true),
-            ["vector_ok"] = JsonValue.Create(true),
-            ["roads_gdb_present"] = JsonValue.Create(true),
-            ["airports_present"] = JsonValue.Create(true),
-            ["network_ok"] = JsonValue.Create(true),
-            ["dem_mode"] = dem?["mode"]?.DeepClone(),
-            ["dem_effective_real"] = JsonValue.Create(dem?["effective_real"]?.GetValueKind() == JsonValueKind.True),
-        };
-    }
-
-    private async Task<string?> FindPythonAsync()
-    {
-        var fromEnv = Environment.GetEnvironmentVariable("HEXGEN_PYTHON")?.Trim();
-        if (!string.IsNullOrEmpty(fromEnv) && File.Exists(fromEnv)) return fromEnv;
-        lock (_gate) if (_pythonExe != null) return _pythonExe;
-        foreach (var cand in new[] { "python", "py", "python3" })
-        {
-            try
-            {
-                var (_, _, code) = await RunOnceAsync(cand, new[] { "--version" }, TimeSpan.FromSeconds(10));
-                if (code == 0)
+                ["base_url"] = "in-process",
+                ["service"] = "HexFront.Api",
+                ["version"] = "1.0.0",
+                ["dem"] = new JsonObject
                 {
-                    lock (_gate) _pythonExe = cand;
-                    return cand;
-                }
-            }
-            catch { /* 继续试下一个候选 */ }
-        }
-        return null;
+                    ["mode"] = _demMode,
+                    ["effective_real"] = useReal,
+                    ["real_tiles_available"] = real,
+                    ["real_tiles_has_landcover"] = _sampler?.HasLandcover ?? false,
+                    ["terrain_dir"] = _terrainDir,
+                },
+            },
+        };
     }
 
     // ==================== 格网方案 ====================
 
-    /// <summary>方案计算：优先问生成服务（同一份几何），不可达时进程内算；同一 (bbox, cell) 命中缓存直接回。</summary>
-    public async Task<JsonObject> PlanAsync(double[] bbox, double? cellKm)
+    /// <summary>方案计算（进程内，同一几何）：校验后交 GisPlanService，同一 (bbox, cell) 命中缓存直接回。</summary>
+    public Task<JsonObject> PlanAsync(double[] bbox, double? cellKm)
     {
         var key = string.Join(",", bbox.Select(v => v.ToString("R", CultureInfo.InvariantCulture))) +
                   ":" + (cellKm?.ToString("R", CultureInfo.InvariantCulture) ?? "-");
-        lock (_gate) if (_planCache.TryGetValue(key, out var hit)) return hit;
+        lock (_gate) if (_planCache.TryGetValue(key, out var hit)) return Task.FromResult(hit);
         JsonObject plan;
         try
         {
             ValidateBbox(bbox);
-            plan = await _api.PlanAsync(bbox, cellKm) ?? GisPlanService.PlanPayload(bbox, cellKm);
+            plan = GisPlanService.PlanPayload(bbox, cellKm);
         }
         catch (GisPlanException e)
         {
@@ -276,12 +161,12 @@ public sealed class GisService
             if (_planCache.Count > 64) _planCache.Clear();
             _planCache[key] = plan;
         }
-        return plan;
+        return Task.FromResult(plan);
     }
 
     // ==================== 作业 ====================
 
-    public async Task<GisJob> StartJobAsync(GisJobSpec spec)
+    public Task<GisJob> StartJobAsync(GisJobSpec spec)
     {
         // 用同一份几何预估格数：客户端算错也不要把服务端拖死
         var (gw, gh) = GisPlanService.GridSize(spec.Bbox.ToArray(), spec.CellKm);
@@ -289,44 +174,28 @@ public sealed class GisService
         if (cells > GisPlanService.MaxCells)
             throw new GisPlanException($"该范围会有 {cells} 格，超过上限 {GisPlanService.MaxCells}；请扩大对边距或缩小范围框");
 
-        // 优先交给独立生成服务：生成 / 进度 / 下载都在那边完成，主后端只负责跟踪、落盘与发布为服务器网络包
-        if (_api.Enabled)
-        {
-            var submitted = await _api.SubmitAsync(spec);
-            var remoteId = submitted?["id"] is JsonValue idNode ? idNode.GetValue<string>() : null;
-            if (!string.IsNullOrEmpty(remoteId))
-            {
-                GisJob remoteJob;
-                lock (_gate)
-                {
-                    var rid = "G" + (++_seq).ToString("D4", CultureInfo.InvariantCulture);
-                    remoteJob = new GisJob
-                    {
-                        Id = rid,
-                        Spec = spec,
-                        PkgName = UniquePkgName(spec.Name),
-                        RemoteId = remoteId,
-                        Stage = "已提交到生成服务",
-                    };
-                    _jobs[rid] = remoteJob;
-                }
-                Log(remoteJob, $"引擎：独立生成服务 {_api.BaseUrl}（远程作业 {remoteId}）");
-                _ = Task.Run(() => TrackRemoteAsync(remoteJob, remoteId!));
-                return remoteJob;
-            }
-            _logger.LogWarning("远程生成不可用（{Why}），本次回落本机引擎", _api.LastError ?? "生成服务未接受该作业");
-        }
-
-        var exe = await FindPythonAsync();
+        GisJob job;
         lock (_gate)
         {
             var id = "G" + (++_seq).ToString("D4", CultureInfo.InvariantCulture);
-            var job = new GisJob { Id = id, Spec = spec, PkgName = UniquePkgName(spec.Name) };
+            job = new GisJob
+            {
+                Id = id,
+                Spec = spec,
+                PkgName = UniquePkgName(spec.Name),
+                Stage = "排队中",
+            };
             _jobs[id] = job;
             _queue.Enqueue(job);
-            DrainLocked(exe);
-            return job;
+            PersistJob(job);
+            DrainLocked();
         }
+        var real = _demMode == "real" || (_demMode == "auto" && _sampler?.Available == true);
+        var useReal = real && !spec.Offline && spec.Dem is not ("synthetic" or "off");
+        Log(job, useReal
+            ? "引擎：本地 .ter 瓦片（真实 DEM" + (_sampler?.HasLandcover == true ? " + ESA 土地覆盖" : "") + "）"
+            : "引擎：合成地形（无真实瓦片 / 已指定 synthetic / 离线模式）");
+        return Task.FromResult(job);
     }
 
     public GisJob? Job(string id)
@@ -349,60 +218,116 @@ public sealed class GisService
         return pkg;
     }
 
-    private void DrainLocked(string? exe)
+    private void DrainLocked()
     {
         if (_running != null || _queue.Count == 0) return;
         var job = _queue.Dequeue();
         _running = job;
-        _ = Task.Run(async () =>
+        _ = Task.Run(() =>
         {
-            try { await ExecuteAsync(job, exe); }
+            try { RunInProcess(job); }
+            catch (Exception e)
+            {
+                job.Status = GisJobStatus.Failed;
+                job.Error = e.Message;
+                Log(job, "失败：" + e.Message);
+            }
             finally
             {
-                lock (_gate) { _running = null; DrainLocked(_pythonExe ?? exe); }
+                job.FinishedAt = DateTime.UtcNow;
+                PersistJob(job);
+                lock (_gate) { _running = null; DrainLocked(); }
             }
         });
     }
 
-    private async Task ExecuteAsync(GisJob job, string? exe)
+    /// <summary>
+    /// 进程内生成：直接调用 Core 的 HexGenService.Generate（真实 .ter 或合成兜底），
+    /// 阶段进度回报前端；完成后自校验、落盘 data/gis/&lt;包名&gt;.json，并发布为服务器网络包。
+    /// </summary>
+    private void RunInProcess(GisJob job)
     {
+        void OnProgress(string stage, double p)
+        {
+            job.Stage = stage;
+            job.Progress = Math.Clamp((int)Math.Round(p * 100), 0, 100);
+            Log(job, $"[{job.Progress}%] {stage}");
+            PersistJob(job);
+        }
+
         job.Status = GisJobStatus.Running;
         job.StartedAt = DateTime.UtcNow;
-        Log(job, $"作业开始：范围 {string.Join(", ", job.Spec.Bbox.Select(Num))}° · 对边距 {Num(job.Spec.CellKm)} km");
+        job.Stage = "开始生成";
+        job.Progress = 0;
+        PersistJob(job);
         try
         {
-            if (exe != null && File.Exists(_scriptPath))
+            var real = _demMode == "real" || (_demMode == "auto" && _sampler?.Available == true);
+            var useReal = real && !job.Spec.Offline
+                && job.Spec.Dem is not ("synthetic" or "off");
+            var genSpec = new GenSpec
             {
-                Log(job, "引擎：tools/gis/hexgen.py（本地栅格/矢量真实数据）");
-                await RunPythonAsync(job, exe);
-            }
-            else
-            {
-                Log(job, "引擎：原生 C# 合成地形（未找到 Python 或 hexgen.py ⇒ 高程/覆盖为确定性噪声代理）");
-                await Task.Run(() => RunNative(job));
-            }
-            var pkgPath = Path.Combine(_gisDir, job.PkgName + ".json");
-            if (job.Status == GisJobStatus.Done && !File.Exists(pkgPath))
+                Name = job.PkgName,
+                Bbox = job.Spec.Bbox.ToArray(),
+                CellKm = job.Spec.CellKm,
+                Seed = job.Spec.Seed,
+                Offline = job.Spec.Offline,
+                UseRealDem = useReal,
+                Features = job.Spec.Features,
+            };
+
+            var pkg = HexGenService.Generate(genSpec, useReal ? _sampler : null, OnProgress);
+            Log(job, "生成完成，开始自校验");
+            job.Stage = "自校验";
+            job.Progress = 95;
+            PersistJob(job);
+            var report = HexPackageValidator.Validate(pkg);
+            if (report.Fails > 0)
             {
                 job.Status = GisJobStatus.Failed;
-                job.Error = $"生成器报告成功，但 {pkgPath} 不存在（回读校验失败）";
+                var failNames = string.Join("；", report.Results
+                    .Where(r => r.Level == "FAIL")
+                    .Select(r => string.IsNullOrEmpty(r.Detail) ? r.Check : $"{r.Check}（{r.Detail}）"));
+                job.Error = $"自校验 {report.Fails} 项未通过，未产出数据包：{failNames}";
                 Log(job, "失败：" + job.Error);
+                job.Progress = 0;
+                return;
             }
-        }
-        catch (Exception e)
-        {
-            job.Status = GisJobStatus.Failed;
-            job.Error = e.Message;
-            Log(job, "失败：" + e.Message);
-        }
-        if (job.Status == GisJobStatus.Done)
-        {
-            job.Progress = 100;
+
+            var pkgPath = Path.Combine(_gisDir, job.PkgName + ".json");
+            File.WriteAllText(pkgPath, JsonSerializer.Serialize(pkg, _pkgJson));
+            Log(job, $"自校验 {report.Total} 项通过（{report.Warns} 项 WARN）→ {Path.GetFileName(pkgPath)}");
+
+            var counts = pkg.Meta.Stats.GetValueOrDefault("terrain_counts");
+            job.Meta = new JsonObject
+            {
+                ["ok"] = JsonValue.Create(true),
+                ["file"] = JsonValue.Create(pkgPath),
+                ["name"] = JsonValue.Create(job.PkgName + ".json"),
+                ["source"] = JsonValue.Create(pkg.Meta.Source),
+                ["cell_km"] = JsonValue.Create(job.Spec.CellKm),
+                ["width"] = JsonValue.Create(pkg.Meta.Width),
+                ["height"] = JsonValue.Create(pkg.Meta.Height),
+                ["bbox"] = ArrNum(pkg.Meta.Bbox),
+                ["fails"] = JsonValue.Create(report.Fails),
+                ["warns"] = JsonValue.Create(report.Warns),
+                ["terrain_counts"] = counts == null ? null : JsonSerializer.SerializeToNode(counts, _pkgJson),
+                ["generated_at"] = JsonValue.Create(pkg.Meta.GeneratedAt),
+                ["errors"] = ArrStr(report.Results.Where(r => r.Level == "FAIL").Select(r => r.Check)),
+            };
+            job.Status = GisJobStatus.Done;
             job.Stage = "已完成";
-            Log(job, $"完成：data/gis/{job.PkgName}.json（{MetaInt(job, "width")}×{MetaInt(job, "height")} 格）");
+            job.Progress = 100;
+            Log(job, $"完成：data/gis/{job.PkgName}.json（{pkg.Meta.Width}×{pkg.Meta.Height} 格）");
             PublishToHexGrid(job);   // 副本统一只用服务器网络包：生成完成即存储为 data/hexgrids/<id>.zip
         }
-        job.FinishedAt = DateTime.UtcNow;
+        catch (Exception ex)
+        {
+            job.Status = GisJobStatus.Failed;
+            job.Error = ex.Message;
+            job.Stage = "失败";
+            Log(job, "失败：" + ex.Message);
+        }
     }
 
     /// <summary>生成完成即发布为服务器网络包（转换 + zip 落盘 + 地图包目录表登记）；失败只记日志不影响数据包本身。</summary>
@@ -411,7 +336,7 @@ public sealed class GisService
         try
         {
             var pkgPath = Path.Combine(_gisDir, job.PkgName + ".json");
-            var pkg = JsonSerializer.Deserialize<HexPackage>(File.ReadAllText(pkgPath), PackageJson);
+            var pkg = JsonSerializer.Deserialize<HexPackage>(File.ReadAllText(pkgPath), _pkgJson);
             if (pkg == null || pkg.Hexes.Count == 0) throw new InvalidOperationException("数据包无格数据");
             var doc = HexGridPackageService.FromHexPackage(pkg, job.Spec.Name);
             HexGridPackageService.Save(_hexGridDir, doc);
@@ -424,223 +349,6 @@ public sealed class GisService
             Log(job, "存储服务器网络包失败（数据包仍在 data/gis，可重新生成）：" + e.Message);
             _logger.LogWarning(e, "hexgrid publish failed for {Pkg}", job.PkgName);
         }
-    }
-
-    /// <summary>
-    /// 跟踪远程作业：轮询生成服务的 /api/jobs/{id} 同步状态 / 进度 / 日志；完成后调用 /download 拉回包体，
-    /// 写入 data/gis/&lt;包名&gt;.json，再走既有的 PublishToHexGrid 发布为服务器网络包（data/hexgrids/&lt;id&gt;.zip）。
-    /// 这条路径完全不依赖本机 Python —— 生成在独立服务里做，主后端只负责跟踪、落盘与发布。
-    /// </summary>
-    private async Task TrackRemoteAsync(GisJob job, string remoteId)
-    {
-        job.Status = GisJobStatus.Running;
-        job.StartedAt = DateTime.UtcNow;
-        var deadline = DateTime.UtcNow.AddMinutes(JobTimeoutMinutes);
-        var merged = 0;
-        try
-        {
-            while (DateTime.UtcNow < deadline)
-            {
-                var node = await _api.JobAsync(remoteId);
-                if (node == null)
-                {
-                    job.Status = GisJobStatus.Failed;
-                    job.Error = $"无法从生成服务读取作业状态（{_api.LastError ?? _api.BaseUrl}）";
-                    Log(job, "失败：" + job.Error);
-                    return;
-                }
-                var status = node["status"] is JsonValue sv ? sv.GetValue<string>() : "";
-                if (node["progress"] is JsonValue pv && pv.TryGetValue(out int prog)) job.Progress = Math.Clamp(prog, 0, 100);
-                if (node["stage"] is JsonValue stv && stv.GetValueKind() == JsonValueKind.String) job.Stage = stv.GetValue<string>();
-                merged = MergeRemoteLog(job, node["log"], merged);
-
-                if (string.Equals(status, "Done", StringComparison.OrdinalIgnoreCase))
-                {
-                    var bytes = await _api.DownloadJobAsync(remoteId);
-                    if (bytes == null || bytes.Length == 0)
-                    {
-                        job.Status = GisJobStatus.Failed;
-                        job.Error = "远程作业已完成，但下载结果失败（可到生成服务 /api/jobs/{id}/download 手动取）";
-                        Log(job, "失败：" + job.Error);
-                        return;
-                    }
-                    var pkgPath = Path.Combine(_gisDir, job.PkgName + ".json");
-                    File.WriteAllBytes(pkgPath, bytes);
-                    job.Meta = RemoteMeta(node["meta"], pkgPath, remoteId);
-                    job.Status = GisJobStatus.Done;
-                    job.Progress = 100;
-                    job.Stage = "已完成";
-                    Log(job, $"完成：已从生成服务下载 → data/gis/{job.PkgName}.json" +
-                             $"（{MetaInt(job, "width")}×{MetaInt(job, "height")} 格）");
-                    PublishToHexGrid(job);   // 与本地路径一致：生成完成即存储为服务器网络包
-                    return;
-                }
-
-                if (string.Equals(status, "Failed", StringComparison.OrdinalIgnoreCase))
-                {
-                    job.Status = GisJobStatus.Failed;
-                    job.Error = (node["error"] is JsonValue ev && ev.GetValueKind() == JsonValueKind.String
-                                    ? ev.GetValue<string>() : null) ?? "远程生成失败";
-                    Log(job, "失败：" + job.Error);
-                    return;
-                }
-
-                await Task.Delay(1000);
-            }
-            job.Status = GisJobStatus.Failed;
-            job.Error = $"生成超时（{JobTimeoutMinutes} 分钟）";
-            Log(job, "失败：" + job.Error);
-        }
-        catch (Exception e)
-        {
-            job.Status = GisJobStatus.Failed;
-            job.Error = e.Message;
-            Log(job, "失败：" + e.Message);
-        }
-        finally
-        {
-            job.FinishedAt = DateTime.UtcNow;
-        }
-    }
-
-    /// <summary>远程作业日志增量合并（远程日志只增不减，按已合并行数续接）。</summary>
-    private int MergeRemoteLog(GisJob job, JsonNode? log, int merged)
-    {
-        if (log is not JsonArray arr) return merged;
-        for (var i = merged; i < arr.Count; i++)
-            if (arr[i] is JsonValue v && v.GetValueKind() == JsonValueKind.String)
-                Log(job, v.GetValue<string>());
-        return arr.Count;
-    }
-
-    /// <summary>远程作业 meta → 本地口径：路径/包名改成本地 data/gis 下的那份，其余（source/格数/地形构成）原样保留。</summary>
-    private static JsonObject RemoteMeta(JsonNode? meta, string localPath, string remoteId)
-    {
-        var m = meta is JsonObject o ? (JsonObject)o.DeepClone() : new JsonObject();
-        m["file"] = JsonValue.Create(localPath);
-        m["name"] = JsonValue.Create(Path.GetFileName(localPath));
-        m["remote_job"] = JsonValue.Create(remoteId);
-        m["ok"] = JsonValue.Create(true);
-        m["fails"] ??= JsonValue.Create(0);
-        return m;
-    }
-
-    private static int MetaInt(GisJob job, string key) =>
-        job.Meta?[key] is { } v && int.TryParse(v.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : 0;
-
-    private async Task RunPythonAsync(GisJob job, string exe)
-    {
-        var spec = job.Spec;
-        var args = new List<string>
-        {
-            "-X", "utf8", _scriptPath,
-            "--bbox",
-        };
-        args.AddRange(spec.Bbox.Select(Num));
-        args.AddRange(new[]
-        {
-            "--cell-km", Num(spec.CellKm),
-            "--out", $"data/gis/{job.PkgName}.json",
-            "--dem", spec.Dem,
-            "--landuse", spec.Landuse,
-            "--roads", spec.Roads ? "on" : "off",
-            "--water", spec.Water ? "auto" : "off",
-            "--network", spec.Network ? "auto" : "off",
-            "--features", spec.Features ? "on" : "off",
-            "--seed", spec.Seed.ToString(CultureInfo.InvariantCulture),
-            "--print-meta",
-        });
-        if (spec.Offline) args.Add("--offline");
-
-        using var proc = Start(exe, args);
-        proc.OutputDataReceived += (_, e) =>
-        {
-            var t = e.Data?.TrimEnd();
-            if (string.IsNullOrEmpty(t)) return;
-            if (!t.StartsWith("##META## ", StringComparison.Ordinal)) { Log(job, t); return; }
-            try { job.Meta = JsonNode.Parse(t.Substring(9))?.AsObject(); }
-            catch { /* 元信息坏掉只是显示问题 */ }
-        };
-        proc.ErrorDataReceived += (_, e) =>
-        {
-            var t = e.Data?.TrimEnd();
-            if (!string.IsNullOrEmpty(t)) Log(job, "! " + t);
-        };
-        proc.BeginOutputReadLine();
-        proc.BeginErrorReadLine();
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(JobTimeoutMinutes));
-        try
-        {
-            await proc.WaitForExitAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            try { proc.Kill(entireProcessTree: true); } catch { /* 进程可能已退出 */ }
-            job.Status = GisJobStatus.Failed;
-            job.Error = $"生成超时（{JobTimeoutMinutes} 分钟）已终止";
-            Log(job, "失败：" + job.Error);
-            return;
-        }
-
-        var code = proc.ExitCode;
-        var ok = job.Meta?["ok"]?.GetValueKind() == JsonValueKind.True;
-        if (code != 0 || !ok)
-        {
-            job.Status = GisJobStatus.Failed;
-            var fails = MetaInt(job, "fails");
-            job.Error = fails > 0
-                ? $"自校验 {fails} 项未通过，未产出数据包"
-                : code == 0 ? "生成器未回报成功（缺 ##META## ok）" : $"生成进程退出码 {code}";
-            Log(job, "失败：" + job.Error);
-            return;
-        }
-        job.Status = GisJobStatus.Done;
-    }
-
-    private void RunNative(GisJob job)
-    {
-        var spec = job.Spec;
-        var pkg = HexGenService.Generate(new GenSpec
-        {
-            Name = job.PkgName,
-            Bbox = spec.Bbox.ToArray(),
-            CellKm = spec.CellKm,
-            Seed = spec.Seed,
-            Offline = spec.Offline,
-            UseRealDem = !spec.Offline && spec.Dem != "off",
-            Features = spec.Features,
-        });
-        var report = HexFront.Core.Validation.HexPackageValidator.Validate(pkg);
-        var counts = pkg.Meta.Stats.GetValueOrDefault("terrain_counts");
-        job.Meta = new JsonObject
-        {
-            ["ok"] = JsonValue.Create(report.Fails == 0),
-            ["file"] = JsonValue.Create(Path.Combine(_gisDir, job.PkgName + ".json")),
-            ["name"] = JsonValue.Create(job.PkgName + ".json"),
-            ["source"] = JsonValue.Create(pkg.Meta.Source),
-            ["cell_km"] = JsonValue.Create(spec.CellKm),
-            ["width"] = JsonValue.Create(pkg.Meta.Width),
-            ["height"] = JsonValue.Create(pkg.Meta.Height),
-            ["bbox"] = ArrNum(pkg.Meta.Bbox),
-            ["fails"] = JsonValue.Create(report.Fails),
-            ["warns"] = JsonValue.Create(report.Warns),
-            ["layers"] = LayerKinds(pkg.Meta.Layers),
-            ["terrain_counts"] = counts == null ? null : JsonSerializer.SerializeToNode(counts, PackageJson),
-            ["generated_at"] = JsonValue.Create(pkg.Meta.GeneratedAt),
-            ["errors"] = ArrStr(report.Results.Where(r => r.Level == "FAIL").Select(r => r.Check)),
-        };
-        // 自校验不过就不落盘：与 hexgen.py 一样不产出半成品
-        if (report.Fails > 0)
-        {
-            job.Status = GisJobStatus.Failed;
-            job.Error = $"自校验 {report.Fails} 项未通过，未产出数据包";
-            Log(job, "失败：" + job.Error);
-            return;
-        }
-        File.WriteAllText(Path.Combine(_gisDir, job.PkgName + ".json"), JsonSerializer.Serialize(pkg, PackageJson));
-        Log(job, $"自校验 {report.Total} 项通过（{report.Warns} 项 WARN）");
-        job.Status = GisJobStatus.Done;
     }
 
     // ==================== 入参校验 ====================
@@ -748,61 +456,54 @@ public sealed class GisService
         return a;
     }
 
-    private static JsonObject LayerKinds(Dictionary<string, object> layers)
-    {
-        var o = new JsonObject();
-        foreach (var (k, v) in layers) o[k] = JsonValue.Create(v?.ToString() ?? "");
-        return o;
-    }
-
     private static string Num(double v) =>
         v.ToString(v == Math.Round(v) ? "F0" : "R", CultureInfo.InvariantCulture);
 
-    private Process Start(string exe, IEnumerable<string> args)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = exe,
-            WorkingDirectory = _repoRoot,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-        };
-        foreach (var a in args) psi.ArgumentList.Add(a);
-        psi.Environment["PYTHONIOENCODING"] = "utf-8";
-        psi.Environment["PYTHONUTF8"] = "1";
-        psi.Environment["PYTHONUNBUFFERED"] = "1";
-        return Process.Start(psi) ?? throw new GisPlanException("无法启动进程 " + exe);
-    }
+    // ==================== 作业持久化 ====================
 
-    private async Task<(string stdout, string stderr, int exitCode)> RunOnceAsync(string exe, string[] args, TimeSpan timeout)
+    private void PersistJob(GisJob job)
     {
-        using var proc = Start(exe, args);
-        using var cts = new CancellationTokenSource(timeout);
+        Directory.CreateDirectory(_jobsDir);
+        var pkg = job.Package;
+        job.Package = null; // 包体单独存 data/gis，作业记录不重复存放大对象
         try
         {
-            await proc.WaitForExitAsync(cts.Token);
+            File.WriteAllText(Path.Combine(_jobsDir, job.Id + ".json"),
+                JsonSerializer.Serialize(job, _jobJson));
         }
-        catch (OperationCanceledException)
+        finally
         {
-            try { proc.Kill(entireProcessTree: true); } catch { /* 已退出 */ }
-            throw new GisPlanException($"{exe} 超时（{timeout.TotalSeconds:F0}s）");
+            job.Package = pkg;
         }
-        var so = await proc.StandardOutput.ReadToEndAsync(cts.Token);
-        var se = await proc.StandardError.ReadToEndAsync(cts.Token);
-        return (so, se, proc.ExitCode);
     }
 
-    private static string? LastPrefix(string text, string prefix)
+    private void LoadJobs()
     {
-        string? hit = null;
-        foreach (var line in text.Split('\n'))
-            if (line.StartsWith(prefix, StringComparison.Ordinal)) hit = line;
-        return hit == null ? null : hit.Substring(prefix.Length).Trim();
+        if (!Directory.Exists(_jobsDir)) return;
+        foreach (var f in Directory.GetFiles(_jobsDir, "*.json"))
+        {
+            try
+            {
+                var job = JsonSerializer.Deserialize<GisJob>(File.ReadAllText(f), _jobJson);
+                if (job == null) continue;
+                _jobs[job.Id] = job;
+                // 重启后把未完成的作业重新入队重跑（数据包若已存在则重跑会覆盖，安全）
+                if (job.Status is GisJobStatus.Queued or GisJobStatus.Running)
+                {
+                    job.Status = GisJobStatus.Queued;
+                    job.Stage = "排队中";
+                    _queue.Enqueue(job);
+                    PersistJob(job);
+                }
+            }
+            catch
+            {
+                /* 坏记录忽略 */
+            }
+        }
     }
+
+    // ==================== 日志 ====================
 
     private void Log(GisJob job, string line)
     {
@@ -811,6 +512,7 @@ public sealed class GisService
             job.Log.Add(line);
             while (job.Log.Count > MaxLogLines) job.Log.RemoveAt(0);
         }
+        PersistJob(job);
     }
 }
 

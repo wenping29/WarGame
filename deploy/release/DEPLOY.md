@@ -20,13 +20,9 @@ hexfront-release/
 │   │   │   ├── appsettings.json      ← 端口、监听地址在这里
 │   │   │   └── …
 │   │   └── app.db                    ← 应用库（SQLite）
-│   ├── HexFront.GisApi/              ← 六角格生成服务（独立进程，默认端口 5180）
-│   │   └── publish/                  ← 「生成服务」运行目录
-│   │       ├── HexFront.GisApi.dll
-│   │       └── appsettings.json      ← Urls 默认 http://localhost:5180
-│   └── data/                         ← 地图/剧本数据（约 2.0G，后端与生成服务共用）
+│   └── data/                         ← 地图/剧本数据（约 2.0G，后端进程内生成共用）
 │       ├── gis/{dem,water,landcover,roads_pkg,airports}
-│       ├── terrain/*.ter             ← 真实高程/土地覆盖瓦片（生成服务的 DEM 数据源）
+│       ├── terrain/*.ter             ← 真实高程/土地覆盖瓦片（进程内生成的 DEM 数据源）
 │       ├── hexgrids/
 │       ├── scenarios/
 │       └── docs/
@@ -35,7 +31,6 @@ hexfront-release/
     ├── bt-site-static.conf           ← 静态站 nginx 配置模板
     ├── bt-site-dotnet.conf           ← .NET 站 nginx 配置模板
     ├── hexfront.env                  ← 后端环境变量模板
-    ├── hexfront-gisapi.service       ← 生成服务 systemd 单元模板
     ├── .env.production.example       ← 前端构建变量模板
     └── DEPLOY.md                     ← 本文件
 ```
@@ -43,9 +38,9 @@ hexfront-release/
 **已剔除**：`tianditu.json`（天地图密钥，需自行放置）、`saves/`（运行时存档）、
 `terrain_test/`、备份目录、`bin`/`obj`/`node_modules`、`.pdb` 中间产物。
 
-> **生成服务与主后端共用 `server/data/`**：地形瓦片、剧本、已生成的六角格都在这里面，
-> 所以两个进程必须把 `HF_REPO_ROOT` 指向同一个顶层目录（见第 3 节）。生成服务本身
-> 只占约 40MB 的 dll 发布目录，不会让包体翻倍。
+> **六角格生成已在进程内完成（2026-10-27 合并）**：地形瓦片、剧本、已生成的六角格都在这份
+> `server/data/` 里，不再有独立进程与 5180 端口。真实高程来自 `server/data/terrain/*.ter`，
+> 瓦片缺失则回落合成地形。地形目录与高程档位在后端 `appsettings.json` 的 `GisApi` 段配置。
 
 ---
 
@@ -181,59 +176,33 @@ proxy_read_timeout 3600s;      # 推演是长连接，默认 60s 会被掐断
 
 ---
 
-## 4.1 六角格生成服务 HexFront.GisApi（独立进程）
+## 4.1 六角格生成（进程内，无独立服务）
 
-主后端（HexFront.Api）**不再自己跑生成**，而是把「生成 / 进度 / 结果下载」委托给这个
-独立服务（默认 `http://127.0.0.1:5180`）。**不部署它，前端「生成六角格」会回落到合成
-地形**（能跑，但地形是假的）；想测到真实 GIS 功能，这个服务必须起来。
+六角格生成已合并进 HexFront.Api，**不再有独立进程、不再有 5180 端口**。主后端直接在本进程
+调用 Core 的 `HexGenService.Generate`：真实高程来自 `server/data/terrain/*.ter`（含 ESA 土地覆盖），
+瓦片缺失则回落合成地形。生成作业串行执行，作业记录落盘 `server/data/gis-api/jobs/<id>.json`，
+后端重启后未完成的作业会自动重跑；生成完成后数据包写入 `server/data/gis/<包名>.json`，并自动
+发布为服务器网络包 `server/data/hexgrids/<id>.zip`。
 
-- 它**只听回环地址**（appsettings `Urls: http://localhost:5180`），公网不直接暴露，
-  只由同机的主后端通过 `127.0.0.1:5180` 调用，无需单独配 nginx / HTTPS / 域名。
-- 与主后端**共用 `server/data/`**：真实高程来自 `server/data/terrain/*.ter`，
-  生成的作业与网格包落在 `server/data/gis-api/{jobs,grids}`。
-- 这些目录都可在生成服务的 `appsettings.json`（`GisApi` 段）里改，**同一份配置跨 Windows / Linux 通用**：
-  每个路径提供「通用键 + 系统特化键」三套（`TerrainDir`/`TerrainDirWindows`/`TerrainDirLinux`、
-  `DataDir`/`DataDirWindows`/`DataDirLinux`）。运行时优先取当前系统的特化键，没有再退回通用键；
-  都留空则按 `HF_REPO_ROOT` 推导默认值。路径写法支持 `/` 分隔、`~` 主目录、`$ENV`/`%ENV%` 环境变量展开，
-  以及相对仓库根的相对路径（如 `data/terrain`）。
-- 主后端通过 `GisApi:BaseUrl`（环境变量 `HF_GIS_API_URL`）找它，默认就是
-  `http://127.0.0.1:5180`，**同机部署无需改任何配置**；跨机部署时把 `HF_GIS_API_URL`
-  指向对方地址、并把 GisApi 的 `Urls` 改成可访问的地址即可（详见第 9 节排错）。
+- 地形目录与高程档位在后端 `appsettings.json` 的 `GisApi` 段配置（**同一份配置跨 Windows / Linux 通用**）：
+  每个路径提供「通用键 + 系统特化键」三套（`TerrainDir`/`TerrainDirWindows`/`TerrainDirLinux`）。
+  运行时优先取当前系统的特化键，没有再退回通用键；都留空则按仓库根（server 目录）推导默认
+  `data/terrain`。路径写法支持 `/` 分隔、`~` 主目录、`$ENV`/`%ENV%` 环境变量展开。
+- `DemMode`：`auto`（瓦片可用即真实、否则合成，默认最稳）/ `real`（强制真实 .ter，缺瓦片则作业失败）/
+  `synthetic`（强制合成 DEM，无需任何 GIS 数据）。
+- 这套配置段与旧版独立生成服务的 `GisApi` 段**同名但键已变**：去掉了 `BaseUrl`/`Enabled`，
+  换成 `TerrainDir*`/`DemMode`。
 
-**手工启动验一遍**（与后端同理，先确认路径/端口再交给守护进程）：
+验证生成链路（进程内）：
 
 ```bash
-cd /www/wwwroot/wargame/server/HexFront.GisApi/publish
-HF_REPO_ROOT=/www/wwwroot/wargame dotnet HexFront.GisApi.dll
-```
-
-期望输出：
-
-```
-Now listening on: http://localhost:5180
-```
-
-**systemd（推荐，与主后端一起守护）**——用包里自带的模板：
-
-```bash
-cp /www/wwwroot/wargame/deploy/hexfront-gisapi.service /etc/systemd/system/
-systemctl daemon-reload && systemctl enable --now hexfront-gisapi
-journalctl -u hexfront-gisapi -f        # 看启动日志
-```
-
-验证主后端能连上它（生成链路打通）：
-
-```bash
-curl -s -o /dev/null -w "生成服务 HTTP %{http_code}\n" http://127.0.0.1:5180/health
-#    期望 200
 curl -s http://127.0.0.1:5018/api/gis/capabilities \
-  | python3 -c "import sys,json;d=json.load(sys.stdin);print('引擎:',d['engine'],'| 远程:',d.get('remote'))"
-#    期望 引擎: gisapi-remote（说明主后端已连上生成服务）
+  | python3 -c "import sys,json;d=json.load(sys.stdin);r=d.get('remote',{}).get('dem',{});print('引擎:',d['engine'],'| 真实瓦片:',r.get('real_tiles_available'),'| 生效真实:',r.get('effective_real'))"
+#    期望 引擎: local-terrain（且 real_tiles_available=true）说明进程内已用上真实地形
 ```
 
-> 若后端 `capabilities` 里 `engine` 仍是 `local-*`，说明没连上生成服务：检查它是否在跑、
-> 端口是否被防火墙拦、或 `HF_GIS_API_URL` 是否配错。连不上时后端自动回落本机引擎，
-> 业务不中断，只是生成地形是合成值。
+> 若 `engine` 是 `synthetic` 或 `real_tiles_available=false`，说明 `server/data/terrain/` 下没有
+> `terrain_manifest.json` 与 `*.ter`：把 `GisApi:TerrainDir`（Linux 写 `TerrainDirLinux`）指向含这些文件的目录即可。
 
 ---
 
@@ -378,9 +347,7 @@ curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
 | 底图瓦片加载失败 / 「未取得天地图密钥」 | 天地图按请求 Referer（页面域名）校验白名单，域名没注册 | 见第 7 节：前端 key 要按**前端域名**注册，或把前端域名加进后端那把的白名单 |
 | 底图时有时无、缩放几次后空白 | 天地图日配额用尽 | 多配几把 key（`VITE_TIANDITU_TK` 逗号分隔），或换一把 |
 | 后端起不来：`UnauthorizedAccessException` | 目录权限不足 | `chown -R www:www /www/wwwroot/wargame` |
-| 生成六角格地形是假的（平原+噪声，无真实山脉/河流） | 生成服务没起，后端回落合成引擎 | 见第 4.1 节：起 `hexfront-gisapi` 并确认 `/api/gis/capabilities` 的 `engine=gisapi-remote` |
-| 生成服务起不来：`address already in use :5180` | 5180 被占 | `ss -lntp \| grep 5180`；杀掉冲突进程，或改 GisApi 的 `appsettings.json` 的 `Urls` 端口 |
-| 生成服务 `/health` 通但后端仍 `local-*` | `HF_GIS_API_URL` 配错或跨机防火墙拦了 127.0.0.1:5180 | 同机默认即可；跨机见第 9 节 |
+| 生成六角格地形是假的（平原+噪声，无真实山脉/河流） | `server/data/terrain/` 缺 `terrain_manifest.json` 与 `*.ter`，进程内回落合成引擎 | 见第 4.1 节：把后端 `appsettings.json` 的 `GisApi:TerrainDir`（Linux 写 `TerrainDirLinux`）指向含真实瓦片的目录；确认 `/api/gis/capabilities` 的 `engine=local-terrain` 且 `real_tiles_available=true` |
 
 ---
 
