@@ -1,0 +1,37 @@
+# ============================================================================
+# HexFront 六角格生成服务（HexFront.GisApi）—— systemd 单元模板
+#
+# 用法：
+#   1. 把本文件 cp 到服务器 /etc/systemd/system/hexfront-gisapi.service
+#   2. 确认下面 WorkingDirectory / ExecStart 的路径与解包布局一致
+#   3. systemctl daemon-reload && systemctl enable --now hexfront-gisapi
+#
+# 与主后端的关系：
+#   · 只听回环地址 localhost:5180，公网不直接暴露；
+#   · 同机的主后端（HexFront.Api）通过 http://127.0.0.1:5180 调它；
+#   · 默认无需任何额外配置（主后端 GisApi:BaseUrl 默认就是 127.0.0.1:5180）。
+#
+# 与数据的关系：
+#   · 共用 HF_REPO_ROOT 指向的 server/data/（真实高程在 server/data/terrain/*.ter）；
+#   · 生成的作业/网格落在 server/data/gis-api/{jobs,grids}。
+# ============================================================================
+[Unit]
+Description=HexFront GisApi (hex grid generation service)
+After=network.target
+
+[Service]
+Type=simple
+User=www
+# 解包后的生成服务发布目录（仅改这一处根前缀即可）
+WorkingDirectory=/www/wwwroot/wargame/server/HexFront.GisApi/publish
+# 数据根：指向解包顶层目录（其下有 server/）。两种写法都认：
+#   /www/wwwroot/wargame          或   /www/wwwroot/wargame/server
+Environment=HF_REPO_ROOT=/www/wwwroot/wargame
+Environment=ASPNETCORE_ENVIRONMENT=Production
+# 生成服务监听地址（默认即回环，保持即可；改端口须同步改下面的 ExecStart --urls）
+ExecStart=/usr/bin/dotnet /www/wwwroot/wargame/server/HexFront.GisApi/publish/HexFront.GisApi.dll --urls=http://localhost:5180
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

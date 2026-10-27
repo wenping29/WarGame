@@ -128,6 +128,17 @@ scripts/deploy/out/
 # *.db
 # *.sqlite
 # *.sqlite3
+.tmp-artifacts/t1/bin
+.tmp-artifacts/t1/obj
+
+.tmp-verify/bin
+.tmp-verify/obj
+
+server/**/[Bb]in/
+server/**/[Oo]bj/
+server/**/[Dd]ebug/
+server/**/[Rr]elease/
+server/**/*.binlog
 
 
 # ---- HexFront.CSharp .NET 编译产物 ----
@@ -147,6 +158,9 @@ __pycache__/
 
 # ---- 兵棋运行期存档（每跑一局验证就新增/改写，不属于代码） ----
 server/HexFront.Api/data/
+
+workbuddy/tmp/
+
 server/data/
 deploy/out/
 

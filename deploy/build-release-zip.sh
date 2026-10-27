@@ -10,6 +10,7 @@
 #   deploy/out/hexfront-release-<时间戳>.zip
 #     hexfront-release/web/                    前端静态产物（已注入 API 地址）
 #     hexfront-release/server/HexFront.Api/    后端 publish + app.db
+#     hexfront-release/server/HexFront.GisApi/ 六角格生成服务 publish（独立进程，端口 5180）
 #     hexfront-release/server/data/            地图/剧本数据
 #     hexfront-release/deploy/                 nginx 配置 + 环境变量 + 本手册
 #
@@ -28,6 +29,7 @@ API_BASE_URL="${API_BASE_URL:-https://api.example.com/api}"
 TIANDITU_TK="${VITE_TIANDITU_TK:-}"
 TS="$(date +%Y%m%d-%H%M%S)"
 PUBLISH_DIR="$OUT_DIR/publish-linux-x64-$TS"
+GISAPI_PUBLISH_DIR="$OUT_DIR/publish-gisapi-linux-x64-$TS"
 ART_DIR="$OUT_DIR/artifacts-$TS"
 ZIP="$OUT_DIR/hexfront-release-$TS.zip"
 
@@ -53,7 +55,7 @@ if ! grep -qF "$API_BASE_URL" "$REPO/webfront/dist/assets/"*.js 2>/dev/null; the
 fi
 
 # ---- 2. 后端发布 -----------------------------------------------------------
-echo "==> 2/4 发布后端 (linux-x64)"
+echo "==> 2/5 发布后端 (linux-x64)"
 cd "$REPO/server"
 # --artifacts-path 指向全新目录：Windows 上 MSBuild 的 Copy 任务在覆盖
 # 已存在文件时会栈溢出（MSB4166），全新目录从根本上避开"覆盖"这个触发条件。
@@ -63,11 +65,19 @@ dotnet publish HexFront.Api/HexFront.Api.csproj \
   --artifacts-path "$ART_DIR" \
   --disable-build-servers
 
-# ---- 3. 合并数据库 WAL -----------------------------------------------------
+# ---- 2.5 发布六角格生成服务（独立进程，默认端口 5180）---------------------
+echo "==> 3/5 发布生成服务 HexFront.GisApi (linux-x64)"
+dotnet publish HexFront.GisApi/HexFront.GisApi.csproj \
+  -c Release -r linux-x64 --no-self-contained \
+  -o "$GISAPI_PUBLISH_DIR" \
+  --artifacts-path "$ART_DIR" \
+  --disable-build-servers
+
+# ---- 4. 合并数据库 WAL -----------------------------------------------------
 # SQLite 的 -wal 里可能还有未合并的事务。不合并直接打包，服务器上打开
 # 会自动回放 WAL（数据不丢），但 -wal/-shm 文件名会被打包规则排除，
 # 导致服务器首次启动看不到最近的数据。故先 checkpoint 合并进主库。
-echo "==> 3/4 合并数据库 WAL"
+echo "==> 4/5 合并数据库 WAL"
 cd "$REPO/server/HexFront.Api"
 if command -v sqlite3 >/dev/null 2>&1; then
   sqlite3 app.db "PRAGMA wal_checkpoint(TRUNCATE);" || true
@@ -76,14 +86,15 @@ else
   echo "    (未找到 sqlite3，跳过；服务器首次启动会自动回放 WAL)"
 fi
 
-# ---- 4. 打包 zip -----------------------------------------------------------
-echo "==> 4/4 打包 zip（数据 2G 级，压缩需几分钟）"
+# ---- 5. 打包 zip -----------------------------------------------------------
+echo "==> 5/5 打包 zip（数据 2G 级，压缩需几分钟）"
 cd "$REPO"
 python3 "$REPO/deploy/tools/pack_release.py" \
   --out "$ZIP" \
   --root hexfront-release \
   --web "$REPO/webfront/dist" \
   --publish "$PUBLISH_DIR" \
+  --gisapi "$GISAPI_PUBLISH_DIR" \
   --db "$REPO/server/HexFront.Api/app.db" \
   --data "$REPO/server/data" \
   --deploy "$REPO/deploy/release"
