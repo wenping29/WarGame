@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using HexFront.Core.Geometry;
 using HexFront.Core.Models;
 using HexFront.Core.Services;
@@ -33,16 +34,21 @@ public sealed class RoomService
     private readonly string _gisDir;
     private readonly string _dataDir;
 
-    public RoomService(ILogger<RoomService> logger, OpsLogService ops, AppDbService db)
+    public RoomService(ILogger<RoomService> logger, OpsLogService ops, AppDbService db, IConfiguration cfg)
     {
         _logger = logger;
         _ops = ops;
         _db = db;
         var serverRoot = AppDbService.ServerRoot();
-        // 部署覆盖：HF_DATA_DIR 直接指定 data 目录（例如地图数据单独挂载到别的盘），
-        // 不设则回退到 <server>/data（server 目录含 HexFront.Api 与 data）。
+        // 数据根目录解析优先级：
+        //   1) HF_DATA_DIR 环境变量（兼容旧部署，地图数据单独挂载到别的盘时最稳）
+        //   2) appsettings「DataPath」按运行系统特化键（DataDirWindows/DataDirLinux）优先于通用键（DataDir）
+        //   3) 回落 <server>/data（server 目录含 HexFront.Api 与 data）
+        // 与 HexFront.GisApi 的路径解析口径一致：同一份 appsettings.json 跨 Windows/Linux 通用。
+        var dataOpts = cfg.GetSection("DataPath").Get<DataPathOptions>() ?? new DataPathOptions();
+        var dataConfigured = PathResolver.SelectPlatformPath(dataOpts.DataDir, dataOpts.DataDirWindows, dataOpts.DataDirLinux);
         _dataDir = Environment.GetEnvironmentVariable("HF_DATA_DIR")
-            ?? Path.Combine(serverRoot, "data");
+            ?? PathResolver.ResolveDir(dataConfigured, serverRoot, "data");
         _scenarioDir = Environment.GetEnvironmentVariable("HF_SCENARIO_DIR")
             ?? Path.Combine(_dataDir, "scenarios");
         _saveDir = Environment.GetEnvironmentVariable("HF_SAVE_DIR")
@@ -50,6 +56,23 @@ public sealed class RoomService
         _gisDir = Path.Combine(_dataDir, "gis");
         Directory.CreateDirectory(_gisDir);
         Directory.CreateDirectory(HexGridDirectory); // 六角格网络包目录（剧本只存 id，包在这里）
+
+        // 把最终解析出的真实路径与命中来源打进日志：数据目录被改名/挂错盘时，运维可直接从日志定位。
+        _logger.LogInformation("数据根目录解析：data_dir={DataDir}（配置源={DataSrc}）, scenario_dir={ScenarioDir}, save_dir={SaveDir}, gis_dir={GisDir}",
+            _dataDir, DescribeDataSrc(dataConfigured, dataOpts), _scenarioDir, _saveDir, _gisDir);
+    }
+
+    /// <summary>记录数据根目录来自哪个配置键，便于日志里一眼看出是环境变量、系统特化键、通用键还是默认值。</summary>
+    private static string DescribeDataSrc(string? configured, DataPathOptions opt)
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("HF_DATA_DIR"))) return "HF_DATA_DIR";
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            if (OperatingSystem.IsLinux() && !string.IsNullOrWhiteSpace(opt.DataDirLinux)) return "DataDirLinux";
+            if (OperatingSystem.IsWindows() && !string.IsNullOrWhiteSpace(opt.DataDirWindows)) return "DataDirWindows";
+            return "DataDir";
+        }
+        return "默认 <server>/data";
     }
 
     // ==================== Public API for REST controller ====================
