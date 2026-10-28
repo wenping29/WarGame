@@ -69,11 +69,11 @@ if (-not $SkipWebApi) {
     $selfContained = "false"
     if ($Target -eq "self-contained") { $selfContained = "true" }
 
-    # Write-Host 1.正在打包：Linux独立部署（包含运行时）
-    # $publishDir1 = Join-Path $publishDir "webapi-publish-linux-x64"
-    # dotnet publish "$webapiDir\HexFront.Api.csproj" -c Release -r linux-x64 --self-contained true -o $publishDir1
-    # $zip1 = Join-Path $outDir "WebApi.linux-x64.zip"
-    # New-Zip $publishDir1 $zip1
+    Write-Host 1.正在打包：Linux独立部署（包含运行时）
+    $publishDir1 = Join-Path $publishDir "webapi-publish-linux-x64"
+    dotnet publish "$webapiDir\HexFront.Api.csproj" -c Release -r linux-x64 --self-contained true -o $publishDir1
+    $zip1 = Join-Path $outDir "WebApi.linux-x64.zip"
+    New-Zip $publishDir1 $zip1
 
     Write-Host 2.正在打包：Linux框架依赖部署64
     $publishDir2 = Join-Path $publishDir "webapi-publish-linux-x64-fd"
@@ -93,11 +93,11 @@ if (-not $SkipWebApi) {
     # $zip4 = Join-Path $outDir "WebApi.osx-x64.zip"
     # New-Zip $publishDir4 $zip4
 
-    # Write-Host 5.正在打包：Windows独立部署
-    # $publishDir5 = Join-Path $publishDir "webapi-publish-win-x64"
-    # dotnet publish "$webapiDir\HexFront.Api.csproj" -c Release -r win-x64 --self-contained true -o $publishDir5
-    # $zip5 = Join-Path $outDir "WebApi.win-x64.zip"
-    # New-Zip $publishDir5 $zip5
+    Write-Host 5.正在打包：Windows独立部署
+    $publishDir5 = Join-Path $publishDir "webapi-publish-win-x64"
+    dotnet publish "$webapiDir\HexFront.Api.csproj" -c Release -r win-x64 --self-contained true -o $publishDir5
+    $zip5 = Join-Path $outDir "WebApi.win-x64.zip"
+    New-Zip $publishDir5 $zip5
 
     # Write-Host 6.正在打包：Windows框架依赖部署
     # $publishDir6 = Join-Path $publishDir "webapi-publish-win-x64-fd"
