@@ -215,7 +215,8 @@ const SCENARIOS = [
 
   // ===== 抗日战争 =====
   {
-    id: 'mukden_1931', name: '九一八事变 1931', era: '抗日战争', attacker: 'blue',
+    id: 'mukden_1931',
+    hexgrid: 'hg_0b2ca24d15', name: '九一八事变 1931', era: '抗日战争', attacker: 'blue',
     desc: '1931年9月18日夜间，沈阳北大营。蓝方自爆铁路后突袭北大营，红方驻地部队在「不抵抗」命令下仓促应对。剧本以夜战条件还原当晚交火。',
     env: [22, 18, 2.5, 123.4, 41.8, 9181], clock: { start_hour: 22, season: '秋' }, weather: 'clear', maxTurns: 12, night: true,
     redName: '北大营驻军', blueName: '日军独立守备队',
@@ -233,7 +234,8 @@ const SCENARIOS = [
     redName: '中国军队 · 淞沪围攻军', blueName: '日军 · 上海派遣军',
   },
   {
-    id: 'nanjing_1937', name: '南京保卫战 1937', era: '抗日战争', attacker: 'blue',
+    id: 'nanjing_1937',
+    hexgrid: 'hg_7ccce53546', name: '南京保卫战 1937', era: '抗日战争', attacker: 'blue',
     desc: '1937年12月，首都南京的外围与复廓阵地防御。红方以残破之师依托既设工事与城墙防守，蓝方多路合围。此役以红方撑满回合、迟滞蓝方为目标。',
     env: [24, 20, 2.5, 118.8, 32.0, 3712], clock: { start_hour: 7, season: '冬' }, weather: 'overcast', maxTurns: 12,
     redName: '南京卫戍军', blueName: '日军 · 攻城集团',
@@ -257,7 +259,8 @@ const SCENARIOS = [
     redName: '第九战区 · 环武汉防御', blueName: '日军 · 溯江进攻集群',
   },
   {
-    id: 'changsha_1941', name: '第三次长沙会战 1941', era: '抗日战争', attacker: 'blue',
+    id: 'changsha_1941',
+    hexgrid: 'hg_32ceb98c2d', name: '第三次长沙会战 1941', era: '抗日战争', attacker: 'blue',
     desc: '1941年12月至1942年1月，长沙的「天炉战法」。红方以城防吸住突进之敌、外线侧翼钳击断其退路，蓝方孤军攻坚陷入合围。',
     env: [24, 18, 2.5, 112.9, 28.2, 4112], clock: { start_hour: 7, season: '冬' }, weather: 'overcast', maxTurns: 14,
     redName: '第九战区 · 天炉战法', blueName: '日军 · 攻长集群',
@@ -304,6 +307,8 @@ for (const s of SCENARIOS) {
     scale: '战役级',
     description: s.desc,
     environment: { width: W, height: H, cell_km: cellKm, center_lonlat: [lon, lat], height_seed: seed },
+    // 绑了网络包的剧本：棋盘来自包，at/target 仍按 environment 小棋盘排版（oob_space 让服务端等比铺满实际棋盘）
+    ...(s.hexgrid ? { hexgrid: s.hexgrid, oob_space: 'environment' } : {}),
     flags: { fog: true, air_superiority: !s.night, strict_supply: s.era === '抗美援朝战争', night: !!s.night },
     clock: s.clock,
     weather: { initial: s.weather, mode: 'stochastic' },

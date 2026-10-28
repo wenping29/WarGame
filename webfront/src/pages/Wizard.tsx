@@ -364,6 +364,8 @@ export default function Wizard() {
     const th = num(st.clock.turn_hours)
     if (th !== null) ov.rules = { turn_hours: th }
     const sides: Record<string, unknown> = {}
+    // 向导改过的 OOB 里 at 已是实际棋盘绝对格号（经纬度当场换算过），必须声明口径，否则服务端会按剧本小棋盘再映射一次
+    let oobRewritten = false
     for (const side of ['red', 'blue'] as const) {
       const cfg: Record<string, unknown> = {}
       const b = num(st.sides[side].budget)
@@ -378,10 +380,12 @@ export default function Wizard() {
         }
         if (!oob.length) return { __invalid: `阵营 ${side} 的 OOB 为空（若要保留默认请不要提交该字段）` }
         cfg.oob = oob
+        oobRewritten = true
       }
       if (Object.keys(cfg).length) sides[side] = cfg
     }
     if (Object.keys(sides).length) ov.sides = sides
+    if (oobRewritten) ov.oob_space = 'board'
     const tdefs: Array<Record<string, unknown>> = []
     for (const id of st.typeRows) {
       const p = st.typeAttrs[id] || {}

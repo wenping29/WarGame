@@ -37,6 +37,12 @@ public static class ScenarioService
         [System.Text.Json.Serialization.JsonPropertyName("hexgrid")]
         public string? HexGridId { get; init; }
         public EnvSpec? Environment { get; init; }
+        /// <summary>
+        /// OOB 与胜利要点的格号口径。缺省（board）= 实际棋盘绝对格号，原样落位；
+        /// environment = 按剧本 environment 小棋盘排版，绑定更大的六角格包时等比铺满实际棋盘。
+        /// 向导第 3 步写的是绝对格号（经纬度已换算过），所以向导副本必须留缺省，否则会二次映射。
+        /// </summary>
+        public string? OobSpace { get; init; }
         public WeatherCfg? Weather { get; init; }
         public ClockCfg? Clock { get; init; }
         public Dictionary<string, SideConfig>? Sides { get; init; }
@@ -56,6 +62,8 @@ public static class ScenarioService
         public int Height { get; init; } = 20;
         public double CellKm { get; init; } = 5.0;
         public int HeightSeed { get; init; } = 7;
+        /// <summary>线上键名是 center_lonlat（一个词），SnakeCaseLower 会拆成 center_lon_lat，故显式标注。</summary>
+        [System.Text.Json.Serialization.JsonPropertyName("center_lonlat")]
         public double[]? CenterLonLat { get; init; }
     }
 
@@ -233,6 +241,9 @@ public static class ScenarioService
             ?? LoadGisCells(config.GisPackage, gisDir)
             ?? BuildProceduralGrid(config.Environment ?? new EnvSpec());
 
+        // 剧本若声明格号按 environment 小棋盘排版，先算好到实际棋盘的映射，落子和胜利要点都要过它
+        var mapper = new OobHexMapper(config, grid);
+
         var g = new GameState
         {
             Grid = grid,
@@ -281,14 +292,14 @@ public static class ScenarioService
             {
                 Kind = (vc.Kind ?? "").Trim().ToLowerInvariant(),
                 Side = string.IsNullOrWhiteSpace(vc.Side) ? "red" : vc.Side.Trim().ToLowerInvariant(),
-                Target = vc.Target,
+                Target = mapper.MapTarget(vc.Target),
                 Amount = vc.Amount,
                 Turns = vc.Turns,
             });
         }
 
         // Deploy units from sides OOB (real scenario format)
-        PlaceOob(g, config);
+        PlaceOob(g, config, mapper);
 
         // Deploy units from inline unit list (simple scenario format)
         foreach (var dep in config.Units)
@@ -301,7 +312,7 @@ public static class ScenarioService
                 Id = dep.Id,
                 Side = dep.Side,
                 UnitType = dep.Type,
-                Pos = SpawnAt(g, new Hex(dep.Q, dep.R), new HashSet<string>()),
+                Pos = SpawnAt(g, mapper.Map(new Hex(dep.Q, dep.R)), new HashSet<string>()),
                 Personnel = personnel,
                 MaxPersonnel = personnel,
                 Morale = dep.Morale,
@@ -408,7 +419,8 @@ public static class ScenarioService
         var seedH = env.HeightSeed;
         var scale = MercatorScaleFrom(env.CenterLonLat);
         var radius = env.CellKm * 1000.0 * scale / Math.Sqrt(3.0);
-        var grid = new HexGrid(4500000, 3200000, radius, w, hgt, env.CellKm, scale);
+        var (ox, oy) = ProceduralOrigin(env, radius, w, hgt);
+        var grid = new HexGrid(ox, oy, radius, w, hgt, env.CellKm, scale);
 
         var cells = new Dictionary<string, Cell>();
         var roadR = (int)Math.Round(hgt / 2.0);
@@ -444,8 +456,76 @@ public static class ScenarioService
         return (grid, cells);
     }
 
+    /// <summary>
+    /// Anchor the procedural board on the scenario's own battlefield: hex(0,0) is placed so the
+    /// board centre lands on center_lonlat. Missing/absurd coordinates keep the historical origin.
+    /// </summary>
+    private static (double Ox, double Oy) ProceduralOrigin(EnvSpec env, double radius, int width, int height)
+    {
+        const double fallbackX = 4500000, fallbackY = 3200000;
+        var c = env.CenterLonLat;
+        if (c is not { Length: >= 2 } || Math.Abs(c[0]) > 180 || Math.Abs(c[1]) > 84)
+            return (fallbackX, fallbackY);
+
+        var flatToFlat = Math.Sqrt(3.0) * radius;
+        var rowStep = 1.5 * radius;
+        var mx = HexGridPackageService.LngToMx(c[0]);
+        var my = HexGridPackageService.LatToMy(c[1]);
+        return (mx - (width - 1) * flatToFlat / 2.0, my + (height - 1) * rowStep / 2.0);
+    }
+
+    /// <summary>
+    /// 格号口径映射：剧本 environment 小棋盘 → 实际棋盘。
+    /// 只在 <see cref="ScenarioConfig.OobSpace"/> 声明为 environment 时启用，其余一律恒等，
+    /// 所以未绑包的程序化棋盘、向导写的绝对格号都不受影响。
+    /// 映射本身按"中心对齐 + 等比拉伸 + 取整截断"，保序、保队形、铺满，不做地理换算：
+    /// 现有网络包的经纬范围与各剧本 environment 并不都重合，按经纬换算会把出界格号顶到边缘反而更挤。
+    /// </summary>
+    private readonly struct OobHexMapper
+    {
+        private readonly int _fromW, _fromH, _toW, _toH;
+
+        /// <summary>不启用时逐格原样透传。</summary>
+        public static readonly OobHexMapper Identity = default;
+
+        public OobHexMapper(ScenarioConfig config, HexGrid grid)
+        {
+            _fromW = _fromH = _toW = _toH = 0;
+            var env = config.Environment;
+            var on = string.Equals(config.OobSpace?.Trim(), "environment", StringComparison.OrdinalIgnoreCase)
+                && env is { Width: > 1, Height: > 1 }
+                && grid.Width > 1 && grid.Height > 1
+                && (env.Width != grid.Width || env.Height != grid.Height);
+            if (!on) return;
+            _fromW = env!.Width; _fromH = env.Height;
+            _toW = grid.Width; _toH = grid.Height;
+        }
+
+        public bool Active => _fromW > 0 && _fromH > 0;
+
+        public Hex Map(Hex h) => Active ? new Hex(Axis(h.Q, _fromW, _toW), Axis(h.R, _fromH, _toH)) : h;
+
+        /// <summary>capture 要点写成 "q,r" 字符串；解析不出两个整数就原样留着（校验另有报错）。</summary>
+        public string? MapTarget(string? target)
+        {
+            if (!Active || string.IsNullOrWhiteSpace(target)) return target;
+            var parts = target.Split(',', StringSplitOptions.TrimEntries);
+            if (parts.Length != 2 || !int.TryParse(parts[0], out var q) || !int.TryParse(parts[1], out var r))
+                return target;
+            var mapped = Map(new Hex(q, r));
+            return $"{mapped.Q},{mapped.R}";
+        }
+
+        private static int Axis(int v, int from, int to)
+        {
+            // 两端格心对对齐：v=0 → 0，v=from-1 → to-1，中间等比，最后截进棋盘
+            var scaled = (v - (from - 1) / 2.0) * (to - 1.0) / (from - 1) + (to - 1) / 2.0;
+            return Math.Clamp((int)Math.Round(scaled, MidpointRounding.AwayFromZero), 0, to - 1);
+        }
+    }
+
     /// <summary>Deploy side OOB entries: qty copies around "at", spawning on nearest passable free hex.</summary>
-    private static void PlaceOob(GameState g, ScenarioConfig config)
+    private static void PlaceOob(GameState g, ScenarioConfig config, OobHexMapper mapper)
     {
         if (config.Sides == null) return;
         var prefix = new Dictionary<string, string> { ["red"] = "R", ["blue"] = "B", ["neutral"] = "N" };
@@ -460,7 +540,7 @@ public static class ScenarioService
                 var at = entry.At is { Length: >= 2 } ? entry.At : new[] { 0, 0 };
                 for (var i = 0; i < entry.Qty; i++)
                 {
-                    var want = new Hex(at[0] + i % 3, at[1] + (i / 3) % 4);
+                    var want = mapper.Map(new Hex(at[0] + i % 3, at[1] + (i / 3) % 4));
                     var pos = SpawnAt(g, want, taken);
                     taken.Add(pos.Key);
                     counter++;
@@ -711,6 +791,12 @@ public static class ScenarioService
             var th = thEl.GetInt32();
             if (th < 1 || th > 24) errs.Add($"每回合推进 {th} 小时无效（需 1–24）");
         }
+
+        // 格号口径写错会静默按绝对格号落子（部队挤在棋盘一角），所以白名单外一律报错
+        if (cfg.OobSpace is { Length: > 0 } space
+            && !space.Trim().Equals("environment", StringComparison.OrdinalIgnoreCase)
+            && !space.Trim().Equals("board", StringComparison.OrdinalIgnoreCase))
+            errs.Add($"oob_space \"{space}\" 无效（可用：environment = 按 environment 小棋盘排版等比铺满；board 或缺省 = 已是实际棋盘绝对格号）");
 
         foreach (var vc in cfg.VictoryConds)
         {

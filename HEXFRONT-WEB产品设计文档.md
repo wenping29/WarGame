@@ -320,6 +320,20 @@ OOB 自定义的两条约束（否则内容立刻崩）：
 - **现状（2026-10-18 逐包实测）**：`data/gis/` 的 12 个数据包全部 PASS（`arnhem_rhine`、`demo_lake`、`demo_verify`、`demo_water`、`e2e_job_1792131101`、`gis_1792288947`、`p4c_wizard_1792287272`、`rhine_2p5km`、`rhine_5km`、`rhine_ruhr_2p5km`、`test_direct`、`ui_site_1792131378`）。
 - 切换前的 axial 采样包整目录留在 `data/gis_axial_backup/`（11 个），这一项全部 FAIL（Δlon 0.11–0.50 度），只作对照样本，剧本与向导都不许再引用。
 
+**剧本格号口径 `oob_space`（2026-10-28 定）**
+
+历史剧本的 `sides.*.oob[].at` 与 `victory[].target`（capture 的 `"q,r"`）都是在 `environment` 那块 22~26 见方的小棋盘上排版的，而绑定的服务器六角格包普遍是 58×60 / 64×71 / 84×104。绝对格号不按包尺寸换算 ⇒ 整支军队挤在棋盘西南角，要点格还留在原处，仗打不起来。
+
+- `"oob_space": "environment"` ⇒ 建局时把格号按**中心对齐 + 等比拉伸 + 四舍五入截边**映到实际棋盘：`v' = round((v − (from−1)/2)·(to−1)/(from−1) + (to−1)/2)`，两端格心对齐、队形与先后次序保持、铺满整块棋盘。作用于 OOB、简式 `units[]` 与 capture 要点，三处同一套口径。
+- **缺省即 `board`**（也接受显式写 `"board"`）：格号就是实际棋盘绝对值，一律不动。向导第 3 步的经纬度已在浏览器里换算成绝对格号，提交时显式带 `oob_space:"board"`，不能被二次映射。
+- 不选"按经纬度换算"而选版面拉伸：现有网络包的经纬范围与各剧本 `environment` 并不都重合（沈阳包比剧本棋盘小 18 km 宽），按经纬换算会把出界格号整片顶到边缘，反而更挤。
+- 棋盘就是 `environment` 那块（未绑包）时映射恒等，历史开局一格不动。口径值写错由 `ScenarioService.Validate` 直接报错，不允许静默降级。
+- 钉在 `server/HexFront.Tests/src/Engine/OobHexSpaceTests.cs`（10 项，含逐格精确落位与铺满率）。
+
+### 6.6 已知残留
+
+- 向导里改动过某一侧 OOB 任一行时，整块 `oob` 会按绝对格号提交（`oob_space:"board"`）；从剧本回填的 `at` 仍是小棋盘格号，此时不会被铺满。要修得把剧本格号在包几何载入后换算一次，尚未做。
+
 ---
 
 ## 7. 战力影响链与待补系统
