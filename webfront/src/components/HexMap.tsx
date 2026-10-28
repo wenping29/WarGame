@@ -33,6 +33,7 @@ function loadDisplay(): DisplayOptions {
 
 const DISPLAY_ITEMS: Array<[keyof DisplayOptions, string]> = [
   ['showBasemap', '在线底图'],
+  ['showVector', '真实矢量'],
   ['showTerrain', '地形填充'],
   ['showGrid', '六角格网'],
   ['showFeatures', '地物层'],

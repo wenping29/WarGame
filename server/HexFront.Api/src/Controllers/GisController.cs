@@ -23,11 +23,13 @@ namespace HexFront.Api.Controllers;
 public sealed class GisController : ControllerBase
 {
     private readonly GisService _gis;
+    private readonly GisVectorService _vectors;
     
 
-    public GisController(GisService gis)
+    public GisController(GisService gis, GisVectorService vectors)
     {
         _gis = gis;
+        _vectors = vectors;
 
     }
 
@@ -35,6 +37,37 @@ public sealed class GisController : ControllerBase
     [HttpGet("capabilities")]
     public async Task<IActionResult> Capabilities(bool refresh = false)
         => Json(await _gis.CapabilitiesAsync(refresh));
+
+    /// <summary>GET /api/gis/vector/layers — 真实矢量叠层各图层的就位情况与幅面说明。</summary>
+    [HttpGet("vector/layers")]
+    public IActionResult VectorCapabilities() => Json(_vectors.Capabilities());
+
+    /// <summary>
+    /// GET /api/gis/vector?w&amp;s&amp;e&amp;n&amp;layers=rivers,lakes,roads,airports&amp;simplify=1
+    /// —— bbox 内的真实 GIS 矢量，EPSG:4326 GeoJSON（前端地图叠层用，不进六角格网络包）。
+    /// simplify 是抽稀档位（度）：按「1 像素 ≈ 跨度/1200」换算，0 表示返回原始几何。
+    /// </summary>
+    [HttpGet("vector")]
+    public IActionResult Vector(string? w = null, string? s = null, string? e = null, string? n = null,
+                               string? layers = null, string? simplify = null)
+    {
+        double[] bb;
+        try
+        {
+            bb = GisService.BboxFromQuery(w, s, e, n);
+        }
+        catch (GisPlanException ex)
+        {
+            return Error(ex.Message);
+        }
+        var keys = (layers ?? string.Join(",", GisVectorService.LayerKeys))
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (keys.Length == 0) return Error("layers 不能为空");
+        if (!double.TryParse(simplify, NumberStyles.Float, CultureInfo.InvariantCulture, out var px)) px = 1.0;
+        return new JsonResult(_vectors.Query(bb[0], bb[1], bb[2], bb[3], keys, Math.Clamp(px, 0, 8)));
+    }
 
     /// <summary>GET /api/gis/plan?w&amp;s&amp;e&amp;n&amp;cell_km — 推荐对边距 + 档位阶梯（设计文档 §6.2）。</summary>
     [HttpGet("plan")]

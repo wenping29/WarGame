@@ -159,7 +159,9 @@ __pycache__/
 # ---- 兵棋运行期存档（每跑一局验证就新增/改写，不属于代码） ----
 server/HexFront.Api/data/
 
-workbuddy/tmp/
+.workbuddy/tmp/
+.tmp-vector/
+.verify/
 
 server/data/
 deploy/out/

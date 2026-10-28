@@ -108,7 +108,8 @@ public static class HexGridPackageService
     {
         var radius = doc.FlatToFlat / Sqrt3;                       // 外接圆半径（Mercator 米）
         var ox = LngToMx(doc.West) + Sqrt3 / 2.0 * radius;         // 棋盘西缘 → hex(0,0) 中心
-        var oy = LatToMy(doc.South) + radius;                      // 棋盘南缘 → hex(0,0) 中心
+        // 南缘 → 顶行中心：底缘往上 (rows-1) 个行距是一个外接圆直径之外的跨度，再加一个半径才到格心
+        var oy = LatToMy(doc.South) + (1.5 * (doc.Rows - 1) + 1.0) * radius;
 
         var boardW = doc.Cols * doc.FlatToFlat + doc.FlatToFlat / 2.0;
         var boardH = (doc.Rows - 1) * 1.5 * radius + 2.0 * radius;
@@ -195,7 +196,9 @@ public static class HexGridPackageService
             Cols = pkg.Width,
             FlatToFlat = ftf,
             West = MxToLng(ox - Sqrt3 / 2.0 * radius),
-            South = MyToLat(oy - radius),
+            // 底缘 = 顶行中心往下 (height-1) 个行距再减一个外接圆半径；只减 radius 会把南缘写成顶行下缘，
+            // 前端按「左下角 + 行号向北」渲染时整片网格会北移约一个棋盘高度。
+            South = MyToLat(oy - (1.5 * (pkg.Height - 1) + 1.0) * radius),
             DefaultTerrain = "clear",
             Holes = holes,
             Terrains = terrains,

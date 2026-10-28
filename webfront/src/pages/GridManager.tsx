@@ -236,9 +236,13 @@ export default function GridManager() {
   const overlay: HexOverlay | null = useMemo(() => {
     if (!viewed) return null
     const b = viewed.bbox ?? deriveBBox(107, 33, viewed.rows, viewed.cols, viewed.flatToFlat)
+    const size = viewed.flatToFlat / SQRT3
     return {
-      west: b.west, south: b.south, rows: viewed.rows, cols: viewed.cols,
-      size: viewed.flatToFlat / SQRT3, holes: viewed.holes, terrains: viewed.terrains, preview: false,
+      west: b.west,
+      // bbox.south 是棋盘底缘，覆盖层缺省口径把锚点当底行格心，需再进一个外接圆半径
+      south: myToLat(latToMy(b.south) + size),
+      rows: viewed.rows, cols: viewed.cols,
+      size, holes: viewed.holes, terrains: viewed.terrains, preview: false,
     }
   }, [viewed])
 

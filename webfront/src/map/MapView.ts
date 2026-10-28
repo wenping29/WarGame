@@ -7,6 +7,7 @@
  */
 
 import { dirsFor, dirsRightFor, hexCenterMeters, hexRange, metersToHex, SQRT3 } from './hex'
+import { fetchVectors, viewportKey, type VecLayer, type VectorData } from './gisVector'
 import type { AnyView, WireCell, WireContact, WireUnit } from '../room/protocol'
 
 const E = 20037508.342789244 // EPSG:3857 半周长（米）
@@ -31,6 +32,8 @@ const TILE_STALL_MS = 8000
 /** 连续退避这么多轮仍拿不到瓦片就不再自动重试（护住天地图配额） */
 const TILE_MAX_RETRY_ROUNDS = 5
 const TILE_CACHE_MAX = 512
+/** 真实矢量取数防抖：pan/zoom 停手这么久才打后端，避免一次拖动发十几个 bbox 查询 */
+const VECTOR_DEBOUNCE_MS = 260
 
 /** 军事低饱和地形配色（键对应 library STANDARD_TERRAIN 的 id）；void 是棋盘外的境外格 */
 export const TERRAIN_COLOR: Record<string, string> = {
@@ -40,6 +43,22 @@ export const TERRAIN_COLOR: Record<string, string> = {
 }
 export const SIDE_COLOR: Record<string, string> = {
   red: '#c15b4e', blue: '#4e82b3', neutral: '#7f8c8d',
+}
+/**
+ * 真实矢量叠层配色：与六角格的抽象线（_drawLines 的 #3a6b86/#c9b98d）拉开色相，
+ * 一眼能分「真实河形」和「格心连出来的河」。
+ */
+const VECTOR_LAKE_FILL = 'rgba(52,104,138,.45)'
+const VECTOR_LAKE_STROKE = 'rgba(122,172,200,.75)'
+const VECTOR_RIVER: Record<string, [string, number]> = {
+  river1: ['#3f8fc4', 2.6], river2: ['#4a90be', 1.8], river3: ['#5a9cc2', 1.1],
+}
+const VECTOR_ROAD: Record<string, [string, number]> = {
+  motorway: ['#e08a3c', 2.6], trunk: ['#d9a94f', 2.0], minor: ['#c9bd80', 1.2], other: ['#b3a88a', 0.9],
+}
+const VECTOR_AIRPORT = '#d8d2bf'
+const VECTOR_LABEL: Record<string, string> = {
+  rivers: '河流', lakes: '湖泊', roads: '路网', airports: '机场',
 }
 /** 地形中文名（与后端 STANDARD_TERRAIN 的 label 同源），供格信息条使用 */
 export const TERRAIN_LABEL: Record<string, string> = {
@@ -67,6 +86,7 @@ export interface Pick {
 /** 地图图层显示开关（用户可在终端右上角面板逐项切换，localStorage 记忆） */
 export interface DisplayOptions {
   showBasemap: boolean // 在线底图（天地图瓦片）
+  showVector: boolean // 真实 GIS 矢量叠层（河流/湖泊/路网/机场，走 /api/gis/vector）
   showTerrain: boolean // 六角格地形填充
   showGrid: boolean // 六角格网描边
   showFeatures: boolean // 地物层（铁路/输电线/机场/电厂/车站等图标与要点归属）
@@ -77,6 +97,9 @@ export interface DisplayOptions {
 
 export const DEFAULT_DISPLAY: DisplayOptions = {
   showBasemap: true,
+  // 默认关：这一层每换一个视口都要打一次后端并按 bbox 读 GeoPackage，
+  // 不该在没人看的时候悄悄取数；打开后随 pan/zoom 自动续取。
+  showVector: false,
   showTerrain: true,
   showGrid: true,
   showFeatures: true,
@@ -128,6 +151,13 @@ export class MapView {
   private _cells: CellRecord[] = []
   private _cellAt = new Map<string, CellRecord>()
   private _cellsKey: string | null = null
+
+  /** 真实矢量叠层：视口量化后才取数，pan/zoom 停手 260ms 发一次请求（见 map/gisVector.ts） */
+  private _vec: VectorData | null = null
+  private _vecKey = ''
+  private _vecBusy = false
+  private _vecError = ''
+  private _vecTimer = 0
 
   // 相机（墨卡托米 + 屏幕像素）
   private cx = 0
@@ -483,6 +513,7 @@ export class MapView {
     this.disposed = true
     if (this._statusTimer) { clearTimeout(this._statusTimer); this._statusTimer = 0 }
     if (this._idleTimer) { clearTimeout(this._idleTimer); this._idleTimer = 0 }
+    if (this._vecTimer) { clearTimeout(this._vecTimer); this._vecTimer = 0 }
     if (this._raf) { cancelAnimationFrame(this._raf); this._raf = 0 }
   }
 
@@ -516,6 +547,10 @@ export class MapView {
     const showTiles = this._tilesAllowed() && this.display.showBasemap
     if (showTiles) this._drawTiles()
     this._drawHexes(ctx, showTiles)
+    // 画在六角地形之上、交互层与兵力块之下：地形填充是不透明的（无底图时 alpha 0.96），
+    // 压在地形之下等于看不见；而真实矢量本身就是要「叠」在格面上给人对照地理的。
+    if (this.display.showVector) { this._tickVectors(); this._drawVectors(ctx) }
+    this._drawOverlays(ctx)
     this._drawOverlays(ctx)
     if (this.display.showUnits) this._drawUnits(ctx)
     this._drawCursorHex(ctx)
@@ -671,6 +706,140 @@ export class MapView {
         }
       }
     }
+  }
+
+  // ── 真实 GIS 矢量叠层：河流 / 湖泊 / 路网 / 机场（GET /api/gis/vector） ──
+
+  /// 视口量化框变了才安排取数；同一框内 pan 一像素都不打后端
+  private _tickVectors() {
+    if (this._vecBusy) return
+    const vw = this._viewport()
+    const key = viewportKey(vw)
+    if (!key || key === this._vecKey) return
+    this._vecKey = key
+    if (this._vecTimer) clearTimeout(this._vecTimer)
+    this._vecTimer = window.setTimeout(() => {
+      this._vecTimer = 0
+      void this._loadVectors()
+    }, VECTOR_DEBOUNCE_MS)
+  }
+
+  private async _loadVectors() {
+    if (this.disposed) return
+    this._vecBusy = true
+    try {
+      const d = await fetchVectors(this._viewport())
+      if (d && !this.disposed) this._vec = d
+      this._vecError = ''
+    } catch (e) {
+      this._vecError = e instanceof Error ? e.message : String(e)
+    }
+    this._vecBusy = false
+    this.requestDraw()
+  }
+
+  private _drawVectors(ctx: CanvasRenderingContext2D) {
+    const L = this._vec?.layers
+    if (!L) { this._drawVectorNote(ctx); return }
+    const [x0, y0, x1, y1] = this._viewport()
+    const vis = (e: [number, number, number, number]) => e[0] <= x1 && e[2] >= x0 && e[1] <= y1 && e[3] >= y0
+
+    ctx.save()
+    ctx.lineJoin = 'round'
+    ctx.lineCap = 'round'
+
+    const lakes = L.lakes
+    if (lakes?.lines.length) {
+      ctx.beginPath()
+      for (const f of lakes.lines) if (vis(f.env)) this._vectorPath(ctx, f.parts)
+      ctx.fillStyle = VECTOR_LAKE_FILL
+      ctx.fill()
+      ctx.strokeStyle = VECTOR_LAKE_STROKE
+      ctx.lineWidth = 0.8
+      ctx.stroke()
+    }
+
+    // 道路在下、水系在上：真实地图的习惯画法，也让过河桥梁处水纹不断
+    this._strokeVectorLayer(ctx, L.roads, (cls) => VECTOR_ROAD[cls] || VECTOR_ROAD.other, vis)
+    this._strokeVectorLayer(ctx, L.rivers, (cls) => VECTOR_RIVER[cls] || VECTOR_RIVER.river3, vis)
+
+    const ap = L.airports
+    if (ap?.points.length) {
+      ctx.strokeStyle = VECTOR_AIRPORT
+      ctx.fillStyle = VECTOR_AIRPORT
+      ctx.lineWidth = 1.2
+      for (const p of ap.points) {
+        const sx = (p.x - this.cx) * this.scale + this.w / 2
+        const sy = (this.cy - p.y) * this.scale + this.h / 2
+        if (sx < -6 || sy < -6 || sx > this.w + 6 || sy > this.h + 6) continue
+        ctx.beginPath()
+        ctx.arc(sx, sy, 2.2, 0, Math.PI * 2)
+        ctx.fill()
+        // 短跑道刻痕，和六角格地物层的机场图标区分开
+        ctx.beginPath()
+        ctx.moveTo(sx - 4.4, sy)
+        ctx.lineTo(sx + 4.4, sy)
+        ctx.stroke()
+      }
+    }
+    ctx.restore()
+    this._drawVectorNote(ctx)
+  }
+
+  private _strokeVectorLayer(
+    ctx: CanvasRenderingContext2D, layer: VecLayer | undefined,
+    styleOf: (cls: string) => [string, number],
+    vis: (e: [number, number, number, number]) => boolean,
+  ) {
+    if (!layer) return
+    // 按样式分组各描一次：几百条路也只切十几次 strokeStyle
+    for (const g of layer.groups) {
+      const [color, width] = styleOf(g.cls)
+      ctx.strokeStyle = color
+      ctx.lineWidth = width
+      ctx.beginPath()
+      let any = false
+      for (const f of g.lines) {
+        if (!vis(f.env)) continue
+        any = true
+        this._vectorPath(ctx, f.parts)
+      }
+      if (any) ctx.stroke()
+    }
+  }
+
+  /// 墨卡托米点列 → 屏幕路径。这里不复用 toScreen()：一帧最多十几万顶点，数组返回太贵
+  private _vectorPath(ctx: CanvasRenderingContext2D, parts: number[][]) {
+    for (const p of parts) {
+      for (let i = 0; i + 1 < p.length; i += 2) {
+        const sx = (p[i] - this.cx) * this.scale + this.w / 2
+        const sy = (this.cy - p[i + 1]) * this.scale + this.h / 2
+        if (i === 0) ctx.moveTo(sx, sy)
+        else ctx.lineTo(sx, sy)
+      }
+    }
+  }
+
+  /// 空结果要能解释：数据没就位、不在裁剪幅面、取数失败，都写在图上而不是画一张什么都没有的图
+  private _drawVectorNote(ctx: CanvasRenderingContext2D) {
+    const parts: string[] = []
+    if (this._vecBusy) parts.push('真实矢量取数中…')
+    else if (this._vecError) parts.push('真实矢量取数失败：' + this._vecError)
+    else if (this._vec) {
+      const L = this._vec.layers
+      for (const kind of ['rivers', 'lakes', 'roads', 'airports'] as const) {
+        const l = L?.[kind]
+        if (l?.note) parts.push(VECTOR_LABEL[kind] + '：' + l.note)
+      }
+      if (!parts.length && !Object.values(L || {}).some((l) => l && (l.lines.length || l.points.length)))
+        parts.push('真实矢量：该范围无数据')
+    }
+    if (!parts.length) return
+    ctx.fillStyle = 'rgba(255,255,255,.62)'
+    ctx.font = '11px sans-serif'
+    ctx.textAlign = 'left'
+    const base = this.tk ? this.h - 10 : this.h - 26   // 底图未配置时那一行提示占用了 h-10
+    parts.slice(0, 3).forEach((t, i) => ctx.fillText(t, 8, base - (parts.length > 1 ? (2 - i) * 13 : 0)))
   }
 
   // ── 地物层：铁路 / 输电网络 / 机场 / 电厂 / 变电站 / 车站 / 隧道 / 要点归属 ──

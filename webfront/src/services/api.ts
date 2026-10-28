@@ -283,6 +283,39 @@ export interface GisPlan {
 
 export type GisJobStatus = 'queued' | 'running' | 'done' | 'failed' | string
 
+/** GET /api/gis/vector 的最小 GeoJSON 形状：只用到 type/coordinates/geometries */
+export interface GeoJsonGeometry {
+  type: string
+  coordinates?: unknown
+  geometries?: GeoJsonGeometry[]
+}
+
+export interface GeoJsonFeature {
+  geometry?: GeoJsonGeometry
+  properties?: Record<string, unknown>
+}
+
+export interface GisVectorMeta {
+  available?: boolean
+  matched?: number
+  features?: number
+  points?: number
+  truncated?: boolean
+  /** 「数据文件不存在」「该范围不在真实路网裁剪幅面内」等：空结果必须能解释 */
+  note?: string
+}
+
+/** 真实矢量叠层：不进六角格网络包，前端按视口 bbox 单独取一次 */
+export interface GisVectorResponse {
+  ok?: boolean
+  error?: string
+  crs?: string
+  bbox?: [number, number, number, number]
+  simplify_px?: number
+  layers?: Record<string, { type?: string; features?: GeoJsonFeature[] } | null>
+  meta?: Record<string, GisVectorMeta>
+}
+
 export interface GisJob {
   id: string
   status: GisJobStatus
@@ -445,6 +478,11 @@ export const api = {
     del<{ id: string; deleted: boolean; error?: string; used_by?: string[] }>(
       '/hexgrids/' + encodeURIComponent(id)),
   gisCapabilities: () => get<GisCapabilities>('/gis/capabilities'),
+  /** 真实矢量叠层；bbox 为 [西,南,东,北] 度，后端单边限 8°，simplify 是抽稀档位（0–8） */
+  gisVector: (bbox: [number, number, number, number], layers: string, simplify?: number) =>
+    get<GisVectorResponse>('/gis/vector?w=' + bbox[0] + '&s=' + bbox[1] + '&e=' + bbox[2] + '&n=' + bbox[3] +
+      '&layers=' + encodeURIComponent(layers) + (simplify != null ? '&simplify=' + simplify : '')),
+  gisVectorLayers: () => get<{ ok: boolean; layers: Record<string, { available: boolean; label?: string; extent?: string }> }>('/gis/vector/layers'),
   gisPlan: (bbox: [number, number, number, number], cellKm?: number) =>
     get<GisPlan>('/gis/plan?w=' + bbox[0] + '&s=' + bbox[1] + '&e=' + bbox[2] + '&n=' + bbox[3] +
       (cellKm ? '&cell_km=' + cellKm : '')),

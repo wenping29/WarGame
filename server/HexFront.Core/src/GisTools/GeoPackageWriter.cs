@@ -70,8 +70,9 @@ public sealed class GeoPackageWriter : IDisposable
             _maxX = Math.Max(_maxX, env.MaxX); _maxY = Math.Max(_maxY, env.MaxY);
         }
         var wkb = new WKBWriter(ByteOrder.LittleEndian).Write(geom);
-        // GPKG 头：magic GPKG + version(0) + flags(0x11: 小端头/无 envelope/WKB 小端) + srs_id(4326)
-        var header = new byte[] { 0x47, 0x50, 0x4B, 0x47, 0x00, 0x11, 0x2C, 0x10 };
+        // GeoPackage 二进制头（正式规范 8 字节）：'G' 'P' + 版本 0 + 标志(小端、无 envelope) + srs_id 4326(int32 LE)。
+        // 标志 0x11 那种写法既少写 2 字节 srs_id 又把「空几何」位点亮，GDAL 与自家读取器都解不出来。
+        var header = new byte[] { 0x47, 0x50, 0x00, 0x01, 0xE6, 0x10, 0x00, 0x00 };
         var blob = new byte[header.Length + wkb.Length];
         Array.Copy(header, 0, blob, 0, header.Length);
         Array.Copy(wkb, 0, blob, header.Length, wkb.Length);
